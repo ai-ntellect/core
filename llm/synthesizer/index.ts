@@ -12,7 +12,7 @@ export class Summarizer implements Agent {
     onFinish?: (event: any) => void
   ): Promise<
     | {
-        actions: { name: string; reasoning: string }[];
+        actions: { name: string; result: string; why: string }[];
         response: string;
       }
     | StreamTextResult<Record<string, any>>
@@ -24,7 +24,8 @@ export class Summarizer implements Agent {
         actions: z.array(
           z.object({
             name: z.string(),
-            reasoning: z.string(),
+            result: z.string(),
+            why: z.string(),
           })
         ),
         response: z.string(),

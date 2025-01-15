@@ -17,6 +17,22 @@ export interface QueueItem {
   parameters: QueueItemParameter[];
 }
 
+export interface IEventHandler {
+  emitQueueStart(actions: QueueItem[]): void;
+  emitActionStart(action: QueueItem): void;
+  emitActionComplete(action: QueueResult): void;
+  emitQueueComplete(): void;
+}
+
+export type AgentEvent = {
+  onMessage?: (data: any) => void;
+  onQueueStart?: (actions: QueueItem[]) => void;
+  onActionStart?: (action: QueueItem) => void;
+  onActionComplete?: (action: QueueResult) => void;
+  onQueueComplete?: (actions: QueueResult[]) => void;
+  onConfirmationRequired?: (message: string) => Promise<boolean>;
+};
+
 export interface QueueResult {
   name: string;
   parameters: Record<string, string>;

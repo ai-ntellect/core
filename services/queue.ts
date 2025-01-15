@@ -38,7 +38,7 @@ export class ActionQueueManager {
     }
 
     this.isProcessing = true;
-    const actionPromises = [];
+    const actionPromises: Promise<QueueResult>[] = [];
 
     for (const action of this.queue) {
       const actionConfig = this.actions.find((a) => a.name === action.name);
@@ -115,7 +115,6 @@ export class ActionQueueManager {
         error: `Action '${action.name}' not found in actions list`,
       };
     }
-
     const actionArgs = action.parameters.reduce<Record<string, string>>(
       (acc: Record<string, string>, arg: QueueItemParameter) => {
         acc[arg.name] = arg.value;
@@ -123,25 +122,27 @@ export class ActionQueueManager {
       },
       {}
     );
-
-    console.log(`Executing ${action.name} with args:`, actionArgs);
-
     try {
       const result = await actionConfig.execute(actionArgs);
-      return {
+      const actionResult = {
         name: action.name,
         parameters: actionArgs,
         result,
         error: null,
       };
+      console.log("Action executed successfully: ", action.name);
+      console.dir(actionResult, { depth: null });
+      return actionResult;
     } catch (error) {
-      console.error(`Error executing action ${action.name}:`, error);
-      return {
+      const actionResult = {
         name: action.name,
         parameters: actionArgs,
         result: null,
         error: (error as Error).message || "Unknown error occurred",
       };
+      console.log("Action failed: ", action.name);
+      console.dir(actionResult, { depth: null });
+      return actionResult;
     }
   }
 }

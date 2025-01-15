@@ -1,11 +1,12 @@
 {
   "name": "@ai.ntellect/core",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "description": "",
   "main": "dist/index.js",
   "scripts": {
     "build": "rm -rf dist && tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha --require ts-node/register",
+    "test:watch": "mocha --require ts-node/register 'test/**/*.test.ts' --watch"
   },
   "keywords": [],
   "author": "Lorcann Rauzduel",
@@ -17,6 +18,13 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/chai": "^4.3.20",
+    "@types/mocha": "^10.0.0",
+    "chai": "^4.5.0",
+    "mocha": "^10.0.0",
+    "ts-node": "^10.9.0",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.2"
   },
   "repository": {
