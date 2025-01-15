@@ -54,7 +54,6 @@ Le CAG (Cache Augmented Generation) joue un rôle clé dans l'optimisation des w
 Dans le contexte de notre projet, le CAG sert principalement de **mémoire procédurale**, un type spécifique de mémoire qui se concentre sur la réutilisation des résultats intermédiaires dans des contextes similaires. Contrairement à d'autres types de mémoire, comme la mémoire **épisodique** (qui conserve les expériences passées) ou la mémoire **sémantique** (qui stocke des connaissances générales), la mémoire procédurale est axée sur l'exécution de tâches répétitives ou d'actions précédemment effectuées.
 
 - **Rôle principal** : Sauvegarder les résultats des actions pour les réutiliser lors d'exécutions futures.
-
 - **Fonctions principales** :
   - **Sauvegarde des résultats des actions** : Les résultats des actions sont stockés de manière à être facilement accessibles lorsque nécessaire.
   - **Réutilisation des résultats** : Les résultats peuvent être fournis à la demande, ce qui évite des recalculs inutiles.

@@ -53,13 +53,11 @@ CAG plays a crucial role in optimizing workflows by storing intermediate results
 
 In the context of our project, CAG primarily serves as **procedural memory**, a specific type of memory focused on reusing intermediate results in similar contexts. Unlike other types of memory, such as **episodic** (which stores past experiences) or **semantic** (which stores general knowledge), procedural memory is centered on performing repetitive tasks or previously executed actions.
 
-
 - **Main Role**: Save the results of actions for reuse in future executions.
-
 - **Main Functions**:
-- **Store action results**: Action results are stored in a way that they can be easily accessed when needed.
-- **Reuse results**: Results can be provided on demand, avoiding unnecessary recalculations.
-- **Optimize workflows**: By reusing previously executed actions, cache memory optimizes workflows by eliminating redundant steps.
+  - **Store action results**: Action results are stored in a way that they can be easily accessed when needed.
+  - **Reuse results**: Results can be provided on demand, avoiding unnecessary recalculations.
+  - **Optimize workflows**: By reusing previously executed actions, cache memory optimizes workflows by eliminating redundant steps.
 
 Procedural memory enhances the system's efficiency by reducing computation time and ensuring that repetitive processes are handled more quickly and effectively.
 
