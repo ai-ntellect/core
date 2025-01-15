@@ -1,0 +1,30 @@
+{
+  "name": "@ai.ntellect/core",
+  "version": "0.0.1",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Lorcann Rauzduel",
+  "license": "ISC",
+  "dependencies": {
+    "@ai-sdk/openai": "1.0.6",
+    "ai": "^3.0.0",
+    "redis": "^4.7.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ai-ntellect/core.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ai-ntellect/core/issues"
+  },
+  "homepage": "https://github.com/ai-ntellect/core#readme"
+}
