@@ -1,7 +1,7 @@
 import { StreamTextResult } from "ai";
 import { z } from "zod";
 
-export interface Agent {
+export interface BaseLLM {
   process: (prompt: string) => Promise<string | object>;
   streamProcess?: (
     prompt: string

@@ -1,10 +1,10 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { ActionSchema, Agent } from "../../types";
+import { ActionSchema, BaseLLM } from "../../types";
 import { orchestratorContext } from "./context";
 
-export class Orchestrator implements Agent {
+export class Orchestrator implements BaseLLM {
   private readonly model = openai("gpt-4o-mini");
   public tools: ActionSchema[];
 

@@ -1,10 +1,10 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject, streamText, StreamTextResult } from "ai";
 import { z } from "zod";
-import { Agent } from "../../types";
+import { BaseLLM } from "../../types";
 import { summarizerContext } from "./context";
 
-export class Summarizer implements Agent {
+export class Summarizer implements BaseLLM {
   private readonly model = openai("gpt-4-turbo");
 
   async process(
