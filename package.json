@@ -1,6 +1,6 @@
 {
   "name": "@ai.ntellect/core",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "description": "",
   "main": "dist/index.js",
   "scripts": {
@@ -21,10 +21,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ai.ntellect/core.git"
+    "url": "git+https://github.com/ai-ntellect/core.git"
   },
   "bugs": {
-    "url": "https://github.com/ai.ntellect/core/issues"
+    "url": "https://github.com/ai-ntellect/core/issues"
   },
-  "homepage": "https://github.com/ai.ntellect/core#readme"
+  "homepage": "https://github.com/ai-ntellect/core#readme"
 }
