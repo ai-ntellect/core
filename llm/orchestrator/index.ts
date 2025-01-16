@@ -5,7 +5,7 @@ import { ActionSchema, BaseLLM } from "../../types";
 import { orchestratorContext } from "./context";
 
 export class Orchestrator implements BaseLLM {
-  private readonly model = openai("gpt-4o-mini");
+  private readonly model = openai("gpt-4o");
   public tools: ActionSchema[];
 
   constructor(tools: ActionSchema[]) {

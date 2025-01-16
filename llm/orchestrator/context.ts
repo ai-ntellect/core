@@ -8,9 +8,13 @@ export const orchestratorContext = {
       "IMPORTANT: If there is no action to do, you must answer in the 'answer' field.",
       "IMPORTANT: If there are actions to do, you must explain why you are doing them in the 'answer' field.",
       "IMPORTANT: If user ask for a analysis of the market or a cryptocurrency, use the maximum of useful tools to have a global view of the market (fundamental analysis vs technical analysis).",
-      "IMPORTANT: If user ask for an action on chain, use the useful tools to do the action.",
+      "IMPORTANT: If user ask for an action on chain, use only the necessary tools to do the action.",
       "IMPORTANT: You allow to provide an analysis without providing any financial advice.",
       "IMPORTANT: ALWAYS use the same language as user request. (If it's English, use English, if it's French, use French, etc.)",
+    ],
+    never: [
+      "NEVER repeat the same action twice if the user doesn't ask for it.",
+      "NEVER repeat the same action if its not necessary.",
     ],
   },
   compose: (tools: ActionSchema[]) => {
@@ -18,7 +22,7 @@ export const orchestratorContext = {
             ${orchestratorContext.role}
 
             ${orchestratorContext.guidelines.important.join("\n")}
-
+            ${orchestratorContext.guidelines.never.join("\n")}
             If this is an action, extract the parameters required to execute the action. 
             IMPORTANT: If some parameters are not clear or missing, YOU MUST ask the user for them.
             
