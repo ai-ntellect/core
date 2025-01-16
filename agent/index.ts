@@ -1,4 +1,5 @@
 import EventEmitter from "events";
+import { Evaluator } from "../llm/evaluator";
 import { Orchestrator } from "../llm/orchestrator";
 import { Summarizer } from "../llm/synthesizer";
 import { MemoryCache } from "../memory";
@@ -38,6 +39,7 @@ export class Agent {
       return this.handleActions(
         {
           initialPrompt: prompt,
+          contextualizedPrompt: contextualizedPrompt,
           actions: request.actions,
         },
         events
@@ -48,13 +50,15 @@ export class Agent {
   private async handleActions(
     {
       initialPrompt,
+      contextualizedPrompt,
       actions,
     }: {
       initialPrompt: string;
+      contextualizedPrompt: string;
       actions: ActionSchema[];
     },
     events: AgentEvent
-  ) {
+  ): Promise<any> {
     const similarActions = await this.findSimilarActions(initialPrompt);
     const predefinedActions = this.transformActions(actions, similarActions);
     const callbacks = {
@@ -70,6 +74,26 @@ export class Agent {
       this.dependencies.orchestrator.tools,
       callbacks
     );
+
+    const evaluator = new Evaluator(this.dependencies.orchestrator.tools);
+    const evaluation = await evaluator.process(
+      initialPrompt,
+      contextualizedPrompt,
+      JSON.stringify(actionsResult.data)
+    );
+    console.log("EVALUATION", evaluation);
+    events.onMessage?.(evaluation);
+
+    if (evaluation.actions.length > 0) {
+      return this.handleActions(
+        {
+          initialPrompt: contextualizedPrompt,
+          contextualizedPrompt: initialPrompt,
+          actions: evaluation.actions,
+        },
+        events
+      );
+    }
 
     if (!this.actionHandler.hasNonPrepareActions(actionsResult.data)) {
       return {

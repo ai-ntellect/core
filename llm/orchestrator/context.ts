@@ -6,7 +6,6 @@ export const orchestratorContext = {
   guidelines: {
     important: [
       "IMPORTANT: If there is no action to do, you must answer in the 'answer' field.",
-      "IMPORTANT: If there are actions to do, you must explain why you are doing them in the 'answer' field.",
       "IMPORTANT: If user ask for a analysis of the market or a cryptocurrency, use the maximum of useful tools to have a global view of the market (fundamental analysis vs technical analysis).",
       "IMPORTANT: If user ask for an action on chain, use only the necessary tools to do the action.",
       "IMPORTANT: You allow to provide an analysis without providing any financial advice.",
