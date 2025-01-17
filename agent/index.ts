@@ -15,7 +15,7 @@ export class Agent {
   private readonly memoryCache: MemoryCache | undefined;
   private readonly stream: boolean;
   private readonly maxEvaluatorIteration: number;
-  private readonly evaluatorIteration = 0;
+  private evaluatorIteration = 0;
 
   constructor({
     user,
@@ -100,6 +100,7 @@ export class Agent {
     events.onMessage?.(evaluation);
 
     if (evaluation.nextActions.length > 0) {
+      this.evaluatorIteration++;
       return this.handleActions(
         {
           initialPrompt: contextualizedPrompt,

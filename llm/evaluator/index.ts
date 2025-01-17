@@ -40,9 +40,14 @@ export class Evaluator {
         })),
       };
 
+      console.log("Evaluator response");
+      console.dir(validatedResponse, { depth: null });
       return validatedResponse;
     } catch (error: any) {
       if (error) {
+        console.log("Evaluator error");
+        console.dir(error.value, { depth: null });
+        console.error(error.message);
         return {
           ...error.value,
         };
