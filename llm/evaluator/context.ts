@@ -1,15 +1,15 @@
-import { z } from "zod";
 import { ActionSchema } from "../../types";
+import { injectActions } from "../../utils/inject-actions";
 
 export const evaluatorContext = {
   role: "You are the evaluator agent. Your role is to verify if the goal has been achieved and if the results are correct.",
   guidelines: {
     important: [
-      "IMPORTANT: Verify if all required actions were executed successfully",
-      "IMPORTANT: Check if the results match the initial goal",
-      "IMPORTANT: Identify any missing or incomplete information",
+      "Verify if all required actions were executed successfully",
+      "Check if the results match the initial goal",
+      "Identify any missing or incomplete information",
     ],
-    never: [
+    warnings: [
       "NEVER modify the results directly",
       "NEVER make assumptions about missing data",
       "NEVER repeat the same action if you already did it",
@@ -17,21 +17,13 @@ export const evaluatorContext = {
   },
   compose: (goal: string, results: string, tools: ActionSchema[]) => {
     return `
-      ${evaluatorContext.role}
+      ${JSON.stringify(evaluatorContext.guidelines)}
 
-      ${evaluatorContext.guidelines.important.join("\n")}
-      ${evaluatorContext.guidelines.never.join("\n")}
-      
       ACTIONS COMPLETED: ${results}
 
       Initial Goal: ${goal} (You must use the same language)
 
-      The actions available are: ${tools.map((action) => {
-        const parameters = action.parameters as z.ZodObject<any>;
-        const schemaShape = Object.keys(parameters._def.shape()).join(", ");
-        const actionString = `Name: ${action.name}, Description: ${action.description}, Arguments: { ${schemaShape} }`;
-        return actionString;
-      })}
+      The actions available are: ${injectActions(tools)}
 
       Evaluate if the goal has been achieved and provide:
       1. Success status with explanation (no action needed)

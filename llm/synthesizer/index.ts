@@ -2,9 +2,9 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, streamText, StreamTextResult } from "ai";
 import { z } from "zod";
 import { BaseLLM } from "../../types";
-import { summarizerContext } from "./context";
+import { synthesizerContext } from "./context";
 
-export class Summarizer implements BaseLLM {
+export class Synthesizer implements BaseLLM {
   private readonly model = openai("gpt-4-turbo");
 
   async process(
@@ -12,7 +12,14 @@ export class Summarizer implements BaseLLM {
     onFinish?: (event: any) => void
   ): Promise<
     | {
-        actions: { name: string; result: string; why: string }[];
+        actions: {
+          name: string;
+          relevantResult: string;
+          explain: {
+            how: string;
+            why: string;
+          };
+        }[];
         response: string;
       }
     | StreamTextResult<Record<string, any>>
@@ -24,16 +31,20 @@ export class Summarizer implements BaseLLM {
         actions: z.array(
           z.object({
             name: z.string(),
-            result: z.string(),
-            why: z.string(),
+            relevantResult: z.string(),
+            explain: z.object({
+              how: z.string(),
+              why: z.string(),
+            }),
           })
         ),
         response: z.string(),
       }),
-      prompt: summarizerContext.compose(prompt),
-      system: summarizerContext.role,
+      prompt: synthesizerContext.compose(prompt),
+      system: synthesizerContext.role,
     });
-    console.log("Summarized results:", result.object);
+    console.log("Synthesizer");
+    console.dir(result.object, { depth: null });
     if (onFinish) onFinish(result.object);
     return result.object;
   }
@@ -44,9 +55,9 @@ export class Summarizer implements BaseLLM {
   ): Promise<StreamTextResult<Record<string, any>>> {
     const result = await streamText({
       model: this.model,
-      prompt: summarizerContext.compose(prompt),
+      prompt: synthesizerContext.compose(prompt),
       onFinish: onFinish,
-      system: summarizerContext.role,
+      system: synthesizerContext.role,
     });
     return result;
   }

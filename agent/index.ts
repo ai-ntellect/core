@@ -1,6 +1,6 @@
 import { Evaluator } from "../llm/evaluator";
 import { Orchestrator } from "../llm/orchestrator";
-import { Summarizer } from "../llm/synthesizer";
+import { Synthesizer } from "../llm/synthesizer";
 import { MemoryCache } from "../memory";
 import { ActionSchema, AgentEvent, MemoryScope, User } from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
@@ -124,15 +124,15 @@ export class Agent {
     data: any;
     initialPrompt: string;
   }) {
-    const summarizer = new Summarizer();
+    const synthesizer = new Synthesizer();
     const summaryData = JSON.stringify({
       result: actionsResult.data,
       initialPrompt: actionsResult.initialPrompt,
     });
 
     return this.stream
-      ? (await summarizer.streamProcess(summaryData)).toDataStreamResponse()
-      : await summarizer.process(summaryData);
+      ? (await synthesizer.streamProcess(summaryData)).toDataStreamResponse()
+      : await synthesizer.process(summaryData);
   }
 
   private async findSimilarActions(prompt: string) {

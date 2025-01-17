@@ -39,10 +39,15 @@ export class Orchestrator implements BaseLLM {
           parameters: action.parameters || {},
         })),
       };
+      console.log("Orchestrator response");
+      console.dir(validatedResponse, { depth: null });
 
       return validatedResponse;
     } catch (error: any) {
       if (error) {
+        console.log("Orchestrator response");
+        console.dir(error.value, { depth: null });
+        console.error(error.message);
         return {
           ...error.value,
         };
