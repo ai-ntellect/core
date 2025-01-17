@@ -3,7 +3,13 @@ import { Orchestrator } from "../llm/orchestrator";
 import { Synthesizer } from "../llm/synthesizer";
 import { CacheMemory } from "../memory/cache";
 import { PersistentMemory } from "../memory/persistent";
-import { ActionSchema, AgentEvent, MemoryScope, User } from "../types";
+import {
+  ActionSchema,
+  AgentEvent,
+  MemoryScope,
+  MemoryType,
+  User,
+} from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
 import { ActionHandler } from "./handlers/ActionHandler";
 
@@ -48,20 +54,40 @@ export class Agent {
     contextualizedPrompt: string,
     events: AgentEvent
   ): Promise<any> {
-    const request = await this.orchestrator.process(contextualizedPrompt);
+    let actions: ActionSchema[] = [];
 
-    events.onMessage?.(request);
-
-    if (request.actions.length > 0) {
-      return this.handleActions(
-        {
-          initialPrompt: prompt,
-          contextualizedPrompt: contextualizedPrompt,
-          actions: request.actions,
-        },
-        events
-      );
+    if (this.cacheMemory) {
+      const similarActions = await this.cacheMemory.findSimilarQueries(prompt, {
+        similarityThreshold: this.SIMILARITY_THRESHOLD,
+        maxResults: this.MAX_RESULTS,
+        userId: this.user.id,
+        scope: MemoryScope.GLOBAL,
+      });
+      if (similarActions.length > 0) {
+        actions = similarActions[0].data;
+        console.log("Similar actions found for query: ", prompt);
+        console.dir(actions, { depth: null });
+      }
     }
+
+    if (!actions.length) {
+      console.log("No similar actions found for query: ", prompt);
+      console.log("Requesting orchestrator for actions");
+      const request = await this.orchestrator.process(contextualizedPrompt);
+      events.onMessage?.(request);
+      actions = request.actions;
+    }
+
+    return actions.length > 0
+      ? this.handleActions(
+          {
+            initialPrompt: prompt,
+            contextualizedPrompt: contextualizedPrompt,
+            actions: actions,
+          },
+          events
+        )
+      : undefined;
   }
 
   private async handleActions(
@@ -76,8 +102,7 @@ export class Agent {
     },
     events: AgentEvent
   ): Promise<any> {
-    const similarActions = await this.findSimilarActions(initialPrompt);
-    const queueItems = this.transformActions(actions, similarActions);
+    const queueItems = this.transformActions(actions);
 
     const actionsResult = await this.actionHandler.executeActions(
       queueItems,
@@ -106,6 +131,13 @@ export class Agent {
     );
 
     events.onMessage?.(evaluation);
+
+    await this.cacheMemory?.createMemory({
+      content: initialPrompt,
+      data: actions,
+      scope: MemoryScope.GLOBAL,
+      type: MemoryType.ACTION,
+    });
 
     if (evaluation.nextActions.length > 0) {
       this.evaluatorIteration++;
@@ -144,27 +176,9 @@ export class Agent {
       : await synthesizer.process(summaryData);
   }
 
-  private async findSimilarActions(prompt: string) {
-    if (!this.cacheMemory) {
-      return [];
-    }
-
-    return this.cacheMemory.findBestMatches(prompt, {
-      similarityThreshold: this.SIMILARITY_THRESHOLD,
-      maxResults: this.MAX_RESULTS,
-      userId: this.user.id,
-      scope: MemoryScope.USER,
-    });
-  }
-
-  private transformActions(actions: ActionSchema[], similarActions: any[]) {
+  private transformActions(actions: ActionSchema[]) {
     let predefinedActions =
       QueueItemTransformer.transformActionsToQueueItems(actions) || [];
-
-    if (similarActions?.length > 0) {
-      predefinedActions =
-        QueueItemTransformer.transformFromSimilarActions(similarActions) || [];
-    }
 
     return predefinedActions;
   }

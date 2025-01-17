@@ -17,7 +17,7 @@ export class ActionHandler {
         onActionStart: callbacks?.onActionStart,
         onActionComplete: callbacks?.onActionComplete,
         onQueueComplete: callbacks?.onQueueComplete,
-        onConfirmationRequired: async (message) => {
+        onConfirmationRequired: async (message: any) => {
           if (callbacks?.onConfirmationRequired) {
             return await callbacks.onConfirmationRequired(message);
           }

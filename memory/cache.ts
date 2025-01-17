@@ -56,12 +56,13 @@ export class CacheMemory {
   private async storeMemory(memory: CacheMemoryType) {
     const prefix = this.getMemoryKey(memory.scope, memory.userId);
     const key = `${prefix}${memory.id}`;
-    await this.redis.set(key, JSON.stringify(memory), {
+    const result = await this.redis.set(key, JSON.stringify(memory), {
       EX: this.CACHE_TTL,
     });
+    console.log("🔍 Memory CREATED", result);
   }
 
-  async findBestMatches(
+  async findSimilarQueries(
     query: string,
     options: MatchOptions & { userId?: string; scope?: MemoryScope } = {}
   ): Promise<
@@ -123,7 +124,7 @@ export class CacheMemory {
     return results;
   }
 
-  private async getAllMemories(
+  async getAllMemories(
     scope?: MemoryScope,
     userId?: string
   ): Promise<CacheMemoryType[]> {
@@ -162,7 +163,8 @@ export class CacheMemory {
   public async createMemory(
     input: CreateMemoryInput
   ): Promise<string | undefined> {
-    const existingPattern = await this.findBestMatches(input.content, {
+    console.log("🔍 Searching for similar memory", input);
+    const existingPattern = await this.findSimilarQueries(input.content, {
       similarityThreshold: 95,
       userId: input.userId,
       scope: input.scope,
@@ -175,10 +177,14 @@ export class CacheMemory {
           `- ${match.purpose} (${match.similarityPercentage.toFixed(2)}%)`
         );
       });
+      console.log("🔍 Memory already exists");
       return;
     }
 
+    console.log("🔍 No similar memory found");
+
     // Générer les variations via GPT-4
+    console.log("🔍 Generating variations...");
     const variations = await generateObject({
       model: openai("gpt-4"),
       schema: z.object({
@@ -193,7 +199,7 @@ export class CacheMemory {
         - Include the original input
         - Add 3-5 variations`,
     });
-
+    console.log("🔍 Variations generated:", variations.object.queries);
     await this.createSingleMemory({
       id: crypto.randomUUID(),
       content: input.content,
@@ -233,11 +239,13 @@ export class CacheMemory {
     userId?: string;
     scope?: MemoryScope;
   }): Promise<CacheMemoryType> {
+    console.log("🔍 Creating new cache memory...", params.content);
+    console.log("🔍 Creating embedding...");
     const { embedding } = await embed({
       model: openai.embedding("text-embedding-3-small"),
       value: params.content,
     });
-
+    console.log("🔍 Embedding created");
     const memory: CacheMemoryType = {
       id: params.id,
       type: params.type,
@@ -250,8 +258,8 @@ export class CacheMemory {
         params.scope || (params.userId ? MemoryScope.USER : MemoryScope.GLOBAL),
       createdAt: new Date(),
     };
-
     await this.storeMemory(memory);
+    console.log("🔍 Memory created", memory);
     return memory;
   }
 }

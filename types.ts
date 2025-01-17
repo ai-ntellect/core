@@ -126,9 +126,9 @@ export interface CacheMemoryOptions {
 }
 
 export interface CreateMemoryInput {
-  content: string;
+  content: any;
   type: MemoryType;
-  data: any;
+  data: ActionSchema[];
   userId?: string;
   scope?: MemoryScope;
 }
