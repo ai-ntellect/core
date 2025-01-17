@@ -9,10 +9,7 @@ export const orchestratorContext = {
       "If some parameters are not clear or missing, YOU MUST ask the user for them.",
       "ALWAYS use the same language as user request. (If it's English, use English, if it's French, use French, etc.)",
     ],
-    warnings: [
-      "NEVER repeat the same action twice if the user doesn't ask for it.",
-      "NEVER repeat the same action if its not necessary.",
-    ],
+    warnings: ["NEVER repeat same actions if the user doesn't ask for it."],
   },
   compose: (tools: ActionSchema[]) => {
     return `

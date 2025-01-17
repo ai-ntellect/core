@@ -5,4 +5,4 @@ export * from "./llm/synthesizer";
 export * from "./services/queue";
 export * from "./types";
 
-export * from "./memory";
+export * from "./memory/cache";

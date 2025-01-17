@@ -6,17 +6,17 @@ import {
   CreateMemoryInput,
   MatchOptions,
   Memory,
-  MemoryCacheOptions,
+  CacheMemoryOptions,
   MemoryScope,
   MemoryType,
 } from "../types";
 
-export class MemoryCache {
+export class CacheMemory {
   private redis;
   private readonly CACHE_PREFIX: string;
   private readonly CACHE_TTL: number;
 
-  constructor(options: MemoryCacheOptions = {}) {
+  constructor(options: CacheMemoryOptions = {}) {
     const ttlInHours = options.cacheTTL ?? 1;
     this.CACHE_TTL = ttlInHours * 60 * 60;
     this.CACHE_PREFIX = options.cachePrefix ?? "memory:";
@@ -71,7 +71,7 @@ export class MemoryCache {
       purpose: string;
     }[]
   > {
-    console.log("\n🔍 Searching for query:", query);
+    console.log("\n🔍 Searching in cache for query:", query);
 
     const { embedding } = await embed({
       model: openai.embedding("text-embedding-3-small"),

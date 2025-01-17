@@ -1,7 +1,8 @@
 import { Evaluator } from "../llm/evaluator";
 import { Orchestrator } from "../llm/orchestrator";
 import { Synthesizer } from "../llm/synthesizer";
-import { MemoryCache } from "../memory";
+import { CacheMemory } from "../memory/cache";
+import { PersistentMemory } from "../memory/persistent";
 import { ActionSchema, AgentEvent, MemoryScope, User } from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
 import { ActionHandler } from "./handlers/ActionHandler";
@@ -12,7 +13,8 @@ export class Agent {
   private readonly actionHandler: ActionHandler;
   private readonly user: User;
   private readonly orchestrator: Orchestrator;
-  private readonly memoryCache: MemoryCache | undefined;
+  private readonly persistentMemory: PersistentMemory;
+  private readonly cacheMemory: CacheMemory | undefined;
   private readonly stream: boolean;
   private readonly maxEvaluatorIteration: number;
   private evaluatorIteration = 0;
@@ -20,19 +22,22 @@ export class Agent {
   constructor({
     user,
     orchestrator,
-    memoryCache,
+    persistentMemory,
+    cacheMemory,
     stream,
     maxEvaluatorIteration = 1,
   }: {
     user: User;
     orchestrator: Orchestrator;
-    memoryCache?: MemoryCache;
+    persistentMemory: PersistentMemory;
+    cacheMemory?: CacheMemory;
     stream: boolean;
     maxEvaluatorIteration: number;
   }) {
     this.user = user;
     this.orchestrator = orchestrator;
-    this.memoryCache = memoryCache;
+    this.cacheMemory = cacheMemory;
+    this.persistentMemory = persistentMemory;
     this.stream = stream;
     this.maxEvaluatorIteration = maxEvaluatorIteration;
     this.actionHandler = new ActionHandler();
@@ -90,7 +95,10 @@ export class Agent {
       return this.handleActionResults({ ...actionsResult, initialPrompt });
     }
 
-    const evaluator = new Evaluator(this.orchestrator.tools);
+    const evaluator = new Evaluator(
+      this.orchestrator.tools,
+      this.persistentMemory
+    );
     const evaluation = await evaluator.process(
       initialPrompt,
       contextualizedPrompt,
@@ -137,11 +145,11 @@ export class Agent {
   }
 
   private async findSimilarActions(prompt: string) {
-    if (!this.memoryCache) {
+    if (!this.cacheMemory) {
       return [];
     }
 
-    return this.memoryCache.findBestMatches(prompt, {
+    return this.cacheMemory.findBestMatches(prompt, {
       similarityThreshold: this.SIMILARITY_THRESHOLD,
       maxResults: this.MAX_RESULTS,
       userId: this.user.id,

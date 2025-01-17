@@ -29,6 +29,7 @@ export const evaluatorContext = {
       1. Success status with explanation (no action needed)
       2. Next actions needed (if any)
       3. Why you are doing the next actions or why you are not doing them
+      4. Extract relevant semantic information to remember (eg. token symbols, token addresses, etc.). No need to remember the actions or the news.
     `;
   },
 };

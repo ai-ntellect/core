@@ -1,15 +1,32 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { PersistentMemory } from "../../memory/persistent";
 import { ActionSchema, BaseLLM } from "../../types";
 import { orchestratorContext } from "./context";
 
 export class Orchestrator implements BaseLLM {
   private readonly model = openai("gpt-4o");
   public tools: ActionSchema[];
+  private memory: PersistentMemory;
 
-  constructor(tools: ActionSchema[]) {
-    this.tools = tools;
+  constructor(tools: ActionSchema[], memory: PersistentMemory) {
+    this.memory = memory;
+    this.tools = [
+      ...tools,
+      {
+        name: "search_memory",
+        description:
+          "Search for relevant information in the internal knowledge base",
+        parameters: z.object({
+          query: z.string(),
+        }),
+        execute: async (params) => {
+          const memories = await this.memory.findBestMatches(params.value);
+          return memories;
+        },
+      },
+    ];
   }
 
   async process(prompt: string): Promise<any> {

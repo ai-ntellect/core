@@ -119,7 +119,7 @@ export interface SummarizerAgent {
   ) => Promise<StreamTextResult<Record<string, any>>>;
 }
 
-export interface MemoryCacheOptions {
+export interface CacheMemoryOptions {
   cacheTTL?: number;
   redisUrl?: string;
   cachePrefix?: string;
