@@ -63,16 +63,17 @@ export class Agent {
         userId: this.user.id,
         scope: MemoryScope.GLOBAL,
       });
+
       if (similarActions.length > 0) {
         actions = similarActions[0].data;
-        console.log("Similar actions found for query: ", prompt);
+        console.log("Similar actions found in cache for query: ", prompt);
         console.dir(actions, { depth: null });
       }
     }
 
     if (!actions.length) {
-      console.log("No similar actions found for query: ", prompt);
-      console.log("Requesting orchestrator for actions");
+      console.log("No similar actions found in cache for query: ", prompt);
+      console.log("Requesting orchestrator for actions..");
       const request = await this.orchestrator.process(contextualizedPrompt);
       events.onMessage?.(request);
       actions = request.actions;
