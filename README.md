@@ -6,7 +6,8 @@
    - [Orchestrator](#orchestrator)
    - [Queue Manager](#queue-manager)
    - [Synthesizer](#synthesizer)
-   - [Cache Memory (CAG)](#cache-memory-cag)
+   - [Evaluator](#evaluator)
+   - [Memory](#memory-architecture)
 2. [Action Creation and Management](#action-creation-and-management)
 3. [Workflow Execution](#workflow-execution)
 4. [API Calls and Client Side](#api-calls-and-client-side)
@@ -14,7 +15,7 @@
 
 ---
 
-## 1. Main Components
+## 1. Main components
 
 The system relies on several key components that ensure smooth and efficient management of actions and the overall workflow process.
 
@@ -24,9 +25,10 @@ The orchestrator is responsible for managing the execution of actions within a w
 
 - **Main Role**: Organize and direct the execution of actions.
 - **Interactions**:
-  - Requests actions to be executed.
-  - Uses cache memory to avoid redundancy.
-  - Emits events to inform other components about the state of the workflow.
+  - Analyzes user prompts to determine required actions
+  - Requests actions to be executed
+  - Uses cache memory to avoid redundancy
+  - Emits events to inform other components about the state of the workflow
 
 ### Queue Manager
 
@@ -42,34 +44,137 @@ The queue manager organizes the actions to be executed and manages their executi
 
 The synthesizer is responsible for generating responses and analyzing actions based on the results obtained in the workflow. It can create summaries or more complex responses from the raw results obtained during the execution of actions.
 
-- **Main Role**: Transform the results of actions into a comprehensible and structured output.
+- **Main Role**: Transform the results of actions into a comprehensible and structured output
 - **Interactions**:
-  - Takes the results of executed actions.
-  - Creates summaries or tailored responses.
+  - Takes the results of executed actions
+  - Creates summaries or tailored responses
+  - Formats final output for user consumption
+  - Can handle streaming responses
+
+### Evaluator
+
+The evaluator is responsible for assessing the results of executed actions and determining if additional actions are needed. It works in conjunction with the orchestrator to ensure all user requirements are met.
+
+- **Main Role**: Evaluate action results and determine next steps
+- **Main Functions**:
+  - Analyzes results from executed actions
+  - Determines if additional actions are needed
+  - Suggests next actions to the orchestrator
+  - Ensures completion of user requirements
+- **Interactions**:
+  - Works with orchestrator to manage workflow
+  - Processes action results
+  - Can trigger additional action cycles
+
+[![Sans-titre-2024-11-08-0220.png](https://i.postimg.cc/nryjsx5y/Sans-titre-2024-11-08-0220.png)](https://postimg.cc/rR9FbBqj)
+
+### Memory
+
+The system implements a sophisticated memory architecture that combines different storage solutions for various types of memory:
+
+#### Installation and setup
+
+##### Meilisearch (Long-term memory)
+
+Meilisearch can be self-hosted for complete control over the agent's long-term memory:
+
+```bash
+# Install Meilisearch
+curl -L https://install.meilisearch.com | sh
+
+# Launch Meilisearch with a master key
+./meilisearch --master-key="YOUR_MASTER_KEY"
+```
+
+##### Redis (Short-term memory)
+
+Redis handles the short-term memory components:
+
+```bash
+# Using Docker
+docker run --name redis -d -p 6379:6379 redis
+
+# Or install locally
+sudo apt-get install redis-server
+```
+
+2. **Configuration**:
+   - Default port: 6379
+   - Configure memory limits
+   - Enable persistence if needed
+
+#### Memory types
+
+#### Short-term memory (Redis)
+
+1. **Procedural Memory**:
+
+   - Stored in Redis for fast access
+   - Contains reusable action sequences and workflows
+   - Optimizes performance through caching
+   - Example: "Common token approval + swap sequence"
+
+2. **Short-term episodic memory**:
+   - Recent messages and interactions
+   - Temporary context for ongoing conversations
+   - Stored in Redis for quick retrieval
+   - Example: "Last 10 messages in current conversation"
+
+#### Long-term memory (Meilisearch)
+
+1. **Semantic memory**:
+
+   - Permanent storage of facts and knowledge
+   - Indexed for efficient retrieval
+   - Stores relationships between concepts
+   - Example: "Token X has contract address Y on network Z"
+
+2. **Long-term episodic Memory**:
+   - Historical interactions and experiences
+   - Persistent context across sessions
+   - Searchable through vector similarity
+   - Example: "User X's past successful transactions"
 
 ### Cache Augmented Generation (CAG)
 
-CAG plays a crucial role in optimizing workflows by storing intermediate results from executed actions. This allows them to be reused in future workflows, avoiding unnecessary repetitions and improving the overall system efficiency.
+CAG optimizes workflow execution through Redis-based caching:
 
-In the context of our project, CAG primarily serves as **procedural memory**, a specific type of memory focused on reusing intermediate results in similar contexts. Unlike other types of memory, such as **episodic** (which stores past experiences) or **semantic** (which stores general knowledge), procedural memory is centered on performing repetitive tasks or previously executed actions.
+- **Main Role**: Cache frequently used procedural patterns
+- **Implementation**:
 
-- **Main Role**: Save the results of actions for reuse in future executions.
-- **Main Functions**:
-  - **Store action results**: Action results are stored in a way that they can be easily accessed when needed.
-  - **Reuse results**: Results can be provided on demand, avoiding unnecessary recalculations.
-  - **Optimize workflows**: By reusing previously executed actions, cache memory optimizes workflows by eliminating redundant steps.
+  - Uses Redis for high-performance storage
+  - Stores action sequences and their results
+  - Enables quick retrieval of common patterns
 
-Procedural memory enhances the system's efficiency by reducing computation time and ensuring that repetitive processes are handled more quickly and effectively.
+- **Benefits**:
+  - Reduces computation overhead
+  - Speeds up repeated operations
+  - Optimizes resource usage
+
+### Retrieval Augmented Generation (RAG)
+
+The RAG system enhances long-term memory access through Meilisearch:
+
+- **Implementation**:
+
+  - Vector-based search for semantic similarity
+  - Dual indexing (global and user-specific)
+  - Combines with traditional text search
+
+- **Features**:
+  - Semantic and episodic memory retrieval
+  - Context-aware search capabilities
+  - Relevance-based result ranking
 
 ---
 
-## 2. Action Creation and Management
+## 2. Action creation and management
 
 Actions are specific tasks to be performed within a workflow. They can involve interactions with APIs, blockchain transactions, or any other necessary operations.
 
 Each action is defined as an object containing a name, description, parameters, and an execution function.
 
-### Example of an Action
+### Example of an action
 
 ```typescript
 import { networkConfigs } from "@config/network";
@@ -115,7 +220,7 @@ export const prepareTransaction = {
 };
 ```
 
-### How to Define an Action:
+### How to define an action:
 
 1. **Name**: Unique identifier for the action.
 2. **Description**: Brief description of what the action does.
@@ -124,11 +229,11 @@ export const prepareTransaction = {
 
 ---
 
-## 3. Workflow Execution
+## 3. Workflow execution
 
 The workflow represents the entire process of executing a number of defined actions. When a user sends a prompt, the orchestrator determines which actions to perform based on the needs.
 
-### Example of Creating a Workflow:
+### Example of creating a workflow:
 
 ```typescript
 const tools = [
@@ -148,7 +253,7 @@ const workflow = new Workflow(
 - **MemoryCache**: Reuses previous results.
 - **EventEmitter**: Tracks and notifies the state of the workflow.
 
-### Workflow Process:
+### Workflow process:
 
 1. The user’s prompt is analyzed.
 2. The orchestrator decides which actions are needed and their order.
@@ -157,7 +262,7 @@ const workflow = new Workflow(
 
 ---
 
-## 4. API Calls and Client Side
+## 4. API calls and client side
 
 ```typescript
 fastify.post("/api/chat", {
@@ -204,46 +309,7 @@ Here are the elements currently in development or improvement:
 
 ---
 
-## Memory and RAG (Retrieval Augmented Generation)
-
-**Objective**: Create a persistent memory system that retains context across sessions and improves the agent’s learning over time by integrating external knowledge sources.
-
-**Interest**:
-
-- Long-term memory allows the agent to remember past interactions and access relevant external knowledge.
-- More contextual and personalized responses.
-- Improved efficiency and accuracy of interactions.
-- Reduction of incorrect or outdated responses.
-- Enables continuous learning and adaptation.
-
-**Steps to Implement**:
-
-**Memory Infrastructure**:
-
-- [x] Integration of a vector database.
-- [x] Relevance-based retrieval system.
-- [ ] Automatic memory consolidation and cleaning.
-- [ ] Memory hierarchy (working/long-term memory).
-
-**Knowledge Integration**:
-
-- [ ] Document processing pipeline.
-- [ ] Integration of knowledge base.
-- [ ] Source verification system.
-- [ ] Contextual retrieval.
-- [ ] Semantic search capabilities.
-
-**Memory Types**:
-
-- [ ] Episodic: Past interactions and experiences.
-- [ ] Semantic: External knowledge and facts.
-- [x] Procedural: Learned models and workflows.
-
-**Status**: Basic implementation with Redis complete, vector database integration and RAG pipeline in progress. Architecture design finalized, with initial implementation launched.
-
----
-
-## Multi-Agent Collaboration
+## Multi-agent collaboration
 
 **Objective**: Enable multiple agents to collaborate on complex tasks with specialization and coordination.
 
@@ -259,7 +325,7 @@ Here are the elements currently in development or improvement:
 
 ---
 
-## Complex On-Chain Interactions Management
+## Complex on-chain interactions management
 
 **Objective**: Create a model for recognizing on-chain interactions and creating workflows for complex interactions.
 
@@ -279,7 +345,7 @@ Here are the elements currently in development or improvement:
 
 ---
 
-## Lit Protocol Implementation
+## Lit Protocol implementation
 
 **Objective**: Add the ability to execute Lit actions, enabling decentralized and secure calculations on the Lit network.
 

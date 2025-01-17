@@ -30,8 +30,10 @@ export class Evaluator {
             })
           ),
           why: z.string(),
+          isImportantToRemember: z.boolean(),
           importantToRemembers: z.array(
             z.object({
+              memoryType: z.string(),
               hypotheticalQuery: z.string(),
               result: z.string(),
             })
@@ -49,12 +51,21 @@ export class Evaluator {
         })),
       };
 
-      if (validatedResponse.importantToRemembers.length > 0) {
+      if (validatedResponse.isImportantToRemember) {
         for (const item of validatedResponse.importantToRemembers) {
           // Check if the item is already in the memory
-          const memories = await this.memory.findBestMatches(
-            item.hypotheticalQuery
+          const memories = await this.memory.searchSimilarQueries(
+            item.hypotheticalQuery,
+            {
+              similarityThreshold: 95,
+            }
           );
+          if (memories.length > 0) {
+            console.log("Similar memorie found, no need to remember", {
+              memories,
+            });
+            continue;
+          }
           if (memories.length === 0) {
             console.log("Adding to memory", {
               query: item.hypotheticalQuery,
@@ -62,10 +73,10 @@ export class Evaluator {
             });
             await this.memory.storeMemory({
               id: crypto.randomUUID(),
-              purpose: "importantToRemember",
+              purpose: item.memoryType,
               query: item.hypotheticalQuery,
               data: item.result,
-              scope: MemoryScope.USER,
+              scope: MemoryScope.GLOBAL,
               createdAt: new Date(),
             });
           }
@@ -83,7 +94,7 @@ export class Evaluator {
         if (error.value.importantToRemembers.length > 0) {
           for (const item of error.value.importantToRemembers) {
             // Check if the item is already in the memory
-            const memories = await this.memory.findBestMatches(
+            const memories = await this.memory.searchSimilarQueries(
               item.hypotheticalQuery
             );
             if (memories.length === 0) {

@@ -6,7 +6,8 @@
    - [Orchestrator](#orchestrator)
    - [Queue Manager](#queue-manager)
    - [Synthétiseur](#synthétiseur)
-   - [Mémoire Cache (CAG)](#mémoire-cache-cag)
+   - [Évaluateur](#évaluateur)
+   - [Mémoire](#architecture-mémoire)
 2. [Création et gestion des actions](#création-et-gestion-des-actions)
 3. [Exécution du Workflow](#exécution-du-workflow)
 4. [Appels API et côté client](#appels-api-et-côté-client)
@@ -47,19 +48,120 @@ Le synthétiseur est responsable de la génération des réponses et de l'analys
   - Prend les résultats des actions exécutées.
   - Crée des résumés ou des réponses adaptées.
 
+### Évaluateur
+
+L'évaluateur est responsable de l'évaluation des résultats des actions exécutées et de la détermination des actions supplémentaires nécessaires. Il travaille en collaboration avec l'orchestrateur pour s'assurer que toutes les exigences de l'utilisateur sont satisfaites.
+
+- **Rôle principal** : Évaluer les résultats des actions et déterminer les prochaines étapes
+- **Fonctions principales** :
+  - Analyse les résultats des actions exécutées
+  - Détermine si des actions supplémentaires sont nécessaires
+  - Suggère les prochaines actions à l'orchestrateur
+  - Assure la réalisation complète des objectifs
+- **Interactions** :
+  - Collabore avec l'orchestrateur pour gérer le workflow
+  - Traite les résultats des actions
+  - Peut déclencher des cycles d'actions supplémentaires
+
+[![Sans-titre-2024-11-08-0220.png](https://i.postimg.cc/nryjsx5y/Sans-titre-2024-11-08-0220.png)](https://postimg.cc/rR9FbBqj)
+
+### Mémoire
+
+Le système implémente une architecture de mémoire qui combine différentes solutions de stockage :
+
+#### Installation et configuration
+
+##### Meilisearch (Mémoire à long terme)
+
+Meilisearch peut être auto-hébergé pour un contrôle total sur la mémoire à long terme de l'agent :
+
+```bash
+# Installation de Meilisearch
+curl -L https://install.meilisearch.com | sh
+
+# Lancement de Meilisearch avec une clé maître
+./meilisearch --master-key="VOTRE_CLE_MAITRE"
+```
+
+##### Redis (Mémoire à court terme)
+
+Redis gère les composants de mémoire à court terme :
+
+```bash
+# Utilisation de Docker
+docker run --name redis -d -p 6379:6379 redis
+
+# Ou installation locale
+sudo apt-get install redis-server
+```
+
+2. **Configuration** :
+   - Port par défaut : 6379
+   - Configuration des limites de mémoire
+   - Activation de la persistance si nécessaire
+
+#### Types de mémoire
+
+##### Mémoire à court terme (Redis)
+
+1. **Mémoire procédurale** :
+
+   - Stockée dans Redis pour un accès rapide
+   - Contient les séquences d'actions et workflows réutilisables
+   - Optimise les performances via le cache
+   - Exemple : "Séquence commune d'approbation + échange de tokens"
+
+2. **Mémoire épisodique court terme** :
+   - Messages et interactions récents
+   - Contexte temporaire des conversations en cours
+   - Stockée dans Redis pour une récupération rapide
+   - Exemple : "10 derniers messages de la conversation actuelle"
+
+##### Mémoire à long terme (Meilisearch)
+
+1. **Mémoire sémantique** :
+
+   - Stockage permanent des faits et connaissances
+   - Indexée pour une récupération efficace
+   - Stocke les relations entre concepts
+   - Exemple : "Le token X a l'adresse de contrat Y sur le réseau Z"
+
+2. **Mémoire épisodique long terme** :
+   - Interactions et expériences historiques
+   - Contexte persistant entre les sessions
+   - Recherchable par similarité vectorielle
+   - Exemple : "Transactions réussies passées de l'utilisateur X"
+
 ### Cache Augmented Generation (CAG)
 
-Le CAG (Cache Augmented Generation) joue un rôle clé dans l'optimisation des workflows en stockant les résultats intermédiaires des actions effectuées. Cela permet de les réutiliser lors des workflows futurs, évitant ainsi des répétitions inutiles et améliorant l'efficacité globale du système.
+Le CAG optimise l'exécution des workflows via le cache Redis :
 
-Dans le contexte de notre projet, le CAG sert principalement de **mémoire procédurale**, un type spécifique de mémoire qui se concentre sur la réutilisation des résultats intermédiaires dans des contextes similaires. Contrairement à d'autres types de mémoire, comme la mémoire **épisodique** (qui conserve les expériences passées) ou la mémoire **sémantique** (qui stocke des connaissances générales), la mémoire procédurale est axée sur l'exécution de tâches répétitives ou d'actions précédemment effectuées.
+- **Rôle principal** : Mettre en cache les modèles procéduraux fréquemment utilisés
+- **Implémentation** :
 
-- **Rôle principal** : Sauvegarder les résultats des actions pour les réutiliser lors d'exécutions futures.
-- **Fonctions principales** :
-  - **Sauvegarde des résultats des actions** : Les résultats des actions sont stockés de manière à être facilement accessibles lorsque nécessaire.
-  - **Réutilisation des résultats** : Les résultats peuvent être fournis à la demande, ce qui évite des recalculs inutiles.
-  - **Optimisation des workflows** : En réutilisant des actions déjà exécutées, la mémoire cache optimise les workflows en éliminant les étapes redondantes.
+  - Utilise Redis pour un stockage haute performance
+  - Stocke les séquences d'actions et leurs résultats
+  - Permet une récupération rapide des modèles communs
 
-La mémoire procédurale permet de renforcer l'efficacité du système en réduisant le temps de calcul et en garantissant que les processus répétitifs sont traités plus rapidement et plus efficacement.
+- **Bénéfices** :
+  - Réduit la charge de calcul
+  - Accélère les opérations répétitives
+  - Optimise l'utilisation des ressources
+
+### Retrieval Augmented Generation (RAG)
+
+Le système RAG améliore l'accès à la mémoire à long terme via Meilisearch :
+
+- **Implémentation** :
+
+  - Recherche vectorielle pour la similarité sémantique
+  - Double indexation (globale et spécifique à l'utilisateur)
+  - Combine avec la recherche textuelle traditionnelle
+
+- **Fonctionnalités** :
+  - Récupération de mémoire sémantique et épisodique
+  - Capacités de recherche contextuelle
+  - Classement des résultats basé sur la pertinence
 
 ---
 
@@ -203,47 +305,6 @@ export function Chat({ id, initialMessages }) {
 ## 5. WIP (Work in Progress)
 
 Voici les éléments actuellement en développement ou à améliorer :
-
-- Voici la version corrigée avec les titres en minuscules et des checklists en français sous chaque section :
-
----
-
-## Mémoire et RAG (Retrieval Augmented Generation)
-
-**Objectif** : Créer un système de mémoire persistante qui conserve le contexte à travers les sessions et améliore l'apprentissage de l'agent au fil du temps en intégrant des sources de connaissances externes.
-
-**Intérêt** :
-
-- La mémoire à long terme permet à l'agent de se souvenir des interactions passées et d'accéder à des connaissances externes pertinentes.
-- Des réponses plus contextuelles et personnalisées.
-- Amélioration de l'efficacité et de la précision des interactions.
-- Réduction des réponses incorrectes ou obsolètes.
-- Permet un apprentissage et une adaptation continus.
-
-**Étapes à mettre en place** :
-
-**Infrastructure de mémoire** :
-
-- [x] Intégration d'une base de données vectorielle.
-- [x] Système de récupération basé sur la pertinence.
-- [ ] Consolidation et nettoyage automatique de la mémoire.
-- [ ] Hiérarchie de la mémoire (working/long-term memory).
-
-**Intégration des connaissances** :
-
-- [ ] Pipeline de traitement des documents.
-- [ ] Intégration de la base de connaissances.
-- [ ] Système de vérification des sources.
-- [ ] Récupération contextuelle.
-- [ ] Capacités de recherche sémantique.
-
-**Types de mémoire** :
-
-- [ ] Épisodique : Interactions et expériences passées.
-- [ ] Sémantique : Connaissances et faits externes.
-- [x] Procédurale : Modèles et workflows appris.
-
-**Statut** : Implémentation de base avec Redis terminée, intégration de la base de données vectorielle et pipeline RAG en cours. Conception de l'architecture finalisée, avec une implémentation initiale lancée.
 
 ---
 
