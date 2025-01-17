@@ -1,6 +1,6 @@
 {
   "name": "@ai.ntellect/core",
-  "version": "0.1.85",
+  "version": "0.1.89",
   "description": "",
   "main": "dist/index.js",
   "scripts": {

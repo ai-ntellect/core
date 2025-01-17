@@ -186,7 +186,6 @@ export class Agent {
     const sanitizedResults = ResultSanitizer.sanitize(this.accumulatedResults);
     const summaryData = JSON.stringify({
       result: sanitizedResults,
-      initialPrompt: actionsResult.initialPrompt,
     });
 
     this.accumulatedResults = [];
@@ -200,8 +199,13 @@ export class Agent {
     });
 
     return this.stream
-      ? (await synthesizer.streamProcess(summaryData)).toDataStreamResponse()
-      : await synthesizer.process(summaryData);
+      ? (
+          await synthesizer.streamProcess(
+            actionsResult.initialPrompt,
+            summaryData
+          )
+        ).toDataStreamResponse()
+      : await synthesizer.process(actionsResult.initialPrompt, summaryData);
   }
 
   private transformActions(actions: ActionSchema[]) {

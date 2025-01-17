@@ -9,6 +9,7 @@ export class Synthesizer implements BaseLLM {
 
   async process(
     prompt: string,
+    summaryData?: string,
     onFinish?: (event: any) => void
   ): Promise<
     | {
@@ -32,7 +33,7 @@ export class Synthesizer implements BaseLLM {
         ),
         response: z.string(),
       }),
-      prompt: synthesizerContext.compose(prompt),
+      prompt: synthesizerContext.compose(prompt, summaryData || ""),
       system: synthesizerContext.role,
     });
     console.log("Synthesizer");
@@ -43,11 +44,12 @@ export class Synthesizer implements BaseLLM {
 
   async streamProcess(
     prompt: string,
+    summaryData?: string,
     onFinish?: (event: any) => void
   ): Promise<StreamTextResult<Record<string, any>>> {
     const result = await streamText({
       model: this.model,
-      prompt: synthesizerContext.compose(prompt),
+      prompt: synthesizerContext.compose(prompt, summaryData || ""),
       onFinish: onFinish,
       system: synthesizerContext.role,
     });

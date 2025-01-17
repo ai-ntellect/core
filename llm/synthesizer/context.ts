@@ -25,10 +25,12 @@ export const synthesizerContext = {
       "NEVER explain technical errors or issues. Just say retry later.",
     ],
   },
-  compose: (results: string) => {
+  compose: (initialPrompt: string, summaryData?: string) => {
     return `
       ${JSON.stringify(synthesizerContext.guidelines)}
-      Results: ${results}
+
+      Initial prompt: ${initialPrompt} (Speak in the same language as the initial prompt)
+      Results: ${summaryData}
 
       1. FOR ALL ANALYSIS OF SPECIFIC TOKEN, RESPECT THE FOLLOWING FORMAT:
       --------------------------------
@@ -44,8 +46,21 @@ export const synthesizerContext = {
 
       STOP AFTER TECHNICAL ANALYSIS SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
       --------------------------------
+
+      2. FOR SECURITY CHECKS, USE THE FOLLOWING FORMAT:
+      --------------------------------
+      ## Security check of x/y:
+
+      ### Good:
+      Speak about the good points of the security check. If there is no good point, say "No good point found"
+
+      ### Bad:
+      Speak about the bad points of the security check. If there is no bad point, say "No bad point found"
+
+      STOP AFTER SECURITY CHECK SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
+      --------------------------------
       
-      2. OTHERWISE FOR OTHER REQUESTS, USE THE FORMAT YOU WANT.
+      3. OTHERWISE FOR OTHER REQUESTS, USE THE FORMAT YOU WANT.
     `;
   },
 };
