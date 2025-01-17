@@ -3,10 +3,10 @@ import { cosineSimilarity, embed, generateObject } from "ai";
 import { createClient } from "redis";
 import { z } from "zod";
 import {
+  CacheMemoryOptions,
+  CacheMemoryType,
   CreateMemoryInput,
   MatchOptions,
-  Memory,
-  CacheMemoryOptions,
   MemoryScope,
   MemoryType,
 } from "../types";
@@ -53,7 +53,7 @@ export class CacheMemory {
     return `${this.CACHE_PREFIX}user:${userId}:`;
   }
 
-  private async storeMemory(memory: Memory) {
+  private async storeMemory(memory: CacheMemoryType) {
     const prefix = this.getMemoryKey(memory.scope, memory.userId);
     const key = `${prefix}${memory.id}`;
     await this.redis.set(key, JSON.stringify(memory), {
@@ -126,8 +126,8 @@ export class CacheMemory {
   private async getAllMemories(
     scope?: MemoryScope,
     userId?: string
-  ): Promise<Memory[]> {
-    let patterns: Memory[] = [];
+  ): Promise<CacheMemoryType[]> {
+    let patterns: CacheMemoryType[] = [];
 
     if (!scope || scope === MemoryScope.GLOBAL) {
       const globalPrefix = this.getMemoryKey(MemoryScope.GLOBAL);
@@ -146,8 +146,10 @@ export class CacheMemory {
     return patterns;
   }
 
-  private async getMemoriesFromKeys(keys: string[]): Promise<Memory[]> {
-    const memories: Memory[] = [];
+  private async getMemoriesFromKeys(
+    keys: string[]
+  ): Promise<CacheMemoryType[]> {
+    const memories: CacheMemoryType[] = [];
     for (const key of keys) {
       const data = await this.redis.get(key);
       if (data) {
@@ -230,13 +232,13 @@ export class CacheMemory {
     purpose: string;
     userId?: string;
     scope?: MemoryScope;
-  }): Promise<Memory> {
+  }): Promise<CacheMemoryType> {
     const { embedding } = await embed({
       model: openai.embedding("text-embedding-3-small"),
       value: params.content,
     });
 
-    const memory: Memory = {
+    const memory: CacheMemoryType = {
       id: params.id,
       type: params.type,
       data: params.data,

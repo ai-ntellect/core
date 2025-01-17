@@ -6,3 +6,4 @@ export * from "./services/queue";
 export * from "./types";
 
 export * from "./memory/cache";
+export * from "./memory/persistent";

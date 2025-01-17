@@ -3,21 +3,10 @@ import { cosineSimilarity, embed, embedMany } from "ai";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { MeiliSearch } from "meilisearch";
 
-/**
- * @typedef {Object} MemoryScope
- * @property {string} GLOBAL - Global scope
- * @property {string} USER - User scope
- */
 export const MemoryScope = {
   GLOBAL: "global",
   USER: "user",
 };
-
-/**
- * @typedef {Object} MatchOptions
- * @property {number} [similarityThreshold=70] - Minimum similarity percentage to consider a match
- * @property {number} [maxResults=10] - Maximum number of results to return
- */
 
 export class PersistentMemory {
   /**

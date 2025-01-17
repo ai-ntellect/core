@@ -133,7 +133,7 @@ export interface CreateMemoryInput {
   scope?: MemoryScope;
 }
 
-export interface Memory {
+export interface CacheMemoryType {
   id: string;
   type: MemoryType;
   data: any;
@@ -143,6 +143,30 @@ export interface Memory {
   userId?: string;
   scope: MemoryScope;
   createdAt: Date;
+}
+
+export interface PersistentMemoryOptions {
+  host: string;
+  apiKey: string;
+  indexPrefix?: string;
+}
+
+export interface MemoryChunk {
+  content: string;
+  embedding: number[];
+}
+
+export type MemoryScopeType = (typeof MemoryScope)[keyof typeof MemoryScope];
+
+export interface Memory {
+  id: string;
+  query: string;
+  purpose: string;
+  data: any;
+  scope: MemoryScopeType;
+  userId?: string;
+  createdAt: Date;
+  chunks?: MemoryChunk[];
 }
 
 export enum MemoryType {

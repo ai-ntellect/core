@@ -1,48 +1,12 @@
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { Index, MeiliSearch } from "meilisearch";
-
-export interface PersistentMemoryOptions {
-  host: string;
-  apiKey: string;
-  indexPrefix?: string;
-}
-
-export interface MemoryChunk {
-  content: string;
-  embedding: number[];
-}
-
-export interface MatchResult {
-  data: any;
-  purpose: string;
-  chunk: string;
-  similarityPercentage: number;
-}
-
-export const MemoryScope: {
-  GLOBAL: "global";
-  USER: "user";
-};
-
-export type MemoryScopeType = (typeof MemoryScope)[keyof typeof MemoryScope];
-
-export interface MatchOptions {
-  userId?: string;
-  scope?: MemoryScopeType;
-  similarityThreshold?: number;
-  maxResults?: number;
-}
-
-export interface Memory {
-  id: string;
-  query: string;
-  purpose: string;
-  data: any;
-  scope: MemoryScopeType;
-  userId?: string;
-  createdAt: Date;
-  chunks?: MemoryChunk[];
-}
+import {
+  MatchOptions,
+  MatchResult,
+  Memory,
+  MemoryChunk,
+  MemoryScopeType,
+} from "../types";
 
 export class PersistentMemory {
   private client: MeiliSearch;
