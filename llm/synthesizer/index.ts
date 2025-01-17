@@ -14,11 +14,7 @@ export class Synthesizer implements BaseLLM {
     | {
         actions: {
           name: string;
-          relevantResult: string;
-          explain: {
-            how: string;
-            why: string;
-          };
+          reasoning: string;
         }[];
         response: string;
       }
@@ -31,11 +27,7 @@ export class Synthesizer implements BaseLLM {
         actions: z.array(
           z.object({
             name: z.string(),
-            relevantResult: z.string(),
-            explain: z.object({
-              how: z.string(),
-              why: z.string(),
-            }),
+            reasoning: z.string(),
           })
         ),
         response: z.string(),

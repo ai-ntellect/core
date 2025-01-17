@@ -20,24 +20,18 @@ export class Evaluator {
       const response = await generateObject({
         model: this.model,
         schema: z.object({
-          nextActions: z.array(
-            z.object({
-              name: z.string(),
-              parameters: z.object({
-                name: z.string(),
-                value: z.string(),
-              }),
-            })
-          ),
-          why: z.string(),
-          isImportantToRemember: z.boolean(),
-          importantToRemembers: z.array(
+          isRemindNeeded: z.boolean(),
+          extraInformationsToRemember: z.array(
             z.object({
               memoryType: z.string(),
-              hypotheticalQuery: z.string(),
-              result: z.string(),
+              content: z.string(),
+              data: z.string(),
             })
           ),
+          response: z.string(),
+          isNextActionNeeded: z.boolean(),
+          nextActionsNeeded: ActionSchema,
+          why: z.string(),
         }),
         prompt: prompt,
         system: evaluatorContext.compose(goal, results, this.tools),
@@ -45,17 +39,17 @@ export class Evaluator {
 
       const validatedResponse = {
         ...response.object,
-        nextActions: response.object.nextActions.map((action) => ({
+        nextActions: response.object.nextActionsNeeded.map((action) => ({
           ...action,
           parameters: action.parameters || {},
         })),
       };
 
-      if (validatedResponse.isImportantToRemember) {
-        for (const item of validatedResponse.importantToRemembers) {
+      if (validatedResponse.isRemindNeeded) {
+        for (const item of validatedResponse.extraInformationsToRemember) {
           // Check if the item is already in the memory
           const memories = await this.memory.searchSimilarQueries(
-            item.hypotheticalQuery,
+            item.content,
             {
               similarityThreshold: 95,
             }
@@ -68,14 +62,14 @@ export class Evaluator {
           }
           if (memories.length === 0) {
             console.log("Adding to memory", {
-              query: item.hypotheticalQuery,
-              data: item.result,
+              query: item.content,
+              data: item.data,
             });
-            await this.memory.storeMemory({
+            await this.memory.createMemory({
               id: crypto.randomUUID(),
               purpose: item.memoryType,
-              query: item.hypotheticalQuery,
-              data: item.result,
+              query: item.content,
+              data: item.data,
               scope: MemoryScope.GLOBAL,
               createdAt: new Date(),
             });
@@ -91,22 +85,22 @@ export class Evaluator {
         console.log("Evaluator error");
         console.dir(error.value, { depth: null });
         console.error(error.message);
-        if (error.value.importantToRemembers.length > 0) {
-          for (const item of error.value.importantToRemembers) {
+        if (error.value.extraInformationsToRemember.length > 0) {
+          for (const item of error.value.extraInformationsToRemember) {
             // Check if the item is already in the memory
             const memories = await this.memory.searchSimilarQueries(
-              item.hypotheticalQuery
+              item.content
             );
             if (memories.length === 0) {
               console.log("Adding to memory", {
-                query: item.hypotheticalQuery,
-                data: item.result,
+                query: item.content,
+                data: item.data,
               });
-              await this.memory.storeMemory({
+              await this.memory.createMemory({
                 id: crypto.randomUUID(),
                 purpose: "importantToRemember",
-                query: item.hypotheticalQuery,
-                data: item.result,
+                query: item.content,
+                data: item.data,
                 scope: MemoryScope.USER,
                 createdAt: new Date(),
               });

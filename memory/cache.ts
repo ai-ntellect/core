@@ -1,7 +1,6 @@
 import { openai } from "@ai-sdk/openai";
-import { cosineSimilarity, embed, generateObject } from "ai";
+import { cosineSimilarity, embed } from "ai";
 import { createClient } from "redis";
-import { z } from "zod";
 import {
   CacheMemoryOptions,
   CacheMemoryType,
@@ -86,15 +85,10 @@ export class CacheMemory {
       .map((memory) => {
         const similarity = cosineSimilarity(embedding, memory.embedding);
         const similarityPercentage = (similarity + 1) * 50; // Conversion en pourcentage
-
-        console.log(`\n📊 Query "${memory.query}":
-        - Similarity: ${similarityPercentage.toFixed(2)}%`);
-
         return {
           data: memory.data,
           query: memory.query,
           similarityPercentage,
-          // Optionnel : ajouter des métadonnées utiles
           memoryId: memory.id,
         };
       })
@@ -119,7 +113,6 @@ export class CacheMemory {
       console.log("No matches found");
     }
 
-    console.dir({ results });
     return results;
   }
 
@@ -161,7 +154,7 @@ export class CacheMemory {
 
   public async createMemory(
     input: CreateMemoryInput
-  ): Promise<string | undefined> {
+  ): Promise<CacheMemoryType | undefined> {
     console.log("Searching for similar memory", input);
     const existingPattern = await this.findSimilarQueries(input.content, {
       similarityThreshold: 95,
@@ -182,22 +175,7 @@ export class CacheMemory {
 
     console.log("No similar memory found");
 
-    // Générer les variations via GPT-4
-    console.log("Generating variations...");
-    const variations = await generateObject({
-      model: openai("gpt-4"),
-      schema: z.object({
-        request: z.string().describe("The request to be performed"),
-        queries: z.array(z.object({ text: z.string() })),
-      }),
-      prompt: `For this input: "${input.content}"
-        Generate similar way to ask the same question.
-        Action results: ${JSON.stringify(input.data)}
-        - Keep variations natural and human-like
-        - Add 3-5 variations`,
-    });
-    console.log("Variations generated:", variations.object.queries);
-    await this.createSingleMemory({
+    const memory = await this.createSingleMemory({
       id: crypto.randomUUID(),
       content: input.content,
       type: input.type,
@@ -206,23 +184,7 @@ export class CacheMemory {
       scope: input.scope,
     });
 
-    const variationPromises = variations.object.queries.map(
-      async (variation) => {
-        if (variation.text !== input.content) {
-          await this.createSingleMemory({
-            id: crypto.randomUUID(),
-            content: variation.text,
-            type: input.type,
-            data: input.data,
-            userId: input.userId,
-            scope: input.scope,
-          });
-        }
-      }
-    );
-
-    await Promise.all(variationPromises);
-    return variations.object.request;
+    return memory;
   }
 
   private async createSingleMemory(params: {

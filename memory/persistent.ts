@@ -159,7 +159,7 @@ export class PersistentMemory {
   /**
    * Store a memory in the database
    */
-  async storeMemory(memory: Memory) {
+  async createMemory(memory: Memory) {
     const indexName = this._getIndexName(memory.scope, memory.userId);
     await this._getOrCreateIndex(indexName);
 
@@ -178,7 +178,7 @@ export class PersistentMemory {
         body: JSON.stringify([document]),
       }
     );
-    console.log("Stored memory response:", response);
+    console.log("Stored persistent memory response:", response);
     return response;
   }
 
@@ -273,7 +273,7 @@ export class PersistentMemory {
 
     // Log results
     if (results.length > 0) {
-      console.log("\n✨ Similar queries found:");
+      console.log("\n✨ Similar queries found in persistent memory:");
       results.forEach((match) => {
         console.log(
           `- ${match.query} : ${match.similarityPercentage.toFixed(2)}% (${

@@ -8,9 +8,12 @@ import {
   AgentEvent,
   MemoryScope,
   MemoryType,
+  QueueResult,
+  TransformedQueueItem,
   User,
 } from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
+import { ResultSanitizer } from "../utils/sanitize-results";
 import { ActionHandler } from "./handlers/ActionHandler";
 
 export class Agent {
@@ -24,6 +27,7 @@ export class Agent {
   private readonly stream: boolean;
   private readonly maxEvaluatorIteration: number;
   private evaluatorIteration = 0;
+  private accumulatedResults: QueueResult[] = [];
 
   constructor({
     user,
@@ -47,6 +51,7 @@ export class Agent {
     this.stream = stream;
     this.maxEvaluatorIteration = maxEvaluatorIteration;
     this.actionHandler = new ActionHandler();
+    this.accumulatedResults = [];
   }
 
   async process(
@@ -54,7 +59,9 @@ export class Agent {
     contextualizedPrompt: string,
     events: AgentEvent
   ): Promise<any> {
-    let actions: ActionSchema[] = [];
+    let actions: ActionSchema[] | TransformedQueueItem[] | undefined =
+      undefined;
+    let isSimilar: boolean = false;
 
     if (this.cacheMemory) {
       const similarActions = await this.cacheMemory.findSimilarQueries(prompt, {
@@ -65,13 +72,14 @@ export class Agent {
       });
 
       if (similarActions.length > 0) {
-        actions = similarActions[0].data;
-        console.log("Similar actions found in cache for query: ", prompt);
-        console.dir(actions, { depth: null });
+        actions = QueueItemTransformer.transformActionsToQueueItems(
+          similarActions[0].data
+        );
+        isSimilar = true;
       }
     }
 
-    if (!actions.length) {
+    if (!actions?.length && !isSimilar) {
       console.log("No similar actions found in cache for query: ", prompt);
       console.log("Requesting orchestrator for actions..");
       const request = await this.orchestrator.process(contextualizedPrompt);
@@ -79,12 +87,12 @@ export class Agent {
       actions = request.actions;
     }
 
-    return actions.length > 0
+    return actions && actions.length > 0
       ? this.handleActions(
           {
             initialPrompt: prompt,
             contextualizedPrompt: contextualizedPrompt,
-            actions: actions,
+            actions: actions as ActionSchema[],
           },
           events
         )
@@ -117,60 +125,78 @@ export class Agent {
       }
     );
 
+    this.accumulatedResults = [
+      ...this.accumulatedResults,
+      ...actionsResult.data,
+    ];
+
     if (this.evaluatorIteration >= this.maxEvaluatorIteration) {
-      return this.handleActionResults({ ...actionsResult, initialPrompt });
+      return this.handleActionResults({
+        data: this.accumulatedResults,
+        initialPrompt,
+      });
     }
 
     const evaluator = new Evaluator(
       this.orchestrator.tools,
       this.persistentMemory
     );
+    console.log("Accumulated results:");
+    console.dir(this.accumulatedResults, { depth: null });
 
+    const sanitizedResults = ResultSanitizer.sanitize(this.accumulatedResults);
     const evaluation = await evaluator.process(
       initialPrompt,
       contextualizedPrompt,
-      JSON.stringify(actionsResult.data)
+      sanitizedResults
     );
 
     events.onMessage?.(evaluation);
 
-    await this.cacheMemory?.createMemory({
-      content: initialPrompt,
-      data: actions,
-      scope: MemoryScope.GLOBAL,
-      type: MemoryType.ACTION,
-    });
-
-    if (evaluation.nextActions.length > 0) {
+    if (evaluation.isNextActionNeeded) {
       this.evaluatorIteration++;
       return this.handleActions(
         {
           initialPrompt: contextualizedPrompt,
           contextualizedPrompt: initialPrompt,
-          actions: evaluation.nextActions,
+          actions: evaluation.nextActionsNeeded,
         },
         events
       );
     }
 
-    if (!this.actionHandler.hasNonPrepareActions(actionsResult.data)) {
+    if (!this.actionHandler.hasNonPrepareActions(this.accumulatedResults)) {
       return {
-        data: actionsResult.data,
+        data: this.accumulatedResults,
         initialPrompt,
       };
     }
 
-    return this.handleActionResults({ ...actionsResult, initialPrompt });
+    return this.handleActionResults({
+      data: this.accumulatedResults,
+      initialPrompt,
+    });
   }
 
   private async handleActionResults(actionsResult: {
-    data: any;
+    data: QueueResult[];
     initialPrompt: string;
   }) {
     const synthesizer = new Synthesizer();
+    const sanitizedResults = ResultSanitizer.sanitize(this.accumulatedResults);
     const summaryData = JSON.stringify({
-      result: actionsResult.data,
+      result: sanitizedResults,
       initialPrompt: actionsResult.initialPrompt,
+    });
+
+    this.accumulatedResults = [];
+    this.evaluatorIteration = 0;
+
+    await this.cacheMemory?.createMemory({
+      content: actionsResult.initialPrompt,
+      data: actionsResult.data,
+      scope: MemoryScope.GLOBAL,
+      type: MemoryType.ACTION,
     });
 
     return this.stream

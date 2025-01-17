@@ -8,7 +8,7 @@ export const evaluatorContext = {
       "Verify if all required actions were executed successfully",
       "Check if the results match the initial goal",
       "Identify any missing or incomplete information",
-      "Examples of relavant information: link symbol to token address, name to wallet, etc.",
+      "Extra and relevant information they don't have be stored in the memory: link symbol to token address, name to wallet, etc.",
     ],
     warnings: [
       "NEVER modify the results directly",
@@ -30,10 +30,8 @@ export const evaluatorContext = {
       1. Success status with explanation (no action needed)
       2. Next actions needed (if any)
       3. Why you are doing the next actions or why you are not doing them
-      4. Extract relevant information to remember. No need to remember specific numbers.
-      5. If there are no important results, let importantToRemembers be empty. No need to say something like "No relevant information found".
-      6. For each facts, generate a hypothetical query to search in the persistent memory.
-      7. For each facts, generate a memoryType (You have 3 memory types: episodic, semantic, procedural)
+      4. Extract relevant information to remember
+      5. For each facts, generate a memoryType (3 memory types: episodic, semantic, procedural)
     `;
   },
 };

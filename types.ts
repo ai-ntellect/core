@@ -128,7 +128,7 @@ export interface CacheMemoryOptions {
 export interface CreateMemoryInput {
   content: any;
   type: MemoryType;
-  data: ActionSchema[];
+  data: QueueResult[];
   userId?: string;
   scope?: MemoryScope;
 }
@@ -167,6 +167,18 @@ export interface Memory {
   createdAt: Date;
   chunks?: MemoryChunk[];
 }
+
+export const ActionSchema = z.array(
+  z.object({
+    name: z.string(),
+    parameters: z.array(
+      z.object({
+        name: z.string(),
+        value: z.string(),
+      })
+    ),
+  })
+);
 
 export enum MemoryType {
   ACTION = "action",

@@ -21,19 +21,21 @@ export class Orchestrator implements BaseLLM {
           query: z.string(),
         }),
         execute: async ({ query }: { query: string }) => {
-          const memories = await this.memory.searchSimilarQueries(query);
+          const memories = await this.memory.searchSimilarQueries(query, {
+            similarityThreshold: 95,
+          });
           return memories;
         },
       },
       {
         name: "save_memory",
-        description: "Save a query in the internal knowledge base",
+        description: "Save relevant information in the internal knowledge base",
         parameters: z.object({
           query: z.string(),
-          purpose: z.string(),
+          memoryType: z.string(),
           data: z.any(),
-          scope: z.enum(["GLOBAL", "USER"]),
-          userId: z.string().optional(),
+          scope: z.string().default("GLOBAL").describe("GLOBAL or USER"),
+          userId: z.string(),
           whyStored: z.string(),
         }),
         execute: async ({
@@ -49,7 +51,7 @@ export class Orchestrator implements BaseLLM {
           scope: MemoryScopeType;
           userId?: string;
         }) => {
-          const memories = await this.memory.storeMemory({
+          const memories = await this.memory.createMemory({
             query,
             purpose,
             data,
@@ -69,17 +71,7 @@ export class Orchestrator implements BaseLLM {
       const response = await generateObject({
         model: this.model,
         schema: z.object({
-          actions: z.array(
-            z.object({
-              name: z.string(),
-              parameters: z.array(
-                z.object({
-                  name: z.string(),
-                  value: z.string(),
-                })
-              ),
-            })
-          ),
+          actions: ActionSchema,
           answer: z.string(),
         }),
         prompt: prompt,
