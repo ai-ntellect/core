@@ -17,7 +17,7 @@ export class Evaluator {
       const response = await generateObject({
         model: this.model,
         schema: z.object({
-          actions: z.array(
+          nextActions: z.array(
             z.object({
               name: z.string(),
               parameters: z.object({
@@ -26,7 +26,7 @@ export class Evaluator {
               }),
             })
           ),
-          answer: z.string(),
+          why: z.string(),
         }),
         prompt: prompt,
         system: evaluatorContext.compose(goal, results, this.tools),
@@ -34,19 +34,15 @@ export class Evaluator {
 
       const validatedResponse = {
         ...response.object,
-        actions: response.object.actions.map((action) => ({
+        nextActions: response.object.nextActions.map((action) => ({
           ...action,
           parameters: action.parameters || {},
         })),
       };
 
-      console.dir(validatedResponse, { depth: null });
-
       return validatedResponse;
     } catch (error: any) {
       if (error) {
-        console.log("Error in Orchestrator", error.message);
-        console.dir(error.value, { depth: null });
         return {
           ...error.value,
         };

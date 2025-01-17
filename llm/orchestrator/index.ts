@@ -40,13 +40,9 @@ export class Orchestrator implements BaseLLM {
         })),
       };
 
-      console.dir(validatedResponse, { depth: null });
-
       return validatedResponse;
     } catch (error: any) {
       if (error) {
-        console.log("Error in Orchestrator", error.message);
-        console.dir(error.value, { depth: null });
         return {
           ...error.value,
         };

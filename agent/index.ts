@@ -1,4 +1,3 @@
-import EventEmitter from "events";
 import { Evaluator } from "../llm/evaluator";
 import { Orchestrator } from "../llm/orchestrator";
 import { Summarizer } from "../llm/synthesizer";
@@ -11,27 +10,40 @@ export class Agent {
   private readonly SIMILARITY_THRESHOLD = 95;
   private readonly MAX_RESULTS = 1;
   private readonly actionHandler: ActionHandler;
+  private readonly user: User;
+  private readonly orchestrator: Orchestrator;
+  private readonly memoryCache: MemoryCache | undefined;
+  private readonly stream: boolean;
+  private readonly maxEvaluatorIteration: number;
+  private readonly evaluatorIteration = 0;
 
-  constructor(
-    private readonly user: User,
-    private readonly dependencies: {
-      orchestrator: Orchestrator;
-      memoryCache: MemoryCache;
-      eventEmitter: EventEmitter;
-    },
-    private readonly stream: boolean = true
-  ) {
+  constructor({
+    user,
+    orchestrator,
+    memoryCache,
+    stream,
+    maxEvaluatorIteration = 1,
+  }: {
+    user: User;
+    orchestrator: Orchestrator;
+    memoryCache?: MemoryCache;
+    stream: boolean;
+    maxEvaluatorIteration: number;
+  }) {
+    this.user = user;
+    this.orchestrator = orchestrator;
+    this.memoryCache = memoryCache;
+    this.stream = stream;
+    this.maxEvaluatorIteration = maxEvaluatorIteration;
     this.actionHandler = new ActionHandler();
   }
 
-  async start(
+  async process(
     prompt: string,
     contextualizedPrompt: string,
     events: AgentEvent
   ): Promise<any> {
-    const request = await this.dependencies.orchestrator.process(
-      contextualizedPrompt
-    );
+    const request = await this.orchestrator.process(contextualizedPrompt);
 
     events.onMessage?.(request);
 
@@ -60,36 +72,39 @@ export class Agent {
     events: AgentEvent
   ): Promise<any> {
     const similarActions = await this.findSimilarActions(initialPrompt);
-    const predefinedActions = this.transformActions(actions, similarActions);
-    const callbacks = {
-      onQueueStart: events.onQueueStart,
-      onActionStart: events.onActionStart,
-      onActionComplete: events.onActionComplete,
-      onQueueComplete: events.onQueueComplete,
-      onConfirmationRequired: events.onConfirmationRequired,
-    };
+    const queueItems = this.transformActions(actions, similarActions);
 
     const actionsResult = await this.actionHandler.executeActions(
-      predefinedActions,
-      this.dependencies.orchestrator.tools,
-      callbacks
+      queueItems,
+      this.orchestrator.tools,
+      {
+        onQueueStart: events.onQueueStart,
+        onActionStart: events.onActionStart,
+        onActionComplete: events.onActionComplete,
+        onQueueComplete: events.onQueueComplete,
+        onConfirmationRequired: events.onConfirmationRequired,
+      }
     );
 
-    const evaluator = new Evaluator(this.dependencies.orchestrator.tools);
+    if (this.evaluatorIteration >= this.maxEvaluatorIteration) {
+      return this.handleActionResults({ ...actionsResult, initialPrompt });
+    }
+
+    const evaluator = new Evaluator(this.orchestrator.tools);
     const evaluation = await evaluator.process(
       initialPrompt,
       contextualizedPrompt,
       JSON.stringify(actionsResult.data)
     );
-    console.log("EVALUATION", evaluation);
+
     events.onMessage?.(evaluation);
 
-    if (evaluation.actions.length > 0) {
+    if (evaluation.nextActions.length > 0) {
       return this.handleActions(
         {
           initialPrompt: contextualizedPrompt,
           contextualizedPrompt: initialPrompt,
-          actions: evaluation.actions,
+          actions: evaluation.nextActions,
         },
         events
       );
@@ -105,8 +120,27 @@ export class Agent {
     return this.handleActionResults({ ...actionsResult, initialPrompt });
   }
 
+  private async handleActionResults(actionsResult: {
+    data: any;
+    initialPrompt: string;
+  }) {
+    const summarizer = new Summarizer();
+    const summaryData = JSON.stringify({
+      result: actionsResult.data,
+      initialPrompt: actionsResult.initialPrompt,
+    });
+
+    return this.stream
+      ? (await summarizer.streamProcess(summaryData)).toDataStreamResponse()
+      : await summarizer.process(summaryData);
+  }
+
   private async findSimilarActions(prompt: string) {
-    return this.dependencies.memoryCache.findBestMatches(prompt, {
+    if (!this.memoryCache) {
+      return [];
+    }
+
+    return this.memoryCache.findBestMatches(prompt, {
       similarityThreshold: this.SIMILARITY_THRESHOLD,
       maxResults: this.MAX_RESULTS,
       userId: this.user.id,
@@ -124,20 +158,5 @@ export class Agent {
     }
 
     return predefinedActions;
-  }
-
-  private async handleActionResults(actionsResult: {
-    data: any;
-    initialPrompt: string;
-  }) {
-    const summarizer = new Summarizer();
-    const summaryData = JSON.stringify({
-      result: actionsResult.data,
-      initialPrompt: actionsResult.initialPrompt,
-    });
-
-    return this.stream
-      ? (await summarizer.streamProcess(summaryData)).toDataStreamResponse()
-      : await summarizer.process(summaryData);
   }
 }

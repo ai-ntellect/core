@@ -8,7 +8,6 @@ export const evaluatorContext = {
       "IMPORTANT: Verify if all required actions were executed successfully",
       "IMPORTANT: Check if the results match the initial goal",
       "IMPORTANT: Identify any missing or incomplete information",
-      "IMPORTANT: Use the same language as the initial request",
     ],
     never: [
       "NEVER modify the results directly",
@@ -22,9 +21,10 @@ export const evaluatorContext = {
 
       ${evaluatorContext.guidelines.important.join("\n")}
       ${evaluatorContext.guidelines.never.join("\n")}
+      
+      ACTIONS COMPLETED: ${results}
 
-      Initial Goal: ${goal}
-      What was done: ${results}
+      Initial Goal: ${goal} (You must use the same language)
 
       The actions available are: ${tools.map((action) => {
         const parameters = action.parameters as z.ZodObject<any>;
@@ -36,6 +36,7 @@ export const evaluatorContext = {
       Evaluate if the goal has been achieved and provide:
       1. Success status with explanation (no action needed)
       2. Next actions needed (if any)
+      3. Why you are doing the next actions or why you are not doing them
     `;
   },
 };

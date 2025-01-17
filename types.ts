@@ -1,4 +1,4 @@
-import { StreamTextResult } from "ai";
+import { Embedding, StreamTextResult } from "ai";
 import { z } from "zod";
 
 export interface BaseLLM {
@@ -138,8 +138,8 @@ export interface Memory {
   type: MemoryType;
   data: any;
   purpose: string;
-  queries: string[];
-  embeddings: number[][];
+  query: string;
+  embedding: Embedding;
   userId?: string;
   scope: MemoryScope;
   createdAt: Date;
