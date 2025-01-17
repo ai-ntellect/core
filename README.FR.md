@@ -230,79 +230,50 @@ export const prepareTransaction = {
 
 ## 3. Exécution du workflow
 
-Le workflow représente l'ensemble du processus d'exécution d'un certain nombre d'actions définies. Lorsqu'un utilisateur envoie un prompt, l'orchestrateur détermine les actions à exécuter en fonction des besoins.
-
-### Exemple de création d'un workflow :
+L'agent gère l'ensemble du processus de compréhension des requêtes utilisateur et de coordination des réponses. Voici un exemple d'utilisation de l'agent :
 
 ```typescript
-const tools = [
-  prepareEvmTransaction,
-  getNews, // Exemple d'action pour obtenir les dernières nouvelles
-];
+const memory = new PersistentMemory({
+  host: "http://localhost:7700",
+  apiKey: "VOTRE_CLE_API",
+});
 
-const orchestrator = new Orchestrator(tools);
-
-const workflow = new Workflow(
-  { id: from }, // ID utilisateur ou contexte
-  { orchestrator, memoryCache, eventEmitter } // Composants nécessaires
+const orchestrator = new Orchestrator(
+  [
+    getChainsTVL,
+    getRssNews,
+    // autres outils...
+  ],
+  memory
 );
-```
 
-- **Orchestrator** : Gestion de l'ordre des actions.
-- **MemoryCache** : Réutilisation des résultats précédents.
-- **EventEmitter** : Suivi et notification de l'état du workflow.
+const agent = new Agent({
+  user: { id: "user_id" },
+  orchestrator,
+  persistentMemory: memory,
+  stream: false,
+  maxEvaluatorIteration: 1,
+});
 
-### Processus du workflow :
-
-1. Le prompt utilisateur est analysé.
-2. L'orchestrateur décide des actions nécessaires et leur ordre.
-3. Les actions sont exécutées.
-4. Les résultats sont synthétisés et renvoyés à l'utilisateur.
-
----
-
-## 4. Appels API et côté client
-
-```typescript
-fastify.post("/api/chat", {
-  preHandler: requireAuth,
-  handler: async (request, reply) => {
-    const { messages, from } = request.body;
-    const latestMessage = messages[messages.length - 1];
-
-    const workflow = new Workflow(
-      { id: from },
-      { orchestrator, memoryCache, eventEmitter }
-    );
-    return workflow.start(latestMessage.content, messages);
+// Traitement d'une requête utilisateur
+const result = await agent.process(prompt, context, {
+  onMessage: (message) => {
+    console.log({ message });
   },
 });
 ```
 
-```typescript
-export function Chat({ id, initialMessages }) {
-  const { messages, setMessages, handleSubmit, input, setInput } = useChat({
-    api: "/api/chat",
-    body: { id, from: activeAccount?.address },
-  });
+### Flux de traitement de l'agent :
 
-  return (
-    <div>
-      <div>{messages}</div>
-      <input
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-      />
-      <button onClick={handleSubmit}>Envoyer</button>
-    </div>
-  );
-}
-```
+1. L'utilisateur envoie un prompt
+2. L'agent analyse le prompt et le contexte
+3. L'orchestrateur exécute les outils/actions nécessaires
+4. L'évaluateur évalue les résultats
+5. L'agent génère la réponse finale
 
 ---
 
-## 5. WIP (Work in Progress)
+## 4. WIP (Work in Progress)
 
 Voici les éléments actuellement en développement ou à améliorer :
 
