@@ -1,17 +1,16 @@
 # AI.ntellect Core Framework
 
-## Table of Contents
+## Table of contents
 
-1. [Main Components](#main-components)
+1. [Main components](#main-components)
    - [Agent](#agent)
    - [Orchestrator](#orchestrator)
    - [Synthesizer](#synthesizer)
    - [Evaluator](#evaluator)
    - [Memory](#memory-architecture)
-2. [Action Creation and Management](#action-creation-and-management)
-3. [Agent Processing](#agent-processing)
-4. [API Calls and Client Side](#api-calls-and-client-side)
-5. [WIP (Work in Progress)](#wip-work-in-progress)
+2. [Action creation and management](#action-creation-and-management)
+3. [Agent processing](#agent-processing)
+4. [WIP (Work in Progress)](#wip-work-in-progress)
 
 ---
 
@@ -23,8 +22,8 @@ The system relies on several key components that ensure smooth and efficient pro
 
 The agent is the core component that processes user requests and manages the entire interaction flow. It coordinates with other components to understand user needs, execute appropriate actions, and generate relevant responses.
 
-- **Main Role**: Process user requests and coordinate system components
-- **Key Features**:
+- **Main role**: Process user requests and coordinate system components
+- **Key features**:
   - Processes user prompts
   - Manages conversation context
   - Coordinates with orchestrator for action execution
@@ -35,7 +34,7 @@ The agent is the core component that processes user requests and manages the ent
 
 The orchestrator works under the agent's direction to manage the execution of actions. It analyzes requirements based on the agent's interpretation of user needs and coordinates the execution of appropriate tools.
 
-- **Main Role**: Organize and direct the execution of actions
+- **Main role**: Organize and direct the execution of actions
 - **Interactions**:
   - Manages available tools/actions
   - Executes actions based on agent requests
@@ -46,7 +45,7 @@ The orchestrator works under the agent's direction to manage the execution of ac
 
 The synthesizer is responsible for generating responses and analyzing actions based on the results obtained in the workflow. It can create summaries or more complex responses from the raw results obtained during the execution of actions.
 
-- **Main Role**: Transform the results of actions into a comprehensible and structured output
+- **Main role**: Transform the results of actions into a comprehensible and structured output
 - **Interactions**:
   - Takes the results of executed actions
   - Creates summaries or tailored responses
@@ -57,8 +56,8 @@ The synthesizer is responsible for generating responses and analyzing actions ba
 
 The evaluator is responsible for assessing the results of executed actions and determining if additional actions are needed. It works in conjunction with the orchestrator to ensure all user requirements are met.
 
-- **Main Role**: Evaluate action results and determine next steps
-- **Main Functions**:
+- **Main role**: Evaluate action results and determine next steps
+- **Main functions**:
   - Analyzes results from executed actions
   - Determines if additional actions are needed
   - Suggests next actions to the orchestrator
@@ -141,7 +140,7 @@ sudo apt-get install redis-server
 
 CAG optimizes workflow execution through Redis-based caching:
 
-- **Main Role**: Cache frequently used procedural patterns
+- **Main role**: Cache frequently used procedural patterns
 - **Implementation**:
 
   - Uses Redis for high-performance storage
@@ -231,7 +230,7 @@ export const prepareTransaction = {
 
 ---
 
-## 3. Agent Processing
+## 3. Agent processing
 
 The agent handles the entire process of understanding user requests and coordinating responses. Here's an example of how to use the agent:
 
@@ -287,7 +286,7 @@ Here are the elements currently in development or improvement:
 **Interest**: Collaboration between agents allows breaking down complex tasks into specialized subtasks, enhancing the
 efficiency and quality of results. It also enables better resource management and faster adaptation to changes.
 
-**Steps to Implement**:
+**Steps to implement**:
 
 - [ ] Task delegation framework.
 - [ ] Shared context management.
@@ -305,7 +304,7 @@ efficiency and quality of results. It also enables better resource management an
 facilitating the execution of complex actions on the blockchain. It improves accessibility and efficiency in
 interacting with smart contracts.
 
-**Steps to Implement**:
+**Steps to implement**:
 
 - [ ] Extraction and processing of relevant contract ABIs.
 - [ ] Filtering of relevant functions.
