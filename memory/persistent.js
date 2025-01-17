@@ -3,7 +3,7 @@ import { cosineSimilarity, embed, embedMany } from "ai";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { MeiliSearch } from "meilisearch";
 
-export const MemoryScope = {
+const MemoryScope = {
   GLOBAL: "global",
   USER: "user",
 };
