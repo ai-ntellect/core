@@ -42,7 +42,6 @@ export class ActionQueueManager {
 
     for (const action of this.queue) {
       const actionConfig = this.actions.find((a) => a.name === action.name);
-
       if (actionConfig?.confirmation?.requireConfirmation) {
         // Wait for user confirmation before executing this action
         const shouldProceed = await this.callbacks.onConfirmationRequired?.(
@@ -62,6 +61,7 @@ export class ActionQueueManager {
           continue;
         }
       }
+      const parameters = this.formatArguments(action.parameters);
 
       actionPromises.push(
         this.executeAction(action)
@@ -72,7 +72,7 @@ export class ActionQueueManager {
           .catch((error) => {
             const result = {
               name: action.name,
-              parameters: this.formatArguments(action.parameters),
+              parameters,
               result: null,
               error: error.message || "Unknown error occurred",
             };
@@ -98,7 +98,23 @@ export class ActionQueueManager {
 
   private formatArguments(args: QueueItemParameter[]): Record<string, string> {
     return args.reduce<Record<string, string>>((acc, arg) => {
-      acc[arg.name] = arg.value;
+      try {
+        // Parse the JSON string if the value is a stringified JSON object
+        const parsedValue = JSON.parse(arg.value);
+        if (
+          parsedValue &&
+          typeof parsedValue === "object" &&
+          "value" in parsedValue
+        ) {
+          acc[parsedValue.name] = parsedValue.value;
+        } else {
+          // Fallback to original value if not in expected format
+          acc[arg.name] = arg.value;
+        }
+      } catch {
+        // If JSON parsing fails, use the original value
+        acc[arg.name] = arg.value;
+      }
       return acc;
     }, {});
   }
@@ -115,13 +131,7 @@ export class ActionQueueManager {
         error: `Action '${action.name}' not found in actions list`,
       };
     }
-    const actionArgs = action.parameters.reduce<Record<string, string>>(
-      (acc: Record<string, string>, arg: QueueItemParameter) => {
-        acc[arg.name] = arg.value;
-        return acc;
-      },
-      {}
-    );
+    const actionArgs = this.formatArguments(action.parameters);
     try {
       const result = await actionConfig.execute(actionArgs);
       const actionResult = {
@@ -130,8 +140,7 @@ export class ActionQueueManager {
         result,
         error: null,
       };
-      console.log("Action executed successfully: ", action.name);
-      console.dir(actionResult, { depth: null });
+      console.log("Action executed successfully: ", action.name, "🎉");
       return actionResult;
     } catch (error) {
       const actionResult = {

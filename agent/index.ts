@@ -124,6 +124,7 @@ export class Agent {
       this.orchestrator.tools,
       this.persistentMemory
     );
+
     const evaluation = await evaluator.process(
       initialPrompt,
       contextualizedPrompt,

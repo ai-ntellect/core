@@ -77,7 +77,6 @@ export class PersistentMemory {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.host}${path}`;
-    console.log("Making request to:", url);
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -187,7 +186,7 @@ export class PersistentMemory {
    * Find best matching memories
    */
   async searchSimilarQueries(query: string, options: SearchOptions = {}) {
-    console.log("\n🔍 Searching in persistent memory:", query);
+    console.log("\nSearching in persistent memory:", query);
 
     // Generate embedding for the query
     const { embedding: queryEmbedding } = await embed({
@@ -240,7 +239,9 @@ export class PersistentMemory {
       }
     }
 
-    console.log("Found in persistent memory:", searchResults);
+    console.log(
+      `📚 Found ${searchResults.length} queries in persistent memory`
+    );
 
     // Process and filter results using cosine similarity
     const results = searchResults
@@ -272,7 +273,7 @@ export class PersistentMemory {
 
     // Log results
     if (results.length > 0) {
-      console.log("\n✨ Best matches found:");
+      console.log("\n✨ Similar queries found:");
       results.forEach((match) => {
         console.log(
           `- ${match.query} : ${match.similarityPercentage.toFixed(2)}% (${

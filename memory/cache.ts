@@ -59,7 +59,7 @@ export class CacheMemory {
     const result = await this.redis.set(key, JSON.stringify(memory), {
       EX: this.CACHE_TTL,
     });
-    console.log("🔍 Memory CREATED", result);
+    console.log("Cache memory created: ", result);
   }
 
   async findSimilarQueries(
@@ -69,10 +69,10 @@ export class CacheMemory {
     {
       data: any;
       similarityPercentage: number;
-      purpose: string;
+      query: string;
     }[]
   > {
-    console.log("\n🔍 Searching in cache for query:", query);
+    console.log("\nSearching in cache for query:", query);
 
     const { embedding } = await embed({
       model: openai.embedding("text-embedding-3-small"),
@@ -80,21 +80,20 @@ export class CacheMemory {
     });
 
     const memories = await this.getAllMemories(options.scope, options.userId);
-    console.log("\n📚 Found", memories.length, "memories to compare with");
+    console.log("\n📚 Found", memories.length, "queries to compare with");
 
     const matches = memories
       .map((memory) => {
         const similarity = cosineSimilarity(embedding, memory.embedding);
         const similarityPercentage = (similarity + 1) * 50; // Conversion en pourcentage
 
-        console.log(`\n📊 Memory "${memory.purpose}":
-        - Similarity: ${similarityPercentage.toFixed(2)}%
-        - Query: ${memory.query}`);
+        console.log(`\n📊 Query "${memory.query}":
+        - Similarity: ${similarityPercentage.toFixed(2)}%`);
 
         return {
           data: memory.data,
+          query: memory.query,
           similarityPercentage,
-          purpose: memory.purpose,
           // Optionnel : ajouter des métadonnées utiles
           memoryId: memory.id,
         };
@@ -110,10 +109,10 @@ export class CacheMemory {
       : matches;
 
     if (results.length > 0) {
-      console.log("\n✨ Best matches found:");
+      console.log("\n✨ Similar queries found:");
       results.forEach((match) => {
         console.log(
-          `- ${match.purpose} (${match.similarityPercentage.toFixed(2)}%)`
+          `- ${match.query} (${match.similarityPercentage.toFixed(2)}%)`
         );
       });
     } else {
@@ -163,7 +162,7 @@ export class CacheMemory {
   public async createMemory(
     input: CreateMemoryInput
   ): Promise<string | undefined> {
-    console.log("🔍 Searching for similar memory", input);
+    console.log("Searching for similar memory", input);
     const existingPattern = await this.findSimilarQueries(input.content, {
       similarityThreshold: 95,
       userId: input.userId,
@@ -171,20 +170,20 @@ export class CacheMemory {
     });
 
     if (existingPattern.length > 0) {
-      console.log("\n🔍 Similar memory found:");
+      console.log("\nSimilar cache memory found:");
       existingPattern.forEach((match) => {
         console.log(
-          `- ${match.purpose} (${match.similarityPercentage.toFixed(2)}%)`
+          `- ${match.query} (${match.similarityPercentage.toFixed(2)}%)`
         );
       });
-      console.log("🔍 Memory already exists");
+      console.log("Cache memory already exists. No need to create new one..");
       return;
     }
 
-    console.log("🔍 No similar memory found");
+    console.log("No similar memory found");
 
     // Générer les variations via GPT-4
-    console.log("🔍 Generating variations...");
+    console.log("Generating variations...");
     const variations = await generateObject({
       model: openai("gpt-4"),
       schema: z.object({
@@ -192,20 +191,17 @@ export class CacheMemory {
         queries: z.array(z.object({ text: z.string() })),
       }),
       prompt: `For this input: "${input.content}"
-        Generate similar variations that should match the same context.
-        Context type: ${input.type}
-        Data: ${JSON.stringify(input.data)}
+        Generate similar way to ask the same question.
+        Action results: ${JSON.stringify(input.data)}
         - Keep variations natural and human-like
-        - Include the original input
         - Add 3-5 variations`,
     });
-    console.log("🔍 Variations generated:", variations.object.queries);
+    console.log("Variations generated:", variations.object.queries);
     await this.createSingleMemory({
       id: crypto.randomUUID(),
       content: input.content,
       type: input.type,
       data: input.data,
-      purpose: variations.object.request,
       userId: input.userId,
       scope: input.scope,
     });
@@ -218,7 +214,6 @@ export class CacheMemory {
             content: variation.text,
             type: input.type,
             data: input.data,
-            purpose: variations.object.request,
             userId: input.userId,
             scope: input.scope,
           });
@@ -235,22 +230,20 @@ export class CacheMemory {
     content: string;
     type: MemoryType;
     data: any;
-    purpose: string;
     userId?: string;
     scope?: MemoryScope;
   }): Promise<CacheMemoryType> {
-    console.log("🔍 Creating new cache memory...", params.content);
-    console.log("🔍 Creating embedding...");
+    console.log("Creating new cache memory...", params.content);
+    console.log("Creating embedding...");
     const { embedding } = await embed({
       model: openai.embedding("text-embedding-3-small"),
       value: params.content,
     });
-    console.log("🔍 Embedding created");
+    console.log("Embedding created");
     const memory: CacheMemoryType = {
       id: params.id,
       type: params.type,
       data: params.data,
-      purpose: params.purpose,
       query: params.content,
       embedding,
       userId: params.userId,
@@ -259,7 +252,6 @@ export class CacheMemory {
       createdAt: new Date(),
     };
     await this.storeMemory(memory);
-    console.log("🔍 Memory created", memory);
     return memory;
   }
 }

@@ -1,9 +1,8 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { CacheMemory } from "../../memory/cache";
 import { PersistentMemory } from "../../memory/persistent";
-import { ActionSchema, BaseLLM } from "../../types";
+import { ActionSchema, BaseLLM, MemoryScopeType } from "../../types";
 import { orchestratorContext } from "./context";
 
 export class Orchestrator implements BaseLLM {
@@ -21,8 +20,44 @@ export class Orchestrator implements BaseLLM {
         parameters: z.object({
           query: z.string(),
         }),
-        execute: async (params) => {
-          const memories = await this.memory.searchSimilarQueries(params.value);
+        execute: async ({ query }: { query: string }) => {
+          const memories = await this.memory.searchSimilarQueries(query);
+          return memories;
+        },
+      },
+      {
+        name: "save_memory",
+        description: "Save a query in the internal knowledge base",
+        parameters: z.object({
+          query: z.string(),
+          purpose: z.string(),
+          data: z.any(),
+          scope: z.enum(["GLOBAL", "USER"]),
+          userId: z.string().optional(),
+          whyStored: z.string(),
+        }),
+        execute: async ({
+          query,
+          purpose,
+          data,
+          scope,
+          userId,
+        }: {
+          query: string;
+          purpose: string;
+          data: any;
+          scope: MemoryScopeType;
+          userId?: string;
+        }) => {
+          const memories = await this.memory.storeMemory({
+            query,
+            purpose,
+            data,
+            scope,
+            userId,
+            createdAt: new Date(),
+            id: crypto.randomUUID(),
+          });
           return memories;
         },
       },
@@ -37,10 +72,12 @@ export class Orchestrator implements BaseLLM {
           actions: z.array(
             z.object({
               name: z.string(),
-              parameters: z.object({
-                name: z.string(),
-                value: z.string(),
-              }),
+              parameters: z.array(
+                z.object({
+                  name: z.string(),
+                  value: z.string(),
+                })
+              ),
             })
           ),
           answer: z.string(),

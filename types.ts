@@ -137,7 +137,6 @@ export interface CacheMemoryType {
   id: string;
   type: MemoryType;
   data: any;
-  purpose: string;
   query: string;
   embedding: Embedding;
   userId?: string;
