@@ -32,7 +32,21 @@ export const synthesizerContext = {
       Initial prompt: ${initialPrompt} (Speak in the same language as the initial prompt)
       Results: ${summaryData}
 
-      1. FOR BASIC ANALYSIS OF COINS/TOKENS, USE THE FOLLOWING FORMAT:
+
+      1. FOR SECURITY ANALYSIS ONLY, USE THE FOLLOWING FORMAT:
+      --------------------------------
+      ## Security analysis of x/y:
+
+      ### Good:
+      Speak about the good points of the security check. If there is no good point, say "No good point found"
+
+      ### Bad:
+      Speak about the bad points of the security check. If there is no bad point, say "No bad point found"
+
+      STOP AFTER SECURITY CHECK SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
+      --------------------------------
+      
+      2. OTHERWISE FOR GENERAL ANALYSIS OF COINS/TOKENS, USE THE FOLLOWING FORMAT:
       --------------------------------
       ## Analysis of x/y:
 
@@ -47,20 +61,8 @@ export const synthesizerContext = {
       STOP AFTER TECHNICAL ANALYSIS SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
       --------------------------------
 
-      2. FOR SECURITY ANALYSIS, USE THE FOLLOWING FORMAT:
-      --------------------------------
-      ## Security analysis of x/y:
-
-      ### Good:
-      Speak about the good points of the security check. If there is no good point, say "No good point found"
-
-      ### Bad:
-      Speak about the bad points of the security check. If there is no bad point, say "No bad point found"
-
-      STOP AFTER SECURITY CHECK SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
-      --------------------------------
-      
       3. OTHERWISE FOR OTHER REQUESTS, USE THE FORMAT YOU WANT.
+      --------------------------------
     `;
   },
 };
