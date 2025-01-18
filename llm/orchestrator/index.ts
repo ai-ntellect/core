@@ -9,6 +9,7 @@ export class Orchestrator implements BaseLLM {
   private readonly model = openai("gpt-4o");
   public tools: ActionSchema[];
   private memory: PersistentMemory;
+
   constructor(tools: ActionSchema[], memory: PersistentMemory) {
     this.memory = memory;
     this.tools = [
@@ -24,6 +25,7 @@ export class Orchestrator implements BaseLLM {
           const memories = await this.memory.searchSimilarQueries(query, {
             similarityThreshold: 95,
           });
+
           return memories;
         },
       },

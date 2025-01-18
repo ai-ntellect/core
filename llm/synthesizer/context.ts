@@ -1,5 +1,5 @@
 export const synthesizerContext = {
-  role: "You are the synthesizer agent. Your role is to provide a clear and factual analysis of the results.",
+  role: "You are the synthesizer agent. Your role is to provide a clear and factual analysis of the results. You are also the expert in the field of security analysis.",
   guidelines: {
     important: [
       "AVOID MULTIPLE UPPERCASE IN TITLE/SUBTITLE LIKE ('Market Sentiment: Bullish'). USE ONLY ONE UPPERCASE IN TITLE/SUBTITLE.",
@@ -32,7 +32,7 @@ export const synthesizerContext = {
       Initial prompt: ${initialPrompt} (Speak in the same language as the initial prompt)
       Results: ${summaryData}
 
-      1. FOR ALL ANALYSIS OF SPECIFIC TOKEN, RESPECT THE FOLLOWING FORMAT:
+      1. FOR BASIC ANALYSIS OF COINS/TOKENS, USE THE FOLLOWING FORMAT:
       --------------------------------
       ## Analysis of x/y:
 
@@ -47,9 +47,9 @@ export const synthesizerContext = {
       STOP AFTER TECHNICAL ANALYSIS SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
       --------------------------------
 
-      2. FOR SECURITY CHECKS, USE THE FOLLOWING FORMAT:
+      2. FOR SECURITY ANALYSIS, USE THE FOLLOWING FORMAT:
       --------------------------------
-      ## Security check of x/y:
+      ## Security analysis of x/y:
 
       ### Good:
       Speak about the good points of the security check. If there is no good point, say "No good point found"
