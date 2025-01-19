@@ -63,6 +63,11 @@ export interface ActionSchema {
     [key: string]: z.ZodType;
   }>;
   execute: (args: any) => Promise<any>;
+  examples?: {
+    role: string;
+    content: string;
+    parameters: Record<string, any>;
+  }[];
   confirmation?: {
     requireConfirmation: boolean;
     message: string;

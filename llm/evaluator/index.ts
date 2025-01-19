@@ -44,7 +44,6 @@ export class Evaluator {
         actions: this.tools,
         results: results,
       });
-
       console.log("\n🔍 Evaluator processing");
       console.log("Goal:", prompt);
       console.log("Results to evaluate:", JSON.stringify(results, null, 2));
