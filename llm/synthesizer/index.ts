@@ -1,19 +1,43 @@
 import { openai } from "@ai-sdk/openai";
-import { generateObject, streamText, StreamTextResult } from "ai";
+import { generateObject, StreamTextResult } from "ai";
 import { z } from "zod";
-import { BaseLLM } from "../../types";
+import { State } from "../../agent";
+import { QueueResult } from "../../types";
 import { synthesizerContext } from "./context";
 
-export class Synthesizer implements BaseLLM {
+export class Synthesizer {
   private readonly model = openai("gpt-4-turbo");
+
+  composeContext(state: Partial<State>) {
+    const { behavior, userRequest, results, examplesMessages } = state;
+
+    if (!behavior) {
+      return "";
+    }
+    const { role, language, guidelines } = behavior;
+    const { important, warnings, steps } = guidelines;
+
+    const context = `
+      # ROLE: ${role}
+      # LANGUAGE: ${language}
+      # IMPORTANT: ${important.join("\n")}
+      # NEVER: ${warnings.join("\n")}
+      # USER_REQUEST: ${userRequest}
+      # CURRENT_RESULTS: ${results?.map((r) => r.result).join(", ") || ""}
+      # STEPS: ${steps?.join("\n") || ""}
+      # MESSAGES EXAMPLES: ${JSON.stringify(examplesMessages, null, 2)}
+    `;
+
+    return context;
+  }
 
   async process(
     prompt: string,
-    summaryData?: string,
+    results: QueueResult[],
     onFinish?: (event: any) => void
   ): Promise<
     | {
-        actions: {
+        actionsCompleted: {
           name: string;
           reasoning: string;
         }[];
@@ -21,11 +45,19 @@ export class Synthesizer implements BaseLLM {
       }
     | StreamTextResult<Record<string, any>>
   > {
-    console.log("Summarizing results...");
+    console.log("\n🎨 Starting synthesis process");
+    console.log("Prompt:", prompt);
+    console.log("Results to synthesize:", JSON.stringify(results, null, 2));
+    const context = this.composeContext({
+      behavior: synthesizerContext.behavior,
+      userRequest: prompt,
+      results: results,
+    });
+
     const result = await generateObject({
       model: this.model,
       schema: z.object({
-        actions: z.array(
+        actionsCompleted: z.array(
           z.object({
             name: z.string(),
             reasoning: z.string(),
@@ -33,11 +65,23 @@ export class Synthesizer implements BaseLLM {
         ),
         response: z.string(),
       }),
-      prompt: synthesizerContext.compose(prompt, summaryData || ""),
-      system: synthesizerContext.role,
+      prompt,
+      system: context,
     });
-    console.log("Synthesizer");
-    console.dir(result.object, { depth: null });
+
+    console.log("\n✅ Synthesis completed");
+    console.log("─".repeat(50));
+    console.log("Generated response:", result.object.response);
+
+    if (result.object.actionsCompleted.length > 0) {
+      console.log("\n📋 Suggested actions:");
+      result.object.actionsCompleted.forEach((action, index) => {
+        console.log(`\n${index + 1}. Action Details:`);
+        console.log(`   Name: ${action.name}`);
+        console.log(`   Reasoning: ${action.reasoning}`);
+      });
+    }
+
     if (onFinish) onFinish(result.object);
     return result.object;
   }
@@ -46,13 +90,26 @@ export class Synthesizer implements BaseLLM {
     prompt: string,
     summaryData?: string,
     onFinish?: (event: any) => void
-  ): Promise<StreamTextResult<Record<string, any>>> {
-    const result = await streamText({
-      model: this.model,
-      prompt: synthesizerContext.compose(prompt, summaryData || ""),
-      onFinish: onFinish,
-      system: synthesizerContext.role,
-    });
-    return result;
+  ): Promise<any> {
+    console.log("\n🎨 Starting streaming synthesis");
+    console.log("Prompt:", prompt);
+    // if (summaryData) {
+    //   console.log(
+    //     "Summary data:",
+    //     JSON.stringify(JSON.parse(summaryData), null, 2)
+    //   );
+    // }
+
+    // const result = await streamText({
+    //   model: this.model,
+    //   prompt: synthesizerContext.compose(prompt, summaryData || ""),
+    //   onFinish: (event) => {
+    //     console.log("\n✅ Streaming synthesis completed");
+    //     if (onFinish) onFinish(event);
+    //   },
+    //   system: synthesizerContext.role,
+    // });
+
+    // return result;
   }
 }

@@ -9,16 +9,32 @@ import {
   MemoryScope,
   MemoryType,
   QueueResult,
-  TransformedQueueItem,
   User,
 } from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
 import { ResultSanitizer } from "../utils/sanitize-results";
 import { ActionHandler } from "./handlers/ActionHandler";
 
+export type State = {
+  behavior: {
+    role: string;
+    language: string;
+    guidelines: {
+      important: string[];
+      warnings: string[];
+      steps?: string[];
+    };
+  };
+  userRequest: string;
+  actions: ActionSchema[];
+  results: QueueResult[];
+  examplesMessages?: {
+    role: string;
+    content: string;
+  }[];
+};
+
 export class Agent {
-  private readonly SIMILARITY_THRESHOLD = 95;
-  private readonly MAX_RESULTS = 1;
   private readonly actionHandler: ActionHandler;
   private readonly user: User;
   private readonly orchestrator: Orchestrator;
@@ -54,45 +70,19 @@ export class Agent {
     this.accumulatedResults = [];
   }
 
-  async process(
-    prompt: string,
-    contextualizedPrompt: string,
-    events: AgentEvent
-  ): Promise<any> {
-    let actions: ActionSchema[] | TransformedQueueItem[] | undefined =
-      undefined;
-    let isSimilar: boolean = false;
+  async process(prompt: string, events: AgentEvent): Promise<any> {
+    console.log("Requesting orchestrator for actions..");
+    const request = await this.orchestrator.process(
+      prompt,
+      this.accumulatedResults
+    );
+    events.onMessage?.(request);
 
-    if (this.cacheMemory) {
-      const similarActions = await this.cacheMemory.findSimilarQueries(prompt, {
-        similarityThreshold: this.SIMILARITY_THRESHOLD,
-        maxResults: this.MAX_RESULTS,
-        userId: this.user.id,
-        scope: MemoryScope.GLOBAL,
-      });
-
-      if (similarActions.length > 0) {
-        actions = QueueItemTransformer.transformActionsToQueueItems(
-          similarActions[0].data
-        );
-        isSimilar = true;
-      }
-    }
-
-    if (!actions?.length && !isSimilar) {
-      console.log("No similar actions found in cache for query: ", prompt);
-      console.log("Requesting orchestrator for actions..");
-      const request = await this.orchestrator.process(contextualizedPrompt);
-      events.onMessage?.(request);
-      actions = request.actions;
-    }
-
-    return actions && actions.length > 0
+    return request.actions.length > 0
       ? this.handleActions(
           {
             initialPrompt: prompt,
-            contextualizedPrompt: contextualizedPrompt,
-            actions: actions as ActionSchema[],
+            actions: request.actions as ActionSchema[],
           },
           events
         )
@@ -102,11 +92,9 @@ export class Agent {
   private async handleActions(
     {
       initialPrompt,
-      contextualizedPrompt,
       actions,
     }: {
       initialPrompt: string;
-      contextualizedPrompt: string;
       actions: ActionSchema[];
     },
     events: AgentEvent
@@ -144,11 +132,10 @@ export class Agent {
     console.log("Accumulated results:");
     console.dir(this.accumulatedResults, { depth: null });
 
-    const sanitizedResults = ResultSanitizer.sanitize(this.accumulatedResults);
+    // const sanitizedResults = ResultSanitizer.sanitize(this.accumulatedResults);
     const evaluation = await evaluator.process(
       initialPrompt,
-      contextualizedPrompt,
-      sanitizedResults
+      this.accumulatedResults
     );
 
     events.onMessage?.(evaluation);
@@ -157,8 +144,7 @@ export class Agent {
       this.evaluatorIteration++;
       return this.handleActions(
         {
-          initialPrompt: contextualizedPrompt,
-          contextualizedPrompt: initialPrompt,
+          initialPrompt: initialPrompt,
           actions: evaluation.nextActionsNeeded,
         },
         events
@@ -191,12 +177,16 @@ export class Agent {
     this.accumulatedResults = [];
     this.evaluatorIteration = 0;
 
-    await this.cacheMemory?.createMemory({
-      content: actionsResult.initialPrompt,
-      data: actionsResult.data,
-      scope: MemoryScope.GLOBAL,
-      type: MemoryType.ACTION,
-    });
+    for (const action of actionsResult.data) {
+      if (!action.error) {
+        await this.cacheMemory?.createMemory({
+          content: actionsResult.initialPrompt,
+          data: action.result,
+          scope: MemoryScope.GLOBAL,
+          type: MemoryType.ACTION,
+        });
+      }
+    }
 
     return this.stream
       ? (
@@ -205,7 +195,10 @@ export class Agent {
             summaryData
           )
         ).toDataStreamResponse()
-      : await synthesizer.process(actionsResult.initialPrompt, summaryData);
+      : await synthesizer.process(
+          actionsResult.initialPrompt,
+          this.accumulatedResults
+        );
   }
 
   private transformActions(actions: ActionSchema[]) {

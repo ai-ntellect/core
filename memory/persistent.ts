@@ -186,7 +186,9 @@ export class PersistentMemory {
    * Find best matching memories
    */
   async searchSimilarQueries(query: string, options: SearchOptions = {}) {
-    console.log("\nSearching in persistent memory:", query);
+    console.log("\n🔍 Searching in persistent memory");
+    console.log("Query:", query);
+    console.log("Options:", JSON.stringify(options, null, 2));
 
     // Generate embedding for the query
     const { embedding: queryEmbedding } = await embed({
@@ -196,28 +198,23 @@ export class PersistentMemory {
 
     const searchResults = [];
 
-    // Requête Meilisearch
-    const searchBody = {
-      q: query,
-    };
-
     // Search in global memories
     if (!options.scope || options.scope === "global") {
       const globalIndex = this._getIndexName(MemoryScope.GLOBAL);
-      console.log("Searching in global index:", globalIndex);
+      console.log("\n📚 Searching in global index:", globalIndex);
       try {
         const globalResults = await this._makeRequest<MeilisearchResponse>(
           `/indexes/${globalIndex}/search`,
           {
             method: "POST",
-            body: JSON.stringify(searchBody),
+            body: JSON.stringify({ q: query }),
           }
         );
         if (globalResults?.hits) {
           searchResults.push(...globalResults.hits);
         }
       } catch (error) {
-        console.error("Error searching global index:", error);
+        console.error("❌ Error searching global index:", error);
       }
     }
 
@@ -231,7 +228,7 @@ export class PersistentMemory {
         `/indexes/${userIndex}/search`,
         {
           method: "POST",
-          body: JSON.stringify(searchBody),
+          body: JSON.stringify({ q: query }),
         }
       );
       if (userResults.hits) {
@@ -239,14 +236,12 @@ export class PersistentMemory {
       }
     }
 
-    console.log(
-      `📚 Found ${searchResults.length} queries in persistent memory`
-    );
+    const totalResults = searchResults.length;
+    console.log(`\n📊 Found ${totalResults} total matches`);
 
     // Process and filter results using cosine similarity
     const results = searchResults
       .flatMap((hit) => {
-        // Calculate similarities for each chunk
         const chunkSimilarities = hit.chunks.map((chunk) => ({
           data: hit.data,
           purpose: hit.purpose,
@@ -256,7 +251,6 @@ export class PersistentMemory {
             (cosineSimilarity(queryEmbedding, chunk.embedding) + 1) * 50,
         }));
 
-        // Return the chunk with highest similarity
         return chunkSimilarities.reduce(
           (best, current) =>
             current.similarityPercentage > best.similarityPercentage
@@ -271,19 +265,21 @@ export class PersistentMemory {
       )
       .sort((a, b) => b.similarityPercentage - a.similarityPercentage);
 
-    // Log results
+    // Log filtered results in a more structured way
     if (results.length > 0) {
-      console.log("\n✨ Similar queries found in persistent memory:");
-      results.forEach((match) => {
-        console.log(
-          `- ${match.query} : ${match.similarityPercentage.toFixed(2)}% (${
-            match.purpose
-          })`
-        );
-        console.log(`  Matching content: "${match.chunk}"`);
+      console.log("\n✨ Relevant matches found:");
+      console.log("─".repeat(50));
+
+      results.forEach((match, index) => {
+        console.log(`\n${index + 1}. Match Details:`);
+        console.log(`   Query: ${match.query}`);
+        console.log(`   Purpose: ${match.purpose}`);
+        console.log(`   Similarity: ${match.similarityPercentage.toFixed(2)}%`);
+        console.log(`   Content: "${match.chunk}"`);
+        console.log("─".repeat(50));
       });
     } else {
-      console.log("No matches found");
+      console.log("\n❌ No relevant matches found");
     }
 
     return results;

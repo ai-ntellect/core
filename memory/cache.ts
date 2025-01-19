@@ -8,6 +8,7 @@ import {
   MatchOptions,
   MemoryScope,
   MemoryType,
+  QueueResult,
 } from "../types";
 
 export class CacheMemory {
@@ -32,16 +33,14 @@ export class CacheMemory {
 
   private async initRedis() {
     this.redis.on("error", (err) => {
-      console.error("Redis Client Error:", err);
-      // Implement retry logic if needed
+      console.error("❌ Redis Client Error:", err);
     });
 
     try {
       await this.redis.connect();
-      console.log("Successfully connected to Redis");
+      console.log("✅ Successfully connected to Redis");
     } catch (error) {
-      console.error("Failed to connect to Redis:", error);
-      // Handle connection failure
+      console.error("❌ Failed to connect to Redis:", error);
     }
   }
 
@@ -58,7 +57,7 @@ export class CacheMemory {
     const result = await this.redis.set(key, JSON.stringify(memory), {
       EX: this.CACHE_TTL,
     });
-    console.log("Cache memory created: ", result);
+    console.log("💾 Cache memory created:", result);
   }
 
   async findSimilarQueries(
@@ -66,12 +65,14 @@ export class CacheMemory {
     options: MatchOptions & { userId?: string; scope?: MemoryScope } = {}
   ): Promise<
     {
-      data: any;
+      data: QueueResult[];
       similarityPercentage: number;
       query: string;
     }[]
   > {
-    console.log("\nSearching in cache for query:", query);
+    console.log("\n🔍 Searching in cache");
+    console.log("Query:", query);
+    console.log("Options:", JSON.stringify(options, null, 2));
 
     const { embedding } = await embed({
       model: openai.embedding("text-embedding-3-small"),
@@ -79,12 +80,12 @@ export class CacheMemory {
     });
 
     const memories = await this.getAllMemories(options.scope, options.userId);
-    console.log("\n📚 Found", memories.length, "queries to compare with");
+    console.log(`\n📚 Found ${memories.length} cached queries to compare`);
 
     const matches = memories
       .map((memory) => {
         const similarity = cosineSimilarity(embedding, memory.embedding);
-        const similarityPercentage = (similarity + 1) * 50; // Conversion en pourcentage
+        const similarityPercentage = (similarity + 1) * 50;
         return {
           data: memory.data,
           query: memory.query,
@@ -104,13 +105,17 @@ export class CacheMemory {
 
     if (results.length > 0) {
       console.log("\n✨ Similar queries found:");
-      results.forEach((match) => {
-        console.log(
-          `- ${match.query} (${match.similarityPercentage.toFixed(2)}%)`
-        );
+      console.log("─".repeat(50));
+
+      results.forEach((match, index) => {
+        console.log(`\n${index + 1}. Match Details:`);
+        console.log(`   Query: ${match.query}`);
+        console.log(`   Similarity: ${match.similarityPercentage.toFixed(2)}%`);
+        console.log(`   Memory ID: ${match.memoryId}`);
+        console.log("─".repeat(50));
       });
     } else {
-      console.log("No matches found");
+      console.log("\n❌ No similar queries found in cache");
     }
 
     return results;
@@ -155,7 +160,11 @@ export class CacheMemory {
   public async createMemory(
     input: CreateMemoryInput
   ): Promise<CacheMemoryType | undefined> {
-    console.log("Searching for similar memory", input);
+    console.log("\n📝 Processing new memory creation");
+    console.log("Content:", input.content);
+    console.log("Type:", input.type);
+    console.log("Scope:", input.scope);
+
     const existingPattern = await this.findSimilarQueries(input.content, {
       similarityThreshold: 95,
       userId: input.userId,
@@ -163,17 +172,18 @@ export class CacheMemory {
     });
 
     if (existingPattern.length > 0) {
-      console.log("\nSimilar cache memory found:");
-      existingPattern.forEach((match) => {
-        console.log(
-          `- ${match.query} (${match.similarityPercentage.toFixed(2)}%)`
-        );
+      console.log("\n🔄 Similar cache memory already exists");
+      console.log("─".repeat(50));
+      existingPattern.forEach((match, index) => {
+        console.log(`\n${index + 1}. Existing Match:`);
+        console.log(`   Query: ${match.query}`);
+        console.log(`   Similarity: ${match.similarityPercentage.toFixed(2)}%`);
       });
-      console.log("Cache memory already exists. No need to create new one..");
+      console.log("\n⏭️  Skipping creation of new memory");
       return;
     }
 
-    console.log("No similar memory found");
+    console.log("\n🆕 No similar memory found - creating new one");
 
     const memory = await this.createSingleMemory({
       id: crypto.randomUUID(),
@@ -195,13 +205,17 @@ export class CacheMemory {
     userId?: string;
     scope?: MemoryScope;
   }): Promise<CacheMemoryType> {
-    console.log("Creating new cache memory...", params.content);
-    console.log("Creating embedding...");
+    console.log("\n🏗️  Creating new cache memory");
+    console.log("ID:", params.id);
+    console.log("Content:", params.content);
+
+    console.log("\n🧮 Generating embedding...");
     const { embedding } = await embed({
       model: openai.embedding("text-embedding-3-small"),
       value: params.content,
     });
-    console.log("Embedding created");
+    console.log("✅ Embedding generated successfully");
+
     const memory: CacheMemoryType = {
       id: params.id,
       type: params.type,
@@ -213,7 +227,10 @@ export class CacheMemory {
         params.scope || (params.userId ? MemoryScope.USER : MemoryScope.GLOBAL),
       createdAt: new Date(),
     };
+
     await this.storeMemory(memory);
+    console.log("✅ Memory created and stored successfully");
+
     return memory;
   }
 }

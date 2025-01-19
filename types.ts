@@ -59,7 +59,9 @@ export interface ProcessPromptCallbacks {
 export interface ActionSchema {
   name: string;
   description: string;
-  parameters: z.ZodSchema;
+  parameters: z.ZodObject<{
+    [key: string]: z.ZodType;
+  }>;
   execute: (args: any) => Promise<any>;
   confirmation?: {
     requireConfirmation: boolean;

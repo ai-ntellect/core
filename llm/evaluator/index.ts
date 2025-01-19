@@ -1,8 +1,10 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { State } from "../../agent";
 import { PersistentMemory } from "../../memory/persistent";
-import { ActionSchema, MemoryScope } from "../../types";
+import { ActionSchema, MemoryScope, QueueResult } from "../../types";
+import { injectActions } from "../../utils/inject-actions";
 import { evaluatorContext } from "./context";
 
 export class Evaluator {
@@ -15,13 +17,43 @@ export class Evaluator {
     this.memory = memory;
   }
 
-  async process(prompt: string, goal: string, results: string): Promise<any> {
+  composeContext(state: State) {
+    const { behavior, userRequest, actions, results } = state;
+    const { role, language, guidelines } = behavior;
+    const { important, warnings, steps } = guidelines;
+
+    const context = `
+      # ROLE: ${role}
+      # LANGUAGE: ${language}
+      # IMPORTANT: ${important.join("\n")}
+      # NEVER: ${warnings.join("\n")}
+      # USER_REQUEST: ${userRequest}
+      # ACTIONS AVAILABLE: ${injectActions(actions)}
+      # CURRENT_RESULTS: ${results.map((r) => r.result).join(", ")}
+      # STEPS: ${steps?.join("\n") || ""}
+    `;
+
+    return context;
+  }
+
+  async process(prompt: string, results: QueueResult[]): Promise<any> {
     try {
+      const context = this.composeContext({
+        behavior: evaluatorContext.behavior,
+        userRequest: prompt,
+        actions: this.tools,
+        results: results,
+      });
+
+      console.log("\n🔍 Evaluator processing");
+      console.log("Goal:", prompt);
+      console.log("Results to evaluate:", JSON.stringify(results, null, 2));
+
       const response = await generateObject({
         model: this.model,
         schema: z.object({
           isRemindNeeded: z.boolean(),
-          extraInformationsToRemember: z.array(
+          importantToRemembers: z.array(
             z.object({
               memoryType: z.string(),
               content: z.string(),
@@ -30,11 +62,21 @@ export class Evaluator {
           ),
           response: z.string(),
           isNextActionNeeded: z.boolean(),
-          nextActionsNeeded: ActionSchema,
+          nextActionsNeeded: z.array(
+            z.object({
+              name: z.string(),
+              parameters: z.array(
+                z.object({
+                  name: z.string(),
+                  value: z.any(),
+                })
+              ),
+            })
+          ),
           why: z.string(),
         }),
         prompt: prompt,
-        system: evaluatorContext.compose(goal, results, this.tools),
+        system: context,
       });
 
       const validatedResponse = {
@@ -46,47 +88,52 @@ export class Evaluator {
       };
 
       if (validatedResponse.isRemindNeeded) {
-        for (const item of validatedResponse.extraInformationsToRemember) {
-          // Check if the item is already in the memory
+        console.log(
+          "\n💭 Processing important memories to store",
+          validatedResponse
+        );
+        for (const item of validatedResponse.importantToRemembers) {
+          console.log("\n📝 Processing memory item:");
+          console.log("Type:", item.memoryType);
+          console.log("Content:", item.content);
+
           const memories = await this.memory.searchSimilarQueries(
             item.content,
             {
               similarityThreshold: 95,
             }
           );
+
           if (memories.length > 0) {
-            console.log("Similar memorie found, no need to remember", {
-              memories,
-            });
+            console.log("🔄 Similar memory already exists - skipping");
             continue;
           }
-          if (memories.length === 0) {
-            console.log("Adding to memory", {
-              query: item.content,
-              data: item.data,
-            });
-            await this.memory.createMemory({
-              id: crypto.randomUUID(),
-              purpose: item.memoryType,
-              query: item.content,
-              data: item.data,
-              scope: MemoryScope.GLOBAL,
-              createdAt: new Date(),
-            });
-          }
+
+          console.log("✨ Storing new memory");
+          await this.memory.createMemory({
+            id: crypto.randomUUID(),
+            purpose: item.memoryType,
+            query: item.content,
+            data: item.data,
+            scope: MemoryScope.GLOBAL,
+            createdAt: new Date(),
+          });
         }
       }
 
-      console.log("Evaluator response");
-      console.dir(validatedResponse, { depth: null });
+      console.log("\n✅ Evaluation completed");
+      console.log("─".repeat(50));
+      console.log("Results:", JSON.stringify(validatedResponse, null, 2));
+
       return validatedResponse;
     } catch (error: any) {
+      console.error("\n❌ Evaluator error:", error.message);
       if (error) {
         console.log("Evaluator error");
         console.dir(error.value, { depth: null });
         console.error(error.message);
-        if (error.value.extraInformationsToRemember.length > 0) {
-          for (const item of error.value.extraInformationsToRemember) {
+        if (error.value.importantToRemembers.length > 0) {
+          for (const item of error.value.importantToRemembers) {
             // Check if the item is already in the memory
             const memories = await this.memory.searchSimilarQueries(
               item.content
