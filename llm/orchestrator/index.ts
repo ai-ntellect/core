@@ -124,7 +124,20 @@ export class Orchestrator {
     return context;
   }
 
-  async process(prompt: string, results: QueueResult[]): Promise<any> {
+  async process(
+    prompt: string,
+    results: QueueResult[]
+  ): Promise<{
+    actions: {
+      name: string;
+      type: string;
+      parameters: {
+        name: string;
+        value: any;
+      }[];
+    }[];
+    answer: string;
+  }> {
     const state = this.composeContext({
       behavior: orchestratorContext.behavior,
       userRequest: prompt,
@@ -141,6 +154,7 @@ export class Orchestrator {
           actions: z.array(
             z.object({
               name: z.string(),
+              type: z.enum(["on-chain", "off-chain", "question", "analysis"]),
               parameters: z.array(
                 z.object({
                   name: z.string(),
@@ -161,10 +175,13 @@ export class Orchestrator {
         actions: response.object.actions.map((action) => ({
           ...action,
           parameters: Array.isArray(action.parameters)
-            ? action.parameters
+            ? action.parameters.map((param) => ({
+                name: param.name,
+                value: param.value ?? null,
+              }))
             : Object.entries(action.parameters || {}).map(([name, value]) => ({
                 name,
-                value,
+                value: value ?? null,
               })),
         })),
       };
@@ -173,8 +190,9 @@ export class Orchestrator {
       console.log("─".repeat(50));
       console.log(
         "Actions determined:",
-        validatedResponse.actions.map((a) => a.name).join(", ") ||
-          "No actions needed"
+        validatedResponse.actions.map((a) => {
+          return `${a.name} (${a.type})`;
+        })
       );
       if (validatedResponse.answer) {
         console.log("Response:", validatedResponse.answer);

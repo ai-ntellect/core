@@ -82,7 +82,7 @@ export class Agent {
       ? this.handleActions(
           {
             initialPrompt: prompt,
-            actions: request.actions as ActionSchema[],
+            actions: request.actions,
           },
           events
         )
@@ -95,11 +95,18 @@ export class Agent {
       actions,
     }: {
       initialPrompt: string;
-      actions: ActionSchema[];
+      actions: {
+        name: string;
+        type: string;
+        parameters: {
+          name: string;
+          value: any;
+        }[];
+      }[];
     },
     events: AgentEvent
   ): Promise<any> {
-    const queueItems = this.transformActions(actions);
+    const queueItems = this.transformActions(actions as any);
 
     const actionsResult = await this.actionHandler.executeActions(
       queueItems,
@@ -113,10 +120,21 @@ export class Agent {
       }
     );
 
+    const isOnChainAction = actions.some(
+      (action) => action.type === "on-chain"
+    );
+
     this.accumulatedResults = [
       ...this.accumulatedResults,
       ...actionsResult.data,
     ];
+
+    if (isOnChainAction) {
+      return {
+        data: this.accumulatedResults,
+        initialPrompt,
+      };
+    }
 
     if (this.evaluatorIteration >= this.maxEvaluatorIteration) {
       return this.handleActionResults({
@@ -149,13 +167,6 @@ export class Agent {
         },
         events
       );
-    }
-
-    if (!this.actionHandler.hasNonPrepareActions(this.accumulatedResults)) {
-      return {
-        data: this.accumulatedResults,
-        initialPrompt,
-      };
     }
 
     return this.handleActionResults({
