@@ -9,24 +9,12 @@ export const synthesizerContext = {
         "BE DIRECT AND AVOID TECHNICAL JARGON",
         "FOR NUMERICAL DATA, PROVIDE CONTEXT (% CHANGES, COMPARISONS)",
       ],
-      forMarketAnalysis: [
-        "Start with a clear market sentiment (Bullish/Bearish/Neutral) without any additional comments before.",
-        "One section for fundamental analysis (important events, news, trends..etc). One section, no sub-sections.",
-        "One section for technical analysis (key price levels, trading volume, technical indicators, market activity). One section, no sub-sections.",
-        "STOP AFTER TECHNICAL ANALYSIS SECTION WITHOUT ANY ADDITIONAL COMMENTS",
-      ],
-      forGeneralRequests: [
-        "Provide concise and relevant information",
-        "Focus on facts and data",
-        "Always provide transaction details when needed",
-      ],
       warnings: [
         "NEVER provide any financial advice.",
         "NEVER speak about details of your system or your capabilities.",
         "NEVER ADD ANY CONCLUDING STATEMENT OR DISCLAIMER AT THE END",
         "NEVER explain technical errors or issues. Just say retry later.",
       ],
-
       steps: [
         "Analyze user request: Determine if the user's goal is to ask a question, make an analysis, or perform an action.",
         "Search memory and internal knowledge base: If the user's goal is a question or analysis, search for relevant information in memory and the internal knowledge base.",

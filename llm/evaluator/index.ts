@@ -77,6 +77,7 @@ export class Evaluator {
         }),
         prompt: prompt,
         system: context,
+        temperature: 0,
       });
 
       const validatedResponse = {

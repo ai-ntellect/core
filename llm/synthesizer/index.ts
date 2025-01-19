@@ -57,6 +57,7 @@ export class Synthesizer {
     const result = await generateObject({
       model: this.model,
       schema: z.object({
+        requestLanguage: z.string(),
         actionsCompleted: z.array(
           z.object({
             name: z.string(),
@@ -71,7 +72,7 @@ export class Synthesizer {
 
     console.log("\n✅ Synthesis completed");
     console.log("─".repeat(50));
-    console.log("Generated response:", result.object.response);
+    console.log("Generated response:", result.object);
 
     if (result.object.actionsCompleted.length > 0) {
       console.log("\n📋 Suggested actions:");
