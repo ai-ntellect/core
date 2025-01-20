@@ -15,28 +15,8 @@ import { QueueItemTransformer } from "../utils/queue-item-transformer";
 import { ResultSanitizer } from "../utils/sanitize-results";
 import { ActionHandler } from "./handlers/ActionHandler";
 
-export type State = {
-  behavior: {
-    role: string;
-    language: string;
-    guidelines: {
-      important: string[];
-      warnings: string[];
-      steps?: string[];
-    };
-  };
-  userRequest: string;
-  actions: ActionSchema[];
-  results: QueueResult[];
-  examplesMessages?: {
-    role: string;
-    content: string;
-  }[];
-};
-
 export class Agent {
   private readonly actionHandler: ActionHandler;
-  private readonly user: User;
   private readonly orchestrator: Orchestrator;
   private readonly persistentMemory: PersistentMemory;
   private readonly cacheMemory: CacheMemory | undefined;
@@ -46,7 +26,6 @@ export class Agent {
   private accumulatedResults: QueueResult[] = [];
 
   constructor({
-    user,
     orchestrator,
     persistentMemory,
     cacheMemory,
@@ -60,7 +39,6 @@ export class Agent {
     stream: boolean;
     maxEvaluatorIteration: number;
   }) {
-    this.user = user;
     this.orchestrator = orchestrator;
     this.cacheMemory = cacheMemory;
     this.persistentMemory = persistentMemory;
@@ -203,7 +181,7 @@ export class Agent {
       ? (
           await synthesizer.streamProcess(
             actionsResult.initialPrompt,
-            summaryData
+            this.accumulatedResults
           )
         ).toDataStreamResponse()
       : await synthesizer.process(

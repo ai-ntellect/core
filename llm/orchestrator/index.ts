@@ -1,7 +1,6 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { State } from "../../agent";
 import { CacheMemory } from "../../memory/cache";
 import { PersistentMemory } from "../../memory/persistent";
 import {
@@ -9,6 +8,7 @@ import {
   MemoryScope,
   MemoryScopeType,
   QueueResult,
+  State,
 } from "../../types";
 import { injectActions } from "../../utils/inject-actions";
 import { orchestratorContext } from "./context";

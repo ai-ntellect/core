@@ -1,8 +1,7 @@
 import { openai } from "@ai-sdk/openai";
-import { generateObject, StreamTextResult } from "ai";
+import { generateObject, streamText, StreamTextResult } from "ai";
 import { z } from "zod";
-import { State } from "../../agent";
-import { QueueResult } from "../../types";
+import { QueueResult, State } from "../../types";
 import { synthesizerContext } from "./context";
 
 export class Synthesizer {
@@ -89,28 +88,28 @@ export class Synthesizer {
 
   async streamProcess(
     prompt: string,
-    summaryData?: string,
+    results: QueueResult[],
     onFinish?: (event: any) => void
   ): Promise<any> {
     console.log("\n🎨 Starting streaming synthesis");
     console.log("Prompt:", prompt);
-    // if (summaryData) {
-    //   console.log(
-    //     "Summary data:",
-    //     JSON.stringify(JSON.parse(summaryData), null, 2)
-    //   );
-    // }
 
-    // const result = await streamText({
-    //   model: this.model,
-    //   prompt: synthesizerContext.compose(prompt, summaryData || ""),
-    //   onFinish: (event) => {
-    //     console.log("\n✅ Streaming synthesis completed");
-    //     if (onFinish) onFinish(event);
-    //   },
-    //   system: synthesizerContext.role,
-    // });
+    const context = this.composeContext({
+      behavior: synthesizerContext.behavior,
+      userRequest: prompt,
+      results: results,
+    });
 
-    // return result;
+    const result = await streamText({
+      model: this.model,
+      prompt,
+      onFinish: (event) => {
+        console.log("\n✅ Streaming synthesis completed");
+        if (onFinish) onFinish(event);
+      },
+      system: context,
+    });
+
+    return result;
   }
 }

@@ -56,6 +56,25 @@ export interface ProcessPromptCallbacks {
   onConfirmationRequired?: (message: string) => Promise<boolean>;
 }
 
+export type State = {
+  behavior: {
+    role: string;
+    language: string;
+    guidelines: {
+      important: string[];
+      warnings: string[];
+      steps?: string[];
+    };
+  };
+  userRequest: string;
+  actions: ActionSchema[];
+  results: QueueResult[];
+  examplesMessages?: {
+    role: string;
+    content: string;
+  }[];
+};
+
 export interface ActionSchema {
   name: string;
   description: string;

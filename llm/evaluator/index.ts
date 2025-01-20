@@ -1,9 +1,8 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { State } from "../../agent";
 import { PersistentMemory } from "../../memory/persistent";
-import { ActionSchema, MemoryScope, QueueResult } from "../../types";
+import { ActionSchema, MemoryScope, QueueResult, State } from "../../types";
 import { injectActions } from "../../utils/inject-actions";
 import { evaluatorContext } from "./context";
 
