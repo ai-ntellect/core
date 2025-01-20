@@ -102,11 +102,11 @@ export class Synthesizer {
 
     const result = await streamText({
       model: this.model,
-      prompt,
       onFinish: (event) => {
         console.log("\n✅ Streaming synthesis completed");
         if (onFinish) onFinish(event);
       },
+      prompt,
       system: context,
     });
 

@@ -12,7 +12,6 @@ import {
   User,
 } from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
-import { ResultSanitizer } from "../utils/sanitize-results";
 import { ActionHandler } from "./handlers/ActionHandler";
 
 export class Agent {
@@ -158,13 +157,6 @@ export class Agent {
     initialPrompt: string;
   }) {
     const synthesizer = new Synthesizer();
-    const sanitizedResults = ResultSanitizer.sanitize(this.accumulatedResults);
-    const summaryData = JSON.stringify({
-      result: sanitizedResults,
-    });
-
-    this.accumulatedResults = [];
-    this.evaluatorIteration = 0;
 
     for (const action of actionsResult.data) {
       if (!action.error) {
@@ -177,16 +169,20 @@ export class Agent {
       }
     }
 
+    const accumulatedResults = this.accumulatedResults;
+    this.accumulatedResults = [];
+    this.evaluatorIteration = 0;
+
     return this.stream
       ? (
           await synthesizer.streamProcess(
             actionsResult.initialPrompt,
-            this.accumulatedResults
+            accumulatedResults
           )
         ).toDataStreamResponse()
       : await synthesizer.process(
           actionsResult.initialPrompt,
-          this.accumulatedResults
+          accumulatedResults
         );
   }
 
