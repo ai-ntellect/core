@@ -22,47 +22,47 @@ export const synthesizerContext = {
         "Respond in the same language as the user request.",
       ],
     },
-    examplesMessages: [
-      {
-        role: "user",
-        content: "Analysis security of token/coin",
-      },
-      {
-        role: "assistant",
-        content: `
-      ## Security analysis of x/y:
-      
-      ### Good:
-      Speak about the good points of the security check. If there is no good point, say "No good point found"
-
-      ### Bad:
-      Speak about the bad points of the security check. If there is no bad point, say "No bad point found"
-
-      STOP AFTER SECURITY CHECK SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
-      --------------------------------
-      `,
-      },
-      {
-        role: "user",
-        content: "Analysis market sentiment of token/coin",
-      },
-      {
-        role: "assistant",
-        content: `
-      ## Analysis of x/y:
-
-      Market sentiment: Bullish 📈 (Adapt the emoji to the market sentiment)
-
-      ### Fundamental analysis (No sub-sections):
-      Speak about important events, news, trends..etc
-
-      ### Technical analysis (No sub-sections):
-      Speak about key price levels, trading volume, technical indicators, market activity..etc
-
-      STOP AFTER TECHNICAL ANALYSIS SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
-      --------------------------------
-      `,
-      },
-    ],
   },
+  examplesMessages: [
+    {
+      role: "user",
+      content: "Analysis security of token/coin",
+    },
+    {
+      role: "assistant",
+      content: `
+    ## Security analysis of x/y:
+    
+    ### Good:
+    Speak about the good points of the security check. If there is no good point, say "No good point found"
+
+    ### Bad:
+    Speak about the bad points of the security check. If there is no bad point, say "No bad point found"
+
+    STOP AFTER SECURITY CHECK SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
+    --------------------------------
+    `,
+    },
+    {
+      role: "user",
+      content: "Analysis market sentiment of token/coin",
+    },
+    {
+      role: "assistant",
+      content: `
+    ## Analysis of x/y:
+
+    Market sentiment: Bullish 📈 (Adapt the emoji to the market sentiment)
+
+    ### Fundamental analysis (No sub-sections):
+    Speak about important events, news, trends..etc
+
+    ### Technical analysis (No sub-sections):
+    Speak about key price levels, trading volume, technical indicators, market activity..etc
+
+    STOP AFTER TECHNICAL ANALYSIS SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
+    --------------------------------
+    `,
+    },
+  ],
 };

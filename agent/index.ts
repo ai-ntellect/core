@@ -3,14 +3,7 @@ import { Orchestrator } from "../llm/orchestrator";
 import { Synthesizer } from "../llm/synthesizer";
 import { CacheMemory } from "../memory/cache";
 import { PersistentMemory } from "../memory/persistent";
-import {
-  ActionSchema,
-  AgentEvent,
-  MemoryScope,
-  MemoryType,
-  QueueResult,
-  User,
-} from "../types";
+import { ActionSchema, AgentEvent, QueueResult, User } from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
 import { ActionHandler } from "./handlers/ActionHandler";
 
@@ -48,6 +41,8 @@ export class Agent {
   }
 
   async process(prompt: string, events: AgentEvent): Promise<any> {
+    this.accumulatedResults = [];
+    this.evaluatorIteration = 0;
     console.log("Requesting orchestrator for actions..");
     const request = await this.orchestrator.process(
       prompt,
@@ -97,10 +92,10 @@ export class Agent {
       }
     );
 
-    this.accumulatedResults = [
+    this.accumulatedResults = this.formatResults([
       ...this.accumulatedResults,
       ...actionsResult.data,
-    ];
+    ]);
 
     const isOnChainAction = actions.some(
       (action) => action.type === "on-chain"
@@ -124,8 +119,6 @@ export class Agent {
       this.orchestrator.tools,
       this.persistentMemory
     );
-    console.log("Accumulated results:");
-    console.dir(this.accumulatedResults, { depth: null });
 
     // const sanitizedResults = ResultSanitizer.sanitize(this.accumulatedResults);
     const evaluation = await evaluator.process(
@@ -158,31 +151,16 @@ export class Agent {
   }) {
     const synthesizer = new Synthesizer();
 
-    for (const action of actionsResult.data) {
-      if (!action.error) {
-        await this.cacheMemory?.createMemory({
-          content: actionsResult.initialPrompt,
-          data: action.result,
-          scope: MemoryScope.GLOBAL,
-          type: MemoryType.ACTION,
-        });
-      }
-    }
-
-    const accumulatedResults = this.accumulatedResults;
-    this.accumulatedResults = [];
-    this.evaluatorIteration = 0;
-
     return this.stream
       ? (
           await synthesizer.streamProcess(
             actionsResult.initialPrompt,
-            accumulatedResults
+            actionsResult.data
           )
         ).toDataStreamResponse()
       : await synthesizer.process(
           actionsResult.initialPrompt,
-          accumulatedResults
+          actionsResult.data
         );
   }
 
@@ -191,5 +169,15 @@ export class Agent {
       QueueItemTransformer.transformActionsToQueueItems(actions) || [];
 
     return predefinedActions;
+  }
+
+  private formatResults(results: QueueResult[]): QueueResult[] {
+    return results.map((result) => ({
+      ...result,
+      result:
+        typeof result.result === "object"
+          ? JSON.stringify(result.result)
+          : result.result,
+    }));
   }
 }

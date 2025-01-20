@@ -26,7 +26,6 @@ export class Synthesizer {
       # STEPS: ${steps?.join("\n") || ""}
       # MESSAGES EXAMPLES: ${JSON.stringify(examplesMessages, null, 2)}
     `;
-
     return context;
   }
 
@@ -47,6 +46,7 @@ export class Synthesizer {
     console.log("\n🎨 Starting synthesis process");
     console.log("Prompt:", prompt);
     console.log("Results to synthesize:", JSON.stringify(results, null, 2));
+
     const context = this.composeContext({
       behavior: synthesizerContext.behavior,
       userRequest: prompt,

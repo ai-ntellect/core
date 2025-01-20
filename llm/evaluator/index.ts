@@ -31,7 +31,6 @@ export class Evaluator {
       # CURRENT_RESULTS: ${results.map((r) => r.result).join(", ")}
       # STEPS: ${steps?.join("\n") || ""}
     `;
-
     return context;
   }
 
@@ -45,11 +44,12 @@ export class Evaluator {
       });
       console.log("\n🔍 Evaluator processing");
       console.log("Goal:", prompt);
-      console.log("Results to evaluate:", JSON.stringify(results, null, 2));
 
       const response = await generateObject({
         model: this.model,
         schema: z.object({
+          actionsCompleted: z.array(z.string()),
+          actionsFailed: z.array(z.string()),
           isRemindNeeded: z.boolean(),
           importantToRemembers: z.array(
             z.object({
@@ -80,7 +80,7 @@ export class Evaluator {
 
       const validatedResponse = {
         ...response.object,
-        nextActions: response.object.nextActionsNeeded.map((action) => ({
+        nextActionsNeeded: response.object.nextActionsNeeded.map((action) => ({
           ...action,
           parameters: action.parameters || {},
         })),
