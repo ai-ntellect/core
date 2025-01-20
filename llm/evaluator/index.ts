@@ -62,8 +62,8 @@ export class Evaluator {
       const response = await generateObject({
         model: this.model,
         schema: z.object({
-          actionsCompleted: z.array(z.string()),
-          actionsFailed: z.array(z.string()),
+          requestLanguage: z.string(),
+          actionsAlreadyDone: z.array(z.string()),
           extraInformationsToStore: z.array(
             z.object({
               memoryType: z.enum(["episodic", "semantic", "procedural"]),
@@ -111,7 +111,7 @@ export class Evaluator {
           console.log("Type:", item.memoryType);
           console.log("Content:", item.queryForData);
 
-          const memories = await this.memory.persistent.searchSimilarQueries(
+          const memories = await this.memory.persistent.findRelevantDocuments(
             item.queryForData,
             {
               similarityThreshold: 70,
@@ -141,13 +141,13 @@ export class Evaluator {
         cacheMemory.createMemory({
           content: prompt,
           type: MemoryType.ACTION,
-          data: validatedResponse.actionsCompleted,
+          data: validatedResponse.actionsAlreadyDone,
           scope: MemoryScope.GLOBAL,
         });
         console.log(
           "✅ Workflow actions completed stored in cache",
           prompt,
-          validatedResponse.actionsCompleted
+          validatedResponse.actionsAlreadyDone
         );
       }
       console.log("\n✅ Evaluation completed");
@@ -164,7 +164,7 @@ export class Evaluator {
         if (error.value.extraInformationsToStore.length > 0) {
           for (const item of error.value.extraInformationsToStore) {
             // Check if the item is already in the memory
-            const memories = await this.memory.persistent.searchSimilarQueries(
+            const memories = await this.memory.persistent.findRelevantDocuments(
               item.content
             );
             if (memories.length === 0) {
@@ -177,7 +177,7 @@ export class Evaluator {
                 purpose: "importantToRemember",
                 query: item.content,
                 data: item.data,
-                scope: MemoryScope.USER,
+                scope: MemoryScope.GLOBAL,
                 createdAt: new Date(),
               });
             }

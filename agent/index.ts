@@ -20,6 +20,7 @@ export class Agent {
   private readonly maxEvaluatorIteration: number;
   private evaluatorIteration = 0;
   private accumulatedResults: string = "";
+  private currentInterpreter: Interpreter | undefined;
 
   constructor({
     orchestrator,
@@ -57,10 +58,20 @@ export class Agent {
       scope: MemoryScope.GLOBAL,
     });
     console.log("✅ RECENT_ACTIONS: ", cacheMemories);
+
+    const persistentMemory = await this.memory.persistent.findRelevantDocuments(
+      prompt,
+      {
+        similarityThreshold: 80,
+      }
+    );
+    console.log("✅ PERSISTENT_MEMORY: ", persistentMemory);
     const request = await this.orchestrator.process(
       prompt,
       `## RECENT_ACTIONS: ${JSON.stringify(
         cacheMemories
+      )} ## PERSISTENT_MEMORY: ${JSON.stringify(
+        persistentMemory
       )} ## CURRENT_RESULTS: ${this.accumulatedResults}`
     );
     events.onMessage?.(request);
@@ -124,7 +135,7 @@ export class Agent {
       return this.interpreterResult({
         data: this.accumulatedResults,
         initialPrompt,
-        interpreter: this.interpreters[0],
+        interpreter: this.currentInterpreter,
       });
     }
 
@@ -134,10 +145,14 @@ export class Agent {
       this.interpreters
     );
 
-    // const sanitizedResults = ResultSanitizer.sanitize(this.accumulatedResults);
     const evaluation = await evaluator.process(
       initialPrompt,
       this.accumulatedResults
+    );
+
+    this.currentInterpreter = this.getInterpreter(
+      this.interpreters,
+      evaluation.interpreter
     );
 
     events.onMessage?.(evaluation);
@@ -152,31 +167,29 @@ export class Agent {
         events
       );
     }
-    const interpreter = this.getInterpreter(
-      this.interpreters,
-      evaluation.interpreter
-    );
-    if (!interpreter) {
-      throw new Error("Interpreter not found");
-    }
+
     return this.interpreterResult({
       data: this.accumulatedResults,
       initialPrompt,
-      interpreter,
+      interpreter: this.currentInterpreter,
     });
   }
 
   private getInterpreter(interpreters: Interpreter[], name: string) {
+    console.log({ interpreters, name });
     return interpreters.find((interpreter) => interpreter.name === name);
   }
 
   private async interpreterResult(actionsResult: {
     data: string;
     initialPrompt: string;
-    interpreter: Interpreter;
+    interpreter: Interpreter | undefined;
   }) {
     const { interpreter, initialPrompt, data } = actionsResult;
-
+    if (!interpreter) {
+      throw new Error("Interpreter not found");
+    }
+    console.log("✅ INTERPRETER: ", interpreter.name);
     return this.stream
       ? (
           await interpreter.streamProcess(initialPrompt, {

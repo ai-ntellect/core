@@ -41,7 +41,7 @@ export class Orchestrator {
         }),
         execute: async ({ query }: { query: string }) => {
           const persistentMemories =
-            await this.memory.persistent.searchSimilarQueries(query, {
+            await this.memory.persistent.findRelevantDocuments(query, {
               similarityThreshold: 70,
             });
           return `# LONG_TERM_MEMORY: ${JSON.stringify(persistentMemories)}`;

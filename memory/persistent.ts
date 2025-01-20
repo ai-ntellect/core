@@ -186,7 +186,7 @@ export class PersistentMemory {
   /**
    * Find best matching memories
    */
-  async searchSimilarQueries(query: string, options: SearchOptions = {}) {
+  async findRelevantDocuments(query: string, options: SearchOptions = {}) {
     console.log("\n🔍 Searching in persistent memory");
     console.log("Query:", query);
     console.log("Options:", JSON.stringify(options, null, 2));
@@ -244,13 +244,11 @@ export class PersistentMemory {
     const results = searchResults
       .flatMap((hit) => {
         const chunkSimilarities = hit.chunks.map((chunk) => ({
-          createdAt: hit.createdAt,
-          data: hit.data,
-          purpose: hit.purpose,
           query: hit.query,
-          chunk: chunk.content,
+          data: hit.data,
           similarityPercentage:
             (cosineSimilarity(queryEmbedding, chunk.embedding) + 1) * 50,
+          createdAt: hit.createdAt,
         }));
 
         return chunkSimilarities.reduce(
@@ -275,10 +273,6 @@ export class PersistentMemory {
       results.forEach((match, index) => {
         console.log(`\n${index + 1}. Match Details:`);
         console.log(`   Query: ${match.query}`);
-        console.log(`   Purpose: ${match.purpose}`);
-        console.log(`   Similarity: ${match.similarityPercentage.toFixed(2)}%`);
-        console.log(`   Content: "${match.chunk}"`);
-        console.log("─".repeat(50));
       });
     } else {
       console.log("\n❌ No relevant matches found");

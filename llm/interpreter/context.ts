@@ -1,6 +1,6 @@
 export const generalInterpreterContext = {
   role: "You are the general assistant. Your role is to provide a clear and factual analysis of the results.",
-  language: "user_language",
+  language: "same_as_user",
   guidelines: {
     important: [],
     warnings: [],
