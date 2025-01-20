@@ -5,8 +5,8 @@
 1. [Main components](#main-components)
    - [Agent](#agent)
    - [Orchestrator](#orchestrator)
-   - [Synthesizer](#synthesizer)
    - [Evaluator](#evaluator)
+   - [Interpreter](#interpreter)
    - [Memory](#memory-architecture)
 2. [Action creation and management](#action-creation-and-management)
 3. [Agent processing](#agent-processing)
@@ -41,31 +41,54 @@ The orchestrator works under the agent's direction to manage the execution of ac
   - Uses memory for context and caching
   - Coordinates with evaluator for result assessment
 
-### Synthesizer
-
-The synthesizer is responsible for generating responses and analyzing actions based on the results obtained in the workflow. It can create summaries or more complex responses from the raw results obtained during the execution of actions.
-
-- **Main role**: Transform the results of actions into a comprehensible and structured output
-- **Interactions**:
-  - Takes the results of executed actions
-  - Creates summaries or tailored responses
-  - Formats final output for user consumption
-  - Can handle streaming responses
-
 ### Evaluator
 
-The evaluator is responsible for assessing the results of executed actions and determining if additional actions are needed. It works in conjunction with the orchestrator to ensure all user requirements are met.
+The evaluator now collaborates with Interpreters to process action results and determine the next steps in the workflow.
 
-- **Main role**: Evaluate action results and determine next steps
+- **Main role**: Evaluate action results and coordinate with appropriate Interpreters
 - **Main functions**:
   - Analyzes results from executed actions
   - Determines if additional actions are needed
-  - Suggests next actions to the orchestrator
+  - Routes results to appropriate Interpreter
   - Ensures completion of user requirements
 - **Interactions**:
   - Works with orchestrator to manage workflow
-  - Processes action results
-  - Can trigger additional action cycles
+  - Coordinates with Interpreters for specialized processing
+  - Can trigger additional action cycles if needed
+
+### Interpreter
+
+The Interpreter is a specialized component responsible for interpreting action results and generating appropriate responses. Each Interpreter is configured with a specific business context and produces responses in a format adapted to its domain of expertise.
+
+**Key characteristics**:
+
+- Business-specific context configuration
+- Domain-adapted response formatting
+- Specialized data processing based on context
+
+**Operation flow**:
+
+- Receives action results via the Evaluator
+- Analyzes data according to its specific context
+- Produces formatted responses following domain rules
+
+Examples of Interpreter implementations:
+
+1. **MarketInterpreter**
+
+   - Specialized in market data analysis
+   - Format adapted for financial analysis
+
+2. **SecurityInterpreter**
+
+   - Dedicated to security verifications
+   - Optimized format for security reports
+
+3. **GeneralInterpreter**
+   - Handles general purpose requests
+   - Flexible formatting based on context
+
+These examples demonstrate the system's flexibility, which can be extended with additional Interpreter types as needed.
 
 [![Sans-titre-2024-11-08-0220.png](https://i.postimg.cc/nryjsx5y/Sans-titre-2024-11-08-0220.png)](https://postimg.cc/rR9FbBqj)
 

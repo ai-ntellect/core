@@ -8,7 +8,7 @@ export const orchestratorContext = {
         "If some parameters are not clear or missing, don't add the action, YOU MUST ask the user for them.",
         "ALWAYS use the same language as user request. (If it's English, use English, if it's French, use French, etc.)",
         "For ON-CHAIN actions, just use the useful actions.",
-        "For QUESTIONS or ANALYSIS, you CAN search in memory and internal knowledge base.",
+        "For QUESTIONS or ANALYSIS, you MUST search in your cache memory or/and internal knowledge base.",
         "NEVER repeat same actions if the user doesn't ask for it.",
       ],
       warnings: [],

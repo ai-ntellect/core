@@ -1,9 +1,9 @@
 import { Evaluator } from "../llm/evaluator";
+import { Interpreter } from "../llm/interpreter";
 import { Orchestrator } from "../llm/orchestrator";
-import { Synthesizer } from "../llm/synthesizer";
 import { CacheMemory } from "../memory/cache";
 import { PersistentMemory } from "../memory/persistent";
-import { ActionSchema, AgentEvent, QueueResult, User } from "../types";
+import { ActionSchema, AgentEvent, MemoryScope, QueueResult } from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
 import { ResultSanitizer } from "../utils/sanitize-results";
 import { ActionHandler } from "./handlers/ActionHandler";
@@ -11,8 +11,11 @@ import { ActionHandler } from "./handlers/ActionHandler";
 export class Agent {
   private readonly actionHandler: ActionHandler;
   private readonly orchestrator: Orchestrator;
-  private readonly persistentMemory: PersistentMemory;
-  private readonly cacheMemory: CacheMemory | undefined;
+  private readonly interpreters: Interpreter[];
+  private readonly memory: {
+    persistent: PersistentMemory;
+    cache?: CacheMemory;
+  };
   private readonly stream: boolean;
   private readonly maxEvaluatorIteration: number;
   private evaluatorIteration = 0;
@@ -20,21 +23,23 @@ export class Agent {
 
   constructor({
     orchestrator,
-    persistentMemory,
-    cacheMemory,
+    interpreters,
+    memory,
     stream,
     maxEvaluatorIteration = 1,
   }: {
-    user: User;
     orchestrator: Orchestrator;
-    persistentMemory: PersistentMemory;
-    cacheMemory?: CacheMemory;
+    interpreters: Interpreter[];
+    memory: {
+      persistent: PersistentMemory;
+      cache?: CacheMemory;
+    };
     stream: boolean;
     maxEvaluatorIteration: number;
   }) {
     this.orchestrator = orchestrator;
-    this.cacheMemory = cacheMemory;
-    this.persistentMemory = persistentMemory;
+    this.interpreters = interpreters;
+    this.memory = memory;
     this.stream = stream;
     this.maxEvaluatorIteration = maxEvaluatorIteration;
     this.actionHandler = new ActionHandler();
@@ -45,9 +50,18 @@ export class Agent {
     this.accumulatedResults = "";
     this.evaluatorIteration = 0;
     console.log("Requesting orchestrator for actions..");
+    const cacheMemories = await this.memory.cache?.findSimilarActions(prompt, {
+      similarityThreshold: 70,
+      maxResults: 5,
+      userId: "1",
+      scope: MemoryScope.GLOBAL,
+    });
+    console.log("✅ RECENT_ACTIONS: ", cacheMemories);
     const request = await this.orchestrator.process(
       prompt,
-      this.accumulatedResults
+      `## RECENT_ACTIONS: ${JSON.stringify(
+        cacheMemories
+      )} ## CURRENT_RESULTS: ${this.accumulatedResults}`
     );
     events.onMessage?.(request);
 
@@ -107,15 +121,17 @@ export class Agent {
     }
 
     if (this.evaluatorIteration >= this.maxEvaluatorIteration) {
-      return this.handleActionResults({
+      return this.interpreterResult({
         data: this.accumulatedResults,
         initialPrompt,
+        interpreter: this.interpreters[0],
       });
     }
 
     const evaluator = new Evaluator(
       this.orchestrator.tools,
-      this.persistentMemory
+      this.memory,
+      this.interpreters
     );
 
     // const sanitizedResults = ResultSanitizer.sanitize(this.accumulatedResults);
@@ -136,30 +152,42 @@ export class Agent {
         events
       );
     }
-
-    return this.handleActionResults({
+    const interpreter = this.getInterpreter(
+      this.interpreters,
+      evaluation.interpreter
+    );
+    if (!interpreter) {
+      throw new Error("Interpreter not found");
+    }
+    return this.interpreterResult({
       data: this.accumulatedResults,
       initialPrompt,
+      interpreter,
     });
   }
 
-  private async handleActionResults(actionsResult: {
+  private getInterpreter(interpreters: Interpreter[], name: string) {
+    return interpreters.find((interpreter) => interpreter.name === name);
+  }
+
+  private async interpreterResult(actionsResult: {
     data: string;
     initialPrompt: string;
+    interpreter: Interpreter;
   }) {
-    const synthesizer = new Synthesizer();
+    const { interpreter, initialPrompt, data } = actionsResult;
 
     return this.stream
       ? (
-          await synthesizer.streamProcess(
-            actionsResult.initialPrompt,
-            actionsResult.data
-          )
+          await interpreter.streamProcess(initialPrompt, {
+            userRequest: initialPrompt,
+            results: data,
+          })
         ).toDataStreamResponse()
-      : await synthesizer.process(
-          actionsResult.initialPrompt,
-          actionsResult.data
-        );
+      : await interpreter.process(initialPrompt, {
+          userRequest: initialPrompt,
+          results: data,
+        });
   }
 
   private transformActions(actions: ActionSchema[]) {

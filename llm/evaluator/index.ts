@@ -1,25 +1,39 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { CacheMemory } from "../../memory/cache";
 import { PersistentMemory } from "../../memory/persistent";
-import { ActionSchema, MemoryScope, State } from "../../types";
+import { ActionSchema, MemoryScope, MemoryType, State } from "../../types";
 import { injectActions } from "../../utils/inject-actions";
+import { Interpreter } from "../interpreter";
 import { evaluatorContext } from "./context";
 
 export class Evaluator {
   private readonly model = openai("gpt-4o");
   public tools: ActionSchema[];
-  private memory: PersistentMemory;
+  private memory: {
+    persistent: PersistentMemory;
+    cache?: CacheMemory;
+  };
+  private interpreters: Interpreter[];
 
-  constructor(tools: ActionSchema[], memory: PersistentMemory) {
+  constructor(
+    tools: ActionSchema[],
+    memory: {
+      persistent: PersistentMemory;
+      cache?: CacheMemory;
+    },
+    interpreters: Interpreter[]
+  ) {
     this.tools = tools;
     this.memory = memory;
+    this.interpreters = interpreters;
   }
 
   composeContext(state: State) {
-    const { behavior, userRequest, actions, results } = state;
-    const { role, language, guidelines } = behavior;
-    const { important, warnings, steps } = guidelines;
+    const { userRequest, results } = state;
+    const { role, language, guidelines } = evaluatorContext.behavior;
+    const { important, warnings } = guidelines;
 
     const context = `
       # ROLE: ${role}
@@ -27,9 +41,11 @@ export class Evaluator {
       # IMPORTANT: ${important.join("\n")}
       # NEVER: ${warnings.join("\n")}
       # USER_REQUEST: ${userRequest}
-      # ACTIONS AVAILABLE: ${injectActions(actions)}
+      # ACTIONS AVAILABLE: ${injectActions(this.tools)}
       # CURRENT_RESULTS: ${results}
-      # STEPS: ${steps?.join("\n") || ""}
+      # INTERPRETERS: ${this.interpreters
+        .map((interpreter) => interpreter.name)
+        .join(", ")}
     `;
     return context;
   }
@@ -37,9 +53,7 @@ export class Evaluator {
   async process(prompt: string, results: string): Promise<any> {
     try {
       const context = this.composeContext({
-        behavior: evaluatorContext.behavior,
         userRequest: prompt,
-        actions: this.tools,
         results: results,
       });
       console.log("\n🔍 Evaluator processing");
@@ -50,12 +64,12 @@ export class Evaluator {
         schema: z.object({
           actionsCompleted: z.array(z.string()),
           actionsFailed: z.array(z.string()),
-          isRemindNeeded: z.boolean(),
-          importantToRemembers: z.array(
+          extraInformationsToStore: z.array(
             z.object({
-              memoryType: z.string(),
-              content: z.string(),
+              memoryType: z.enum(["episodic", "semantic", "procedural"]),
+              queryForData: z.string(),
               data: z.string(),
+              tags: z.array(z.string()),
             })
           ),
           response: z.string(),
@@ -72,9 +86,10 @@ export class Evaluator {
             })
           ),
           why: z.string(),
+          interpreter: z.string(),
         }),
         prompt: prompt,
-        system: context,
+        system: `${context}`,
         temperature: 0,
       });
 
@@ -86,20 +101,20 @@ export class Evaluator {
         })),
       };
 
-      if (validatedResponse.isRemindNeeded) {
+      if (validatedResponse.extraInformationsToStore.length > 0) {
         console.log(
           "\n💭 Processing important memories to store",
           validatedResponse
         );
-        for (const item of validatedResponse.importantToRemembers) {
+        for (const item of validatedResponse.extraInformationsToStore) {
           console.log("\n📝 Processing memory item:");
           console.log("Type:", item.memoryType);
-          console.log("Content:", item.content);
+          console.log("Content:", item.queryForData);
 
-          const memories = await this.memory.searchSimilarQueries(
-            item.content,
+          const memories = await this.memory.persistent.searchSimilarQueries(
+            item.queryForData,
             {
-              similarityThreshold: 95,
+              similarityThreshold: 70,
             }
           );
 
@@ -109,10 +124,10 @@ export class Evaluator {
           }
 
           console.log("✨ Storing new memory");
-          await this.memory.createMemory({
+          await this.memory.persistent.createMemory({
             id: crypto.randomUUID(),
             purpose: item.memoryType,
-            query: item.content,
+            query: item.queryForData,
             data: item.data,
             scope: MemoryScope.GLOBAL,
             createdAt: new Date(),
@@ -120,6 +135,21 @@ export class Evaluator {
         }
       }
 
+      // Storing workflow actions completed
+      const cacheMemory = this.memory.cache;
+      if (cacheMemory) {
+        cacheMemory.createMemory({
+          content: prompt,
+          type: MemoryType.ACTION,
+          data: validatedResponse.actionsCompleted,
+          scope: MemoryScope.GLOBAL,
+        });
+        console.log(
+          "✅ Workflow actions completed stored in cache",
+          prompt,
+          validatedResponse.actionsCompleted
+        );
+      }
       console.log("\n✅ Evaluation completed");
       console.log("─".repeat(50));
       console.log("Results:", JSON.stringify(validatedResponse, null, 2));
@@ -131,10 +161,10 @@ export class Evaluator {
         console.log("Evaluator error");
         console.dir(error.value, { depth: null });
         console.error(error.message);
-        if (error.value.importantToRemembers.length > 0) {
-          for (const item of error.value.importantToRemembers) {
+        if (error.value.extraInformationsToStore.length > 0) {
+          for (const item of error.value.extraInformationsToStore) {
             // Check if the item is already in the memory
-            const memories = await this.memory.searchSimilarQueries(
+            const memories = await this.memory.persistent.searchSimilarQueries(
               item.content
             );
             if (memories.length === 0) {
@@ -142,7 +172,7 @@ export class Evaluator {
                 query: item.content,
                 data: item.data,
               });
-              await this.memory.createMemory({
+              await this.memory.persistent.createMemory({
                 id: crypto.randomUUID(),
                 purpose: "importantToRemember",
                 query: item.content,

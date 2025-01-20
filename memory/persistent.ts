@@ -17,6 +17,7 @@ interface MeilisearchSettings {
 
 interface MeilisearchResponse {
   hits: Array<{
+    createdAt: string;
     query: string;
     purpose: string;
     data?: any;
@@ -163,7 +164,7 @@ export class PersistentMemory {
     const indexName = this._getIndexName(memory.scope, memory.userId);
     await this._getOrCreateIndex(indexName);
 
-    const chunks = await this.processContent(memory.query);
+    const chunks = await this.processContent(memory.data);
 
     const document = {
       ...memory,
@@ -243,6 +244,7 @@ export class PersistentMemory {
     const results = searchResults
       .flatMap((hit) => {
         const chunkSimilarities = hit.chunks.map((chunk) => ({
+          createdAt: hit.createdAt,
           data: hit.data,
           purpose: hit.purpose,
           query: hit.query,

@@ -3,7 +3,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { CacheMemory } from "../../memory/cache";
 import { PersistentMemory } from "../../memory/persistent";
-import { ActionSchema, MemoryScope, MemoryScopeType, State } from "../../types";
+import { ActionSchema, State } from "../../types";
 import { injectActions } from "../../utils/inject-actions";
 import { orchestratorContext } from "./context";
 
@@ -16,14 +16,18 @@ export class Orchestrator {
   };
   private id: string;
 
-  constructor(
-    id: string,
-    tools: ActionSchema[],
+  constructor({
+    id,
+    tools,
+    memory,
+  }: {
+    id: string;
+    tools: ActionSchema[];
     memory: {
       persistent: PersistentMemory;
       cache: CacheMemory;
-    }
-  ) {
+    };
+  }) {
     this.id = id;
     this.memory = memory;
     this.tools = [
@@ -40,70 +44,15 @@ export class Orchestrator {
             await this.memory.persistent.searchSimilarQueries(query, {
               similarityThreshold: 70,
             });
-          return persistentMemories;
-        },
-      },
-      {
-        name: "search_cache_memory",
-        description: "Search for relevant information in the cache",
-        parameters: z.object({
-          query: z.string(),
-        }),
-        execute: async ({ query }: { query: string }) => {
-          const cacheMemories = await this.memory.cache.findSimilarQueries(
-            query,
-            {
-              similarityThreshold: 70,
-              maxResults: 1,
-              userId: this.id,
-              scope: MemoryScope.GLOBAL,
-            }
-          );
-          return cacheMemories;
-        },
-      },
-      {
-        name: "save_memory",
-        description: "Save relevant information in the internal knowledge base",
-        parameters: z.object({
-          query: z.string(),
-          memoryType: z.string(),
-          data: z.any(),
-          scope: z.string().default("GLOBAL").describe("GLOBAL or USER"),
-          userId: z.string(),
-          whyStored: z.string(),
-        }),
-        execute: async ({
-          query,
-          purpose,
-          data,
-          scope,
-          userId,
-        }: {
-          query: string;
-          purpose: string;
-          data: any;
-          scope: MemoryScopeType;
-          userId?: string;
-        }) => {
-          const memories = await this.memory.persistent.createMemory({
-            query,
-            purpose,
-            data,
-            scope,
-            userId,
-            createdAt: new Date(),
-            id: crypto.randomUUID(),
-          });
-          return memories;
+          return `# LONG_TERM_MEMORY: ${JSON.stringify(persistentMemories)}`;
         },
       },
     ];
   }
 
   composeContext(state: State) {
-    const { behavior, userRequest, actions, results } = state;
-    const { role, language, guidelines } = behavior;
+    const { userRequest, results } = state;
+    const { role, language, guidelines } = orchestratorContext.behavior;
     const { important, warnings } = guidelines;
 
     const context = `
@@ -111,7 +60,7 @@ export class Orchestrator {
       # LANGUAGE: ${language}
       # IMPORTANT: ${important.join("\n")}
       # USER_REQUEST: ${userRequest}
-      # ACTIONS_AVAILABLES: ${injectActions(actions)} (NEVER REPEAT ACTIONS)
+      # ACTIONS_AVAILABLES: ${injectActions(this.tools)} (NEVER REPEAT ACTIONS)
       # CURRENT_RESULTS: ${results}
     `.trim();
 
@@ -133,9 +82,7 @@ export class Orchestrator {
     answer: string;
   }> {
     const state = this.composeContext({
-      behavior: orchestratorContext.behavior,
       userRequest: prompt,
-      actions: this.tools,
       results: results,
     });
     try {

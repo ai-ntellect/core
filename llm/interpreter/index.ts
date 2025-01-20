@@ -1,19 +1,21 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject, streamText, StreamTextResult } from "ai";
 import { z } from "zod";
-import { State } from "../../types";
-import { synthesizerContext } from "./context";
+import { Behavior, State } from "../../types";
 
-export class Synthesizer {
+export class Interpreter {
   private readonly model = openai("gpt-4o");
+  public readonly name: string;
 
-  composeContext(state: Partial<State>) {
-    const { behavior, userRequest, results, examplesMessages } = state;
+  constructor(name: string, private readonly behavior: Behavior) {
+    this.name = name;
+    this.behavior = behavior;
+  }
 
-    if (!behavior) {
-      return "";
-    }
-    const { role, language, guidelines } = behavior;
+  composeContext(state: State) {
+    const { userRequest, results } = state;
+    const { role, language, guidelines, examplesMessages } = this.behavior;
+
     const { important, warnings, steps } = guidelines;
 
     const context = `
@@ -31,7 +33,7 @@ export class Synthesizer {
 
   async process(
     prompt: string,
-    results: string,
+    state: State,
     onFinish?: (event: any) => void
   ): Promise<
     | {
@@ -43,15 +45,11 @@ export class Synthesizer {
       }
     | StreamTextResult<Record<string, any>>
   > {
-    console.log("\n🎨 Starting synthesis process");
+    console.log("\n🎨 Starting interpretation process");
     console.log("Prompt:", prompt);
-    console.log("Results to synthesize:", JSON.stringify(results, null, 2));
+    console.log("Results to interpret:", JSON.stringify(state, null, 2));
 
-    const context = this.composeContext({
-      behavior: synthesizerContext.behavior,
-      userRequest: prompt,
-      results: results,
-    });
+    const context = this.composeContext(state);
 
     const result = await generateObject({
       model: this.model,
@@ -69,7 +67,7 @@ export class Synthesizer {
       system: context,
     });
 
-    console.log("\n✅ Synthesis completed");
+    console.log("\n✅ Interpretation completed");
     console.log("─".repeat(50));
     console.log("Generated response:", result.object);
 
@@ -88,22 +86,18 @@ export class Synthesizer {
 
   async streamProcess(
     prompt: string,
-    results: string,
+    state: State,
     onFinish?: (event: any) => void
   ): Promise<any> {
-    console.log("\n🎨 Starting streaming synthesis");
+    console.log("\n🎨 Starting streaming interpretation");
     console.log("Prompt:", prompt);
 
-    const context = this.composeContext({
-      behavior: synthesizerContext.behavior,
-      userRequest: prompt,
-      results: results,
-    });
+    const context = this.composeContext(state);
 
     const result = await streamText({
       model: this.model,
       onFinish: (event) => {
-        console.log("\n✅ Streaming synthesis completed");
+        console.log("\n✅ Streaming interpretation completed");
         if (onFinish) onFinish(event);
       },
       prompt,

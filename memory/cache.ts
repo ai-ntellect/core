@@ -60,12 +60,12 @@ export class CacheMemory {
     console.log("💾 Cache memory created:", result);
   }
 
-  async findSimilarQueries(
+  async findSimilarActions(
     query: string,
     options: MatchOptions & { userId?: string; scope?: MemoryScope } = {}
   ): Promise<
     {
-      data: QueueResult[];
+      actions: QueueResult[];
       similarityPercentage: number;
       query: string;
     }[]
@@ -87,10 +87,10 @@ export class CacheMemory {
         const similarity = cosineSimilarity(embedding, memory.embedding);
         const similarityPercentage = (similarity + 1) * 50;
         return {
-          data: memory.data,
+          actions: memory.data,
           query: memory.query,
           similarityPercentage,
-          memoryId: memory.id,
+          createdAt: memory.createdAt,
         };
       })
       .filter(
@@ -111,7 +111,6 @@ export class CacheMemory {
         console.log(`\n${index + 1}. Match Details:`);
         console.log(`   Query: ${match.query}`);
         console.log(`   Similarity: ${match.similarityPercentage.toFixed(2)}%`);
-        console.log(`   Memory ID: ${match.memoryId}`);
         console.log("─".repeat(50));
       });
     } else {
@@ -165,7 +164,7 @@ export class CacheMemory {
     console.log("Type:", input.type);
     console.log("Scope:", input.scope);
 
-    const existingPattern = await this.findSimilarQueries(input.content, {
+    const existingPattern = await this.findSimilarActions(input.content, {
       similarityThreshold: 95,
       userId: input.userId,
       scope: input.scope,

@@ -5,8 +5,8 @@
 1. [Composants principaux](#composants-principaux)
    - [Orchestrator](#orchestrator)
    - [Queue Manager](#queue-manager)
-   - [Synthétiseur](#synthétiseur)
    - [Évaluateur](#évaluateur)
+   - [Interpreter](#interpreter)
    - [Mémoire](#architecture-mémoire)
 2. [Création et gestion des actions](#création-et-gestion-des-actions)
 3. [Exécution du Workflow](#exécution-du-workflow)
@@ -39,29 +39,47 @@ Le gestionnaire de la file d'attente (Queue Manager) organise les actions à ex�
   - Gérer les priorités des actions.
   - Assurer une exécution correcte et en temps voulu des actions.
 
-### Synthétiseur
-
-Le synthétiseur est responsable de la génération des réponses et de l'analyse des actions en fonction des résultats obtenus dans le workflow. Il peut créer des résumés ou des réponses plus complexes à partir des résultats bruts obtenus lors de l'exécution des actions.
-
-- **Rôle principal** : Transformer les résultats des actions en une sortie compréhensible et structurée.
-- **Interactions** :
-  - Prend les résultats des actions exécutées.
-  - Crée des résumés ou des réponses adaptées.
-
 ### Évaluateur
 
-L'évaluateur est responsable de l'évaluation des résultats des actions exécutées et de la détermination des actions supplémentaires nécessaires. Il travaille en collaboration avec l'orchestrateur pour s'assurer que toutes les exigences de l'utilisateur sont satisfaites.
+L'évaluateur collabore maintenant avec les Interpreters :
 
-- **Rôle principal** : Évaluer les résultats des actions et déterminer les prochaines étapes
-- **Fonctions principales** :
-  - Analyse les résultats des actions exécutées
-  - Détermine si des actions supplémentaires sont nécessaires
-  - Suggère les prochaines actions à l'orchestrateur
-  - Assure la réalisation complète des objectifs
-- **Interactions** :
-  - Collabore avec l'orchestrateur pour gérer le workflow
-  - Traite les résultats des actions
-  - Peut déclencher des cycles d'actions supplémentaires
+- Analyse les résultats des actions exécutées
+- Détermine si des actions supplémentaires sont nécessaires et renvoie à la Queue Manager
+- Sinon, il sélectionne l'Interpreter approprié selon le type de demande
+
+### Interpreter
+
+L'Interpreter est le composant spécialisé dans l'interprétation des résultats d'actions et la génération de réponses adaptées. Chaque Interpreter est configuré avec un contexte spécifique et produit des réponses dans un format adapté à son domaine d'expertise.
+
+**Caractéristiques principales** :
+
+- Configuration avec un contexte métier spécifique
+- Format de réponse adapté au domaine
+- Traitement spécialisé des données selon le contexte
+
+**Fonctionnement** :
+
+- Reçoit les résultats des actions via l'Evaluator
+- Analyse les données selon son contexte spécifique
+- Produit une réponse formatée selon les règles de son domaine
+
+Voici quelques exemples d'Interpreters qui peuvent être implémentés :
+
+1. **MarketInterpreter**
+
+   - Spécialisé dans l'analyse des données de marché
+   - Format adapté aux analyses financières
+
+2. **SecurityInterpreter**
+
+   - Dédié aux vérifications de sécurité
+   - Format optimisé pour les rapports de sécurité
+
+3. **GeneralInterpreter**
+   - Traitement des requêtes générales
+   - Format flexible selon le contexte
+
+Ces exemples illustrent la flexibilité du système, qui peut être étendu avec d'autres types d'Interpreters selon les besoins.
 
 [![Sans-titre-2024-11-08-0220.png](https://i.postimg.cc/nryjsx5y/Sans-titre-2024-11-08-0220.png)](https://postimg.cc/rR9FbBqj)
 
@@ -329,3 +347,24 @@ Voici les éléments actuellement en développement ou à améliorer :
 - [ ] Tester l'intégration, la sécurité et la transparence des actions Lit pour garantir leur bon fonctionnement.
 
 **Statut** : En cours d'étude pour déterminer la faisabilité et les implications techniques, notamment en ce qui concerne l'intégration de la décentralisation dans le système existant.
+
+### Exemple d'utilisation
+
+```typescript
+const securityInterpreter = new Interpreter("security", securityContext);
+const marketInterpreter = new Interpreter("market", marketContext);
+const generalInterpreter = new Interpreter("general", generalContext);
+
+const agent = new Agent({
+  interpreters: [securityInterpreter, marketInterpreter, generalInterpreter],
+  orchestrator,
+  memory: {
+    persistent: memory,
+    cache: cacheMemory,
+  },
+  stream: false,
+  maxEvaluatorIteration: 1,
+});
+
+const result = await agent.process(prompt, context);
+```

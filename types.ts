@@ -56,23 +56,23 @@ export interface ProcessPromptCallbacks {
   onConfirmationRequired?: (message: string) => Promise<boolean>;
 }
 
-export type State = {
-  behavior: {
-    role: string;
-    language: string;
-    guidelines: {
-      important: string[];
-      warnings: string[];
-      steps?: string[];
-    };
+export type Behavior = {
+  role: string;
+  language: string;
+  guidelines: {
+    important: string[];
+    warnings: string[];
+    steps?: string[];
   };
-  userRequest: string;
-  actions: ActionSchema[];
-  results: string;
   examplesMessages?: {
     role: string;
     content: string;
   }[];
+};
+
+export type State = {
+  userRequest: string;
+  results: string;
 };
 
 export interface ActionSchema {
@@ -154,7 +154,7 @@ export interface CacheMemoryOptions {
 export interface CreateMemoryInput {
   content: any;
   type: MemoryType;
-  data: QueueResult[];
+  data: string[];
   userId?: string;
   scope?: MemoryScope;
 }
