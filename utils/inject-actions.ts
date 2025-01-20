@@ -9,13 +9,11 @@ export const injectActions = (actions: ActionSchema[]) => {
       action.description
     }, Arguments (STRICTLY REQUIRED): { ${schemaShape} } ${
       action.examples
-        ? `Examples: ${action.examples
-            .map((e: any) => {
-              return `Role: ${e.role}, Content: ${
-                e.content
-              }, Parameters: { ${Object.keys(e.parameters).join(", ")} }`;
-            })
-            .join("\n")}`
+        ? `Format examples (MUST RESPECT): ${action.examples.map(
+            (example: any) => {
+              return JSON.stringify(example);
+            }
+          )}`
         : ""
     }`;
     return actionString;

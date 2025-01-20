@@ -78,16 +78,6 @@ export class Agent {
     );
     events.onMessage?.(request);
 
-    const isOnChainAction = request.actions.some(
-      (action) => action.type === "on-chain"
-    );
-
-    if (isOnChainAction) {
-      return {
-        data: this.accumulatedResults,
-        initialPrompt: prompt,
-      };
-    }
     return request.actions.length > 0
       ? this.handleActions(
           {
@@ -134,6 +124,17 @@ export class Agent {
       ...this.accumulatedResults,
       ...actionsResult.data,
     ];
+
+    const isOnChainAction = actions.some(
+      (action) => action.type === "on-chain"
+    );
+
+    if (isOnChainAction) {
+      return {
+        data: this.accumulatedResults,
+        initialPrompt,
+      };
+    }
 
     if (this.evaluatorIteration >= this.maxEvaluatorIteration) {
       return this.handleActionResults({

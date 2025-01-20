@@ -6,7 +6,7 @@ import { QueueResult } from "../../types";
 import { synthesizerContext } from "./context";
 
 export class Synthesizer {
-  private readonly model = openai("gpt-4-turbo");
+  private readonly model = openai("gpt-4o");
 
   composeContext(state: Partial<State>) {
     const { behavior, userRequest, results, examplesMessages } = state;
