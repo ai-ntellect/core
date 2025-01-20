@@ -1,7 +1,7 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject, streamText, StreamTextResult } from "ai";
 import { z } from "zod";
-import { QueueResult, State } from "../../types";
+import { State } from "../../types";
 import { synthesizerContext } from "./context";
 
 export class Synthesizer {
@@ -22,7 +22,7 @@ export class Synthesizer {
       # IMPORTANT: ${important.join("\n")}
       # NEVER: ${warnings.join("\n")}
       # USER_REQUEST: ${userRequest}
-      # CURRENT_RESULTS: ${results?.map((r) => r.result).join(", ") || ""}
+      # CURRENT_RESULTS: ${results}
       # STEPS: ${steps?.join("\n") || ""}
       # MESSAGES EXAMPLES: ${JSON.stringify(examplesMessages, null, 2)}
     `;
@@ -31,7 +31,7 @@ export class Synthesizer {
 
   async process(
     prompt: string,
-    results: QueueResult[],
+    results: string,
     onFinish?: (event: any) => void
   ): Promise<
     | {
@@ -88,7 +88,7 @@ export class Synthesizer {
 
   async streamProcess(
     prompt: string,
-    results: QueueResult[],
+    results: string,
     onFinish?: (event: any) => void
   ): Promise<any> {
     console.log("\n🎨 Starting streaming synthesis");

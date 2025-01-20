@@ -2,7 +2,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { PersistentMemory } from "../../memory/persistent";
-import { ActionSchema, MemoryScope, QueueResult, State } from "../../types";
+import { ActionSchema, MemoryScope, State } from "../../types";
 import { injectActions } from "../../utils/inject-actions";
 import { evaluatorContext } from "./context";
 
@@ -28,13 +28,13 @@ export class Evaluator {
       # NEVER: ${warnings.join("\n")}
       # USER_REQUEST: ${userRequest}
       # ACTIONS AVAILABLE: ${injectActions(actions)}
-      # CURRENT_RESULTS: ${results.map((r) => r.result).join(", ")}
+      # CURRENT_RESULTS: ${results}
       # STEPS: ${steps?.join("\n") || ""}
     `;
     return context;
   }
 
-  async process(prompt: string, results: QueueResult[]): Promise<any> {
+  async process(prompt: string, results: string): Promise<any> {
     try {
       const context = this.composeContext({
         behavior: evaluatorContext.behavior,

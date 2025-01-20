@@ -68,7 +68,7 @@ export type State = {
   };
   userRequest: string;
   actions: ActionSchema[];
-  results: QueueResult[];
+  results: string;
   examplesMessages?: {
     role: string;
     content: string;

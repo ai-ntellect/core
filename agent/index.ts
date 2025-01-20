@@ -5,6 +5,7 @@ import { CacheMemory } from "../memory/cache";
 import { PersistentMemory } from "../memory/persistent";
 import { ActionSchema, AgentEvent, QueueResult, User } from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
+import { ResultSanitizer } from "../utils/sanitize-results";
 import { ActionHandler } from "./handlers/ActionHandler";
 
 export class Agent {
@@ -15,7 +16,7 @@ export class Agent {
   private readonly stream: boolean;
   private readonly maxEvaluatorIteration: number;
   private evaluatorIteration = 0;
-  private accumulatedResults: QueueResult[] = [];
+  private accumulatedResults: string = "";
 
   constructor({
     orchestrator,
@@ -37,11 +38,11 @@ export class Agent {
     this.stream = stream;
     this.maxEvaluatorIteration = maxEvaluatorIteration;
     this.actionHandler = new ActionHandler();
-    this.accumulatedResults = [];
+    this.accumulatedResults = "";
   }
 
   async process(prompt: string, events: AgentEvent): Promise<any> {
-    this.accumulatedResults = [];
+    this.accumulatedResults = "";
     this.evaluatorIteration = 0;
     console.log("Requesting orchestrator for actions..");
     const request = await this.orchestrator.process(
@@ -92,10 +93,7 @@ export class Agent {
       }
     );
 
-    this.accumulatedResults = this.formatResults([
-      ...this.accumulatedResults,
-      ...actionsResult.data,
-    ]);
+    this.accumulatedResults += this.formatResults(actionsResult.data);
 
     const isOnChainAction = actions.some(
       (action) => action.type === "on-chain"
@@ -146,7 +144,7 @@ export class Agent {
   }
 
   private async handleActionResults(actionsResult: {
-    data: QueueResult[];
+    data: string;
     initialPrompt: string;
   }) {
     const synthesizer = new Synthesizer();
@@ -171,13 +169,15 @@ export class Agent {
     return predefinedActions;
   }
 
-  private formatResults(results: QueueResult[]): QueueResult[] {
-    return results.map((result) => ({
+  private formatResults(results: QueueResult[]): string {
+    const formattedResults = results.map((result) => ({
       ...result,
       result:
         typeof result.result === "object"
           ? JSON.stringify(result.result)
           : result.result,
     }));
+    const sanitizedResults = ResultSanitizer.sanitize(formattedResults);
+    return sanitizedResults;
   }
 }

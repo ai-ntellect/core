@@ -3,13 +3,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { CacheMemory } from "../../memory/cache";
 import { PersistentMemory } from "../../memory/persistent";
-import {
-  ActionSchema,
-  MemoryScope,
-  MemoryScopeType,
-  QueueResult,
-  State,
-} from "../../types";
+import { ActionSchema, MemoryScope, MemoryScopeType, State } from "../../types";
 import { injectActions } from "../../utils/inject-actions";
 import { orchestratorContext } from "./context";
 
@@ -118,7 +112,7 @@ export class Orchestrator {
       # IMPORTANT: ${important.join("\n")}
       # USER_REQUEST: ${userRequest}
       # ACTIONS_AVAILABLES: ${injectActions(actions)} (NEVER REPEAT ACTIONS)
-      # CURRENT_RESULTS: ${results.map((r) => r.result).join(", ")}
+      # CURRENT_RESULTS: ${results}
     `.trim();
 
     return context;
@@ -126,7 +120,7 @@ export class Orchestrator {
 
   async process(
     prompt: string,
-    results: QueueResult[]
+    results: string
   ): Promise<{
     actions: {
       name: string;
