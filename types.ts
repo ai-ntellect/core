@@ -188,8 +188,7 @@ export interface Memory {
   query: string;
   purpose: string;
   data: any;
-  scope: MemoryScopeType;
-  userId?: string;
+  roomId: string;
   createdAt: Date;
   chunks?: MemoryChunk[];
 }
@@ -230,4 +229,27 @@ export interface QueueItemParameter {
 export interface TransformedQueueItem {
   name: string;
   parameters: QueueItemParameter[];
+}
+
+export interface ScheduledAction {
+  id: string;
+  action: {
+    name: string;
+    parameters: QueueItemParameter[];
+  };
+  scheduledTime: Date;
+  userId: string;
+  status: "pending" | "completed" | "failed";
+  recurrence?: {
+    type: "daily" | "weekly" | "monthly";
+    interval: number;
+  };
+}
+
+export interface ScheduledActionEvents {
+  onActionStart?: (action: ScheduledAction) => void;
+  onActionComplete?: (action: ScheduledAction, result: any) => void;
+  onActionFailed?: (action: ScheduledAction, error: Error) => void;
+  onActionScheduled?: (action: ScheduledAction) => void;
+  onActionCancelled?: (actionId: string) => void;
 }

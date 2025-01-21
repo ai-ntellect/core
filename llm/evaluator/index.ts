@@ -3,7 +3,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { CacheMemory } from "../../memory/cache";
 import { PersistentMemory } from "../../memory/persistent";
-import { ActionSchema, MemoryScope, MemoryType, State } from "../../types";
+import { ActionSchema, MemoryType, State } from "../../types";
 import { injectActions } from "../../utils/inject-actions";
 import { Interpreter } from "../interpreter";
 import { evaluatorContext } from "./context";
@@ -129,7 +129,7 @@ export class Evaluator {
             purpose: item.memoryType,
             query: item.queryForData,
             data: item.data,
-            scope: MemoryScope.GLOBAL,
+            roomId: "global",
             createdAt: new Date(),
           });
         }
@@ -142,7 +142,6 @@ export class Evaluator {
           content: prompt,
           type: MemoryType.ACTION,
           data: validatedResponse.actionsAlreadyDone,
-          scope: MemoryScope.GLOBAL,
         });
         console.log(
           "✅ Workflow actions completed stored in cache",
@@ -177,7 +176,7 @@ export class Evaluator {
                 purpose: "importantToRemember",
                 query: item.content,
                 data: item.data,
-                scope: MemoryScope.GLOBAL,
+                roomId: "global",
                 createdAt: new Date(),
               });
             }

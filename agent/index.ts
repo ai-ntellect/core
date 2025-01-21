@@ -3,7 +3,15 @@ import { Interpreter } from "../llm/interpreter";
 import { Orchestrator } from "../llm/orchestrator";
 import { CacheMemory } from "../memory/cache";
 import { PersistentMemory } from "../memory/persistent";
-import { ActionSchema, AgentEvent, MemoryScope, QueueResult } from "../types";
+import { ActionQueueManager } from "../services/queue";
+import { ActionScheduler } from "../services/scheduler";
+import {
+  ActionSchema,
+  AgentEvent,
+  MemoryScope,
+  QueueResult,
+  ScheduledAction,
+} from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
 import { ResultSanitizer } from "../utils/sanitize-results";
 import { ActionHandler } from "./handlers/ActionHandler";
@@ -21,6 +29,7 @@ export class Agent {
   private evaluatorIteration = 0;
   private accumulatedResults: string = "";
   private currentInterpreter: Interpreter | undefined;
+  private readonly scheduler: ActionScheduler;
 
   constructor({
     orchestrator,
@@ -45,18 +54,27 @@ export class Agent {
     this.maxEvaluatorIteration = maxEvaluatorIteration;
     this.actionHandler = new ActionHandler();
     this.accumulatedResults = "";
+    this.scheduler = new ActionScheduler(
+      new ActionQueueManager(this.orchestrator.tools),
+      this.orchestrator
+    );
   }
 
   async process(prompt: string, events: AgentEvent): Promise<any> {
     this.accumulatedResults = "";
     this.evaluatorIteration = 0;
     console.log("Requesting orchestrator for actions..");
-    const cacheMemories = await this.memory.cache?.findSimilarActions(prompt, {
-      similarityThreshold: 70,
-      maxResults: 5,
-      userId: "1",
-      scope: MemoryScope.GLOBAL,
-    });
+    const parsedPrompt = JSON.parse(prompt);
+    const promptOnly = parsedPrompt.userRequest;
+    const cacheMemories = await this.memory.cache?.findSimilarActions(
+      promptOnly,
+      {
+        similarityThreshold: 70,
+        maxResults: 5,
+        userId: "1",
+        scope: MemoryScope.GLOBAL,
+      }
+    );
     console.log("✅ RECENT_ACTIONS: ", cacheMemories);
 
     const persistentMemory = await this.memory.persistent.findRelevantDocuments(
@@ -220,5 +238,23 @@ export class Agent {
     }));
     const sanitizedResults = ResultSanitizer.sanitize(formattedResults);
     return sanitizedResults;
+  }
+
+  async scheduleAction(
+    action: ActionSchema,
+    scheduledTime: Date,
+    userId: string,
+    recurrence?: ScheduledAction["recurrence"]
+  ): Promise<string> {
+    return this.scheduler.scheduleAction(
+      action,
+      scheduledTime,
+      userId,
+      recurrence
+    );
+  }
+
+  async cancelScheduledAction(actionId: string): Promise<boolean> {
+    return this.scheduler.cancelScheduledAction(actionId);
   }
 }

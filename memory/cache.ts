@@ -44,15 +44,8 @@ export class CacheMemory {
     }
   }
 
-  private getMemoryKey(scope: MemoryScope, userId?: string): string {
-    if (scope === MemoryScope.GLOBAL) {
-      return `${this.CACHE_PREFIX}global:`;
-    }
-    return `${this.CACHE_PREFIX}user:${userId}:`;
-  }
-
   private async storeMemory(memory: CacheMemoryType) {
-    const prefix = this.getMemoryKey(memory.scope, memory.userId);
+    const prefix = this.CACHE_PREFIX;
     const key = `${prefix}${memory.id}`;
     const result = await this.redis.set(key, JSON.stringify(memory), {
       EX: this.CACHE_TTL,
@@ -124,23 +117,10 @@ export class CacheMemory {
     scope?: MemoryScope,
     userId?: string
   ): Promise<CacheMemoryType[]> {
-    let patterns: CacheMemoryType[] = [];
+    const keys = await this.redis.keys(`${this.CACHE_PREFIX}*`);
+    const memories = await this.getMemoriesFromKeys(keys);
 
-    if (!scope || scope === MemoryScope.GLOBAL) {
-      const globalPrefix = this.getMemoryKey(MemoryScope.GLOBAL);
-      const globalKeys = await this.redis.keys(`${globalPrefix}*`);
-      const globalPatterns = await this.getMemoriesFromKeys(globalKeys);
-      patterns = patterns.concat(globalPatterns);
-    }
-
-    if (userId && (!scope || scope === MemoryScope.USER)) {
-      const userPrefix = this.getMemoryKey(MemoryScope.USER, userId);
-      const userKeys = await this.redis.keys(`${userPrefix}*`);
-      const userPatterns = await this.getMemoriesFromKeys(userKeys);
-      patterns = patterns.concat(userPatterns);
-    }
-
-    return patterns;
+    return memories;
   }
 
   private async getMemoriesFromKeys(

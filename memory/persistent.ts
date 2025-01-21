@@ -28,18 +28,6 @@ interface MeilisearchResponse {
   }>;
 }
 
-interface SearchParams {
-  q?: string;
-  offset?: number;
-  limit?: number;
-  filter?: string | string[];
-  facets?: string[];
-  attributesToRetrieve?: string[];
-  attributesToSearchOn?: string[];
-  sort?: string[];
-  matchingStrategy?: "last" | "all" | "frequency";
-}
-
 interface ProcessedChunk {
   content: string;
   embedding: number[];
@@ -56,7 +44,7 @@ export class PersistentMemory {
   constructor(options: { host: string; apiKey: string; indexPrefix?: string }) {
     this.host = options.host;
     this.apiKey = options.apiKey;
-    this.INDEX_PREFIX = options.indexPrefix || "memory_";
+    this.INDEX_PREFIX = options.indexPrefix || "memory";
   }
 
   /**
@@ -64,10 +52,7 @@ export class PersistentMemory {
    */
   async init() {
     // Create global index
-    await this._getOrCreateIndex(this._getIndexName(MemoryScope.GLOBAL));
-
-    // Create user index
-    await this._getOrCreateIndex(this._getIndexName(MemoryScope.USER));
+    await this._getOrCreateIndex(this.INDEX_PREFIX);
   }
 
   /**
@@ -94,17 +79,6 @@ export class PersistentMemory {
 
     return response.json() as Promise<T>;
   }
-
-  /**
-   * Get index name based on scope and userId
-   */
-  private _getIndexName(scope: MemoryScope, userId?: string): string {
-    if (scope === "global") {
-      return `${this.INDEX_PREFIX}global`;
-    }
-    return `${this.INDEX_PREFIX}user_${userId}`;
-  }
-
   /**
    * Get or create an index with proper settings
    */
@@ -161,8 +135,7 @@ export class PersistentMemory {
    * Store a memory in the database
    */
   async createMemory(memory: Memory) {
-    const indexName = this._getIndexName(memory.scope, memory.userId);
-    await this._getOrCreateIndex(indexName);
+    await this._getOrCreateIndex(memory.roomId);
 
     const chunks = await this.processContent(memory.data);
 
@@ -173,7 +146,7 @@ export class PersistentMemory {
     };
 
     const response = await this._makeRequest(
-      `/indexes/${indexName}/documents`,
+      `/indexes/${this.INDEX_PREFIX}/documents`,
       {
         method: "POST",
         body: JSON.stringify([document]),
@@ -199,42 +172,20 @@ export class PersistentMemory {
 
     const searchResults = [];
 
-    // Search in global memories
-    if (!options.scope || options.scope === "global") {
-      const globalIndex = this._getIndexName(MemoryScope.GLOBAL);
-      console.log("\n📚 Searching in global index:", globalIndex);
-      try {
-        const globalResults = await this._makeRequest<MeilisearchResponse>(
-          `/indexes/${globalIndex}/search`,
-          {
-            method: "POST",
-            body: JSON.stringify({ q: query }),
-          }
-        );
-        if (globalResults?.hits) {
-          searchResults.push(...globalResults.hits);
-        }
-      } catch (error) {
-        console.error("❌ Error searching global index:", error);
-      }
-    }
-
-    // Search in user memories
-    if (
-      options.userId &&
-      (!options.scope || options.scope === MemoryScope.USER)
-    ) {
-      const userIndex = this._getIndexName(MemoryScope.USER, options.userId);
-      const userResults = await this._makeRequest<MeilisearchResponse>(
-        `/indexes/${userIndex}/search`,
+    console.log("\n📚 Searching in global index:", this.INDEX_PREFIX);
+    try {
+      const globalResults = await this._makeRequest<MeilisearchResponse>(
+        `/indexes/${this.INDEX_PREFIX}/search`,
         {
           method: "POST",
           body: JSON.stringify({ q: query }),
         }
       );
-      if (userResults.hits) {
-        searchResults.push(...userResults.hits);
+      if (globalResults?.hits) {
+        searchResults.push(...globalResults.hits);
       }
+    } catch (error) {
+      console.error("❌ Error searching global index:", error);
     }
 
     const totalResults = searchResults.length;
@@ -284,9 +235,8 @@ export class PersistentMemory {
   /**
    * Delete memories for a given scope and user
    */
-  async deleteMemories(scope: MemoryScope, userId?: string) {
-    const indexName = this._getIndexName(scope, userId);
-    return this._makeRequest(`/indexes/${indexName}`, {
+  async deleteMemories() {
+    return this._makeRequest(`/indexes/${this.INDEX_PREFIX}`, {
       method: "DELETE",
     });
   }
