@@ -251,34 +251,37 @@ export const prepareTransaction = {
 L'agent gère l'ensemble du processus de compréhension des requêtes utilisateur et de coordination des réponses. Voici un exemple d'utilisation de l'agent :
 
 ```typescript
-const memory = new PersistentMemory({
+const persistentMemory = new PersistentMemory({
   host: "http://localhost:7700",
   apiKey: "VOTRE_CLE_API",
 });
+const cacheMemory = new CacheMemory();
 
 const orchestrator = new Orchestrator(
-  [
-    getChainsTVL,
-    getRssNews,
-    // autres outils...
-  ],
-  memory
+  id: from,
+  tools: [/* your actions here */],
+  memory: {
+    persistent: persistentMemory,
+    cache: cacheMemory,
+  },
 );
 
+const securityInterpreter = new Interpreter("security", securityContext);
+const marketInterpreter = new Interpreter("market", marketContext);
+const generalInterpreter = new Interpreter("general", generalContext);
+
 const agent = new Agent({
-  user: { id: "user_id" },
+  interpreters: [securityInterpreter, marketInterpreter, generalInterpreter],
   orchestrator,
-  persistentMemory: memory,
+  memory: {
+    persistent: memory,
+    cache: cacheMemory,
+  },
   stream: false,
   maxEvaluatorIteration: 1,
 });
 
-// Traitement d'une requête utilisateur
-const result = await agent.process(prompt, context, {
-  onMessage: (message) => {
-    console.log({ message });
-  },
-});
+const result = await agent.process("Votre prompt ici");
 ```
 
 ### Flux de traitement de l'agent :
@@ -347,24 +350,3 @@ Voici les éléments actuellement en développement ou à améliorer :
 - [ ] Tester l'intégration, la sécurité et la transparence des actions Lit pour garantir leur bon fonctionnement.
 
 **Statut** : En cours d'étude pour déterminer la faisabilité et les implications techniques, notamment en ce qui concerne l'intégration de la décentralisation dans le système existant.
-
-### Exemple d'utilisation
-
-```typescript
-const securityInterpreter = new Interpreter("security", securityContext);
-const marketInterpreter = new Interpreter("market", marketContext);
-const generalInterpreter = new Interpreter("general", generalContext);
-
-const agent = new Agent({
-  interpreters: [securityInterpreter, marketInterpreter, generalInterpreter],
-  orchestrator,
-  memory: {
-    persistent: memory,
-    cache: cacheMemory,
-  },
-  stream: false,
-  maxEvaluatorIteration: 1,
-});
-
-const result = await agent.process(prompt, context);
-```

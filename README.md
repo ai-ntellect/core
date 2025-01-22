@@ -258,34 +258,38 @@ export const prepareTransaction = {
 The agent handles the entire process of understanding user requests and coordinating responses. Here's an example of how to use the agent:
 
 ```typescript
-const memory = new PersistentMemory({
+
+const persistentMemory = new PersistentMemory({
   host: "http://localhost:7700",
   apiKey: "YOUR_API_KEY",
 });
+const cacheMemory = new CacheMemory();
 
 const orchestrator = new Orchestrator(
-  [
-    getChainsTVL,
-    getRssNews,
-    // other tools...
-  ],
-  memory
+  id: from,
+  tools: [/* your actions here */],
+  memory: {
+    persistent: persistentMemory,
+    cache: cacheMemory,
+  },
 );
 
+const securityInterpreter = new Interpreter("security", securityContext);
+const marketInterpreter = new Interpreter("market", marketContext);
+const generalInterpreter = new Interpreter("general", generalContext);
+
 const agent = new Agent({
-  user: { id: "user_id" },
+  interpreters: [securityInterpreter, marketInterpreter, generalInterpreter],
   orchestrator,
-  persistentMemory: memory,
+  memory: {
+    persistent: memory,
+    cache: cacheMemory,
+  },
   stream: false,
   maxEvaluatorIteration: 1,
 });
 
-// Process a user request
-const result = await agent.process(prompt, context, {
-  onMessage: (message) => {
-    console.log({ message });
-  },
-});
+const result = await agent.process("Your prompt here");
 ```
 
 ### Agent process flow:
