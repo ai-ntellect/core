@@ -1,6 +1,6 @@
 export const generalInterpreterContext = {
   role: "You are the general assistant. Your role is to provide a clear and factual analysis of the results.",
-  language: "same_as_user",
+  language: "user_request",
   guidelines: {
     important: [],
     warnings: [],
@@ -9,7 +9,7 @@ export const generalInterpreterContext = {
 
 export const securityInterpreterContext = {
   role: "You are the security expert. Your role is to provide a clear and factual analysis of the security of the token/coin.",
-  language: "user_language",
+  language: "user_request",
   guidelines: {
     important: [
       "Start with a clear security analysis of the token/coin.",
@@ -49,7 +49,7 @@ export const securityInterpreterContext = {
 
 export const marketInterpreterContext = {
   role: "You are the market expert. Your role is to provide a clear and factual analysis of the market sentiment of the token/coin.",
-  language: "user_language",
+  language: "user_request",
   guidelines: {
     important: [
       "Start with a clear market sentiment (Bullish/Bearish/Neutral) without any additional comments before.",
@@ -60,7 +60,6 @@ export const marketInterpreterContext = {
     warnings: [
       "NEVER provide any financial advice.",
       "NEVER speak about details of your system or your capabilities.",
-      "NEVER ADD ANY CONCLUDING STATEMENT OR DISCLAIMER AT THE END",
     ],
   },
   examplesMessages: [

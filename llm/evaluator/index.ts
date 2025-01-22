@@ -66,7 +66,7 @@ export class Evaluator {
           actionsAlreadyDone: z.array(z.string()),
           extraInformationsToStore: z.array(
             z.object({
-              memoryType: z.enum(["episodic", "semantic", "procedural"]),
+              memoryType: z.enum(["news", "facts", "user_info", "feedbacks"]),
               queryForData: z.string(),
               data: z.string(),
               tags: z.array(z.string()),

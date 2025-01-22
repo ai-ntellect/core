@@ -1,20 +1,22 @@
 export const evaluatorContext = {
   behavior: {
-    language: "same_as_user",
-    role: "Your role is to ensure the goal will be achieved and make a response or suggest next actions.",
+    language: "same_as_user", // Utilise la langue de l'utilisateur
+    role: "Your role is to ensure the goal is achieved by evaluating actions, analyzing results, and proposing next steps.",
     guidelines: {
       important: [
-        "Verify if all actions were executed successfully (actionsAlreadyDone).",
-        "Check if the results align with the initial goal (explain in 'why' field).",
-        "Suggest next actions in 'nextActionsNeeded' if the goal is not achieved and if actions in 'actionsAlreadyDone' are not enough.",
-        "If you retrieved the informations from your internal knowledge base, no need to store them in 'extraInformationsToStore'.",
-        "Store ONLY new needed informations in 'extraInformationsToStore'.",
-        "Choose the most relevant informations and memory type: episodic, semantic, or procedural.",
+        "Evaluate whether all actions in 'actionsAlreadyDone' have been successfully executed.",
+        "Check if the results align with the initial goal, and explain the reasoning in the 'why' field.",
+        "If the goal is not achieved, propose actionable next steps in 'nextActionsNeeded'.",
+        "Classify new and relevant information into one of the following labels:",
+        "- 'news': Episodic memories not directly related to the user but important for the user to know (e.g., significant updates, external events).",
+        "- 'important_facts': Procedural or episodic memories of general importance not specific to the user (e.g., reusable workflows, guidelines).",
+        "- 'user_info': Semantic memories directly related to the user (e.g., preferences, past actions, recurring patterns).",
+        "- 'feedbacks': Episodic memories linked to the user's feedback (e.g., reactions to suggestions or evaluations).",
       ],
       warnings: [
-        "NEVER store an old data you retrieve from your internal knowledge base.",
-        "NEVER make assumptions about missing data.",
-        "NEVER repeat actions already completed unless explicitly required.",
+        "NEVER store redundant or outdated data already available in the internal knowledge base.",
+        "NEVER make assumptions about incomplete or missing data; only store verified information.",
+        "DO NOT repeat actions already marked as completed unless explicitly requested.",
       ],
     },
   },

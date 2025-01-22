@@ -1,10 +1,27 @@
-import { openai } from "@ai-sdk/openai";
-import { generateObject, streamText, StreamTextResult } from "ai";
+import { deepseek } from "@ai-sdk/deepseek";
+import { generateText, streamText, StreamTextResult } from "ai";
 import { z } from "zod";
 import { Behavior, State } from "../../types";
+import { LLMHeaderBuilder } from "../helpers/header-builder";
+import { SchemaGenerator } from "../helpers/schema-generator";
+
+const interpreterSchema = z.object({
+  requestLanguage: z
+    .string()
+    .describe("The language of the user's request (fr, en, es, etc.)"),
+  actionsCompleted: z
+    .array(
+      z.object({
+        name: z.string(),
+        reasoning: z.string(),
+      })
+    )
+    .describe("The actions done and why."),
+  response: z.string().describe("The response to the user's request."),
+});
 
 export class Interpreter {
-  private readonly model = openai("gpt-4o");
+  private readonly model = deepseek("deepseek-reasoner");
   public readonly name: string;
 
   constructor(name: string, private readonly behavior: Behavior) {
@@ -15,19 +32,34 @@ export class Interpreter {
   composeContext(state: State) {
     const { userRequest, results } = state;
     const { role, language, guidelines, examplesMessages } = this.behavior;
-
     const { important, warnings, steps } = guidelines;
 
-    const context = `
-      # ROLE: ${role}
-      # LANGUAGE: ${language}
-      # IMPORTANT: ${important.join("\n")}
-      # NEVER: ${warnings.join("\n")}
-      # USER_REQUEST: ${userRequest}
-      # CURRENT_RESULTS: ${results}
-      # STEPS: ${steps?.join("\n") || ""}
-      # MESSAGES EXAMPLES: ${JSON.stringify(examplesMessages, null, 2)}
-    `;
+    const { schema, instructions, outputExamples } = SchemaGenerator.generate({
+      schema: interpreterSchema,
+      outputExamples: [
+        {
+          input: "Hello, how are you?",
+          output: `{
+            "requestLanguage": "en",
+            "actionsCompleted": [],
+            "response": "Hello, I'm fine, thank you!"
+          }`,
+        },
+      ],
+    });
+
+    const context = LLMHeaderBuilder.create()
+      .addHeader("ROLE", role)
+      .addHeader("LANGUAGE", language)
+      .addHeader("IMPORTANT", important)
+      .addHeader("NEVER", warnings)
+      .addHeader("CURRENT_RESULTS", results)
+      .addHeader("STEPS", steps)
+      .addHeader("USER_REQUEST", userRequest)
+      .addHeader("OUTPUT_SCHEMA", schema)
+      .addHeader("OUTPUT_INSTRUCTIONS", instructions)
+      .addHeader("OUTPUT_EXAMPLES", outputExamples)
+      .build();
     return context;
   }
 
@@ -45,43 +77,40 @@ export class Interpreter {
       }
     | StreamTextResult<Record<string, any>>
   > {
-    console.log("\n🎨 Starting interpretation process");
-    console.log("Prompt:", prompt);
-    console.log("Results to interpret:", JSON.stringify(state, null, 2));
+    try {
+      console.log("\n🎨 Starting interpretation process");
+      console.log("Prompt:", prompt);
+      console.log("Results to interpret:", JSON.stringify(state, null, 2));
 
-    const context = this.composeContext(state);
+      const context = this.composeContext(state);
 
-    const result = await generateObject({
-      model: this.model,
-      schema: z.object({
-        requestLanguage: z.string(),
-        actionsCompleted: z.array(
-          z.object({
-            name: z.string(),
-            reasoning: z.string(),
-          })
-        ),
-        response: z.string(),
-      }),
-      prompt,
-      system: context,
-    });
-
-    console.log("\n✅ Interpretation completed");
-    console.log("─".repeat(50));
-    console.log("Generated response:", result.object);
-
-    if (result.object.actionsCompleted.length > 0) {
-      console.log("\n📋 Suggested actions:");
-      result.object.actionsCompleted.forEach((action, index) => {
-        console.log(`\n${index + 1}. Action Details:`);
-        console.log(`   Name: ${action.name}`);
-        console.log(`   Reasoning: ${action.reasoning}`);
+      const result = await generateText({
+        model: this.model,
+        prompt,
+        system: context,
+        temperature: 1.3,
       });
-    }
+      console.log(result.text);
+      const parsedSchema = JSON.parse(result.text);
+      console.log("\n✅ Interpretation completed");
+      console.log("─".repeat(50));
+      console.log("Generated response:", parsedSchema);
 
-    if (onFinish) onFinish(result.object);
-    return result.object;
+      if (parsedSchema.actionsCompleted.length > 0) {
+        console.log("\n📋 Suggested actions:");
+        parsedSchema.actionsCompleted.forEach((action: any, index: any) => {
+          console.log(`\n${index + 1}. Action Details:`);
+          console.log(`   Name: ${action.name}`);
+          console.log(`   Reasoning: ${action.reasoning}`);
+        });
+      }
+
+      if (onFinish) onFinish(parsedSchema);
+      return parsedSchema;
+    } catch (error) {
+      console.error("Error parsing schema:", error);
+      throw error;
+    }
   }
 
   async streamProcess(
@@ -102,6 +131,7 @@ export class Interpreter {
       },
       prompt,
       system: context,
+      temperature: 1.3,
     });
 
     return result;

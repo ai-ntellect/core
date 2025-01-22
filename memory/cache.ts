@@ -72,7 +72,7 @@ export class CacheMemory {
       value: query,
     });
 
-    const memories = await this.getAllMemories(options.scope, options.userId);
+    const memories = await this.getAllMemories();
     console.log(`\n📚 Found ${memories.length} cached queries to compare`);
 
     const matches = memories
@@ -113,10 +113,7 @@ export class CacheMemory {
     return results;
   }
 
-  async getAllMemories(
-    scope?: MemoryScope,
-    userId?: string
-  ): Promise<CacheMemoryType[]> {
+  async getAllMemories(): Promise<CacheMemoryType[]> {
     const keys = await this.redis.keys(`${this.CACHE_PREFIX}*`);
     const memories = await this.getMemoriesFromKeys(keys);
 

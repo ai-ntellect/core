@@ -1,6 +1,6 @@
 {
   "name": "@ai.ntellect/core",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "",
   "main": "dist/index.js",
   "scripts": {
@@ -12,6 +12,7 @@
   "author": "Lorcann Rauzduel",
   "license": "ISC",
   "dependencies": {
+    "@ai-sdk/deepseek": "^0.1.0",
     "@ai-sdk/openai": "1.0.6",
     "ai": "^3.0.0",
     "ethers": "^6.13.5",
