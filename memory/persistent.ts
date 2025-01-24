@@ -63,6 +63,7 @@ export class PersistentMemory {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.host}${path}`;
+    console.log("🔍 Making request to Meilisearch:", url);
     const response = await fetch(url, {
       ...options,
       headers: {
