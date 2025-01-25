@@ -7,13 +7,11 @@ export const injectActions = (actions: ActionSchema[]) => {
     const schemaShape = Object.keys(parameters._def.shape()).join(", ");
     const actionString = `Name: ${action.name}, Description: ${
       action.description
-    }, Arguments (STRICTLY REQUIRED): { ${schemaShape} } ${
+    }, Arguments: { ${schemaShape} } ${
       action.examples
-        ? `Format examples (MUST RESPECT): ${action.examples.map(
-            (example: any) => {
-              return JSON.stringify(example);
-            }
-          )}`
+        ? `Format examples: ${action.examples.map((example: any) => {
+            return JSON.stringify(example);
+          })}`
         : ""
     }`;
     return actionString;

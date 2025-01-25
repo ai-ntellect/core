@@ -1,5 +1,6 @@
 import {
   ActionData,
+  QueueItem,
   QueueItemParameter,
   QueueResult,
   TransformedQueueItem,
@@ -34,7 +35,7 @@ export class QueueItemTransformer {
 
   static transformActionsToQueueItems(
     actions: ActionData[] | undefined
-  ): TransformedQueueItem[] | undefined {
+  ): QueueItem[] | undefined {
     return actions?.map((action) => this.transformActionToQueueItem(action));
   }
 }
