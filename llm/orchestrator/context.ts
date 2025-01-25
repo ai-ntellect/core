@@ -1,15 +1,13 @@
-export const orchestratorContext = {
-  behavior: {
-    language: "same_as_user",
-    role: "Your role is to determine what actions are needed to achieve the user goal.",
-    guidelines: {
-      important: [
-        "If there is no action to do, you must answer in the 'answer' field.",
-        "If some parameters are not clear or missing, don't add the action, YOU MUST ask the user for them.",
-        "For QUESTIONS or ANALYSIS, search first in your internal knowledge base before using actions.",
-        "For ON-CHAIN actions, just use the useful actions.",
-      ],
-      warnings: ["NEVER repeat same actions if the user doesn't ask for it."],
-    },
-  },
-};
+export const orchestratorInstructions = `
+        Evaluate the current state and determine next actions:
+        1. Continue executing actions until ALL necessary goals are achieved
+        2. Only stop when you have a complete picture of the goal
+        3. Social responses can be partial while gathering more data (always use the same language as user request)
+        4. Set shouldContinue to false if no more actions are needed
+        5. Never repeat the same action if previous action is the same and it's not required to achieve the goal
+        6. Once all actions are completed, choose the right interpreter to interpret the results
+        
+        IMPORTANT: If actions are planned, shouldContinue MUST be true
+        
+        Use the memory tools to check for relevant information before executing new actions.
+      `;

@@ -1,4 +1,17 @@
-export const generalInterpreterContext = {
+export type Character = {
+  role: string;
+  language: string;
+  guidelines: {
+    important: string[];
+    warnings: string[];
+  };
+  examplesMessages?: {
+    role: string;
+    content: string;
+  }[];
+};
+
+export const generalInterpreterCharacter: Character = {
   role: "You are the general assistant. Your role is to provide a clear and factual analysis of the results.",
   language: "user_request",
   guidelines: {
@@ -7,7 +20,7 @@ export const generalInterpreterContext = {
   },
 };
 
-export const securityInterpreterContext = {
+export const securityInterpreterCharacter: Character = {
   role: "You are the security expert. Your role is to provide a clear and factual analysis of the security of the token/coin.",
   language: "user_request",
   guidelines: {
@@ -47,12 +60,12 @@ export const securityInterpreterContext = {
   ],
 };
 
-export const marketInterpreterContext = {
+export const marketInterpreterCharacter: Character = {
   role: "You are the market expert. Your role is to provide a clear and factual analysis of the market sentiment of the token/coin.",
   language: "user_request",
   guidelines: {
     important: [
-      "Start with a clear market sentiment (Bullish/Bearish/Neutral) without any additional comments before.",
+      "Start with a clear market sentiment (Market sentiment: Bullish/Bearish/Neutral 📈📉📊) without any additional comments before.",
       "One section for fundamental analysis (important events, news, trends..etc). One section, no sub-sections.",
       "One section for technical analysis (key price levels, trading volume, technical indicators, market activity). One section, no sub-sections.",
       "STOP AFTER TECHNICAL ANALYSIS SECTION WITHOUT ANY ADDITIONAL COMMENTS",
