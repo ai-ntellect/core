@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { cosineSimilarity, embed } from "ai";
+import { cosineSimilarity, embed, EmbeddingModel } from "ai";
 import { createClient } from "redis";
 import {
   CacheMemoryOptions,
@@ -7,16 +7,16 @@ import {
   CreateMemoryInput,
   MatchOptions,
   MemoryScope,
-  MemoryType,
-  QueueResult,
 } from "../types";
 
 export class CacheMemory {
   private redis;
   private readonly CACHE_PREFIX: string;
   private readonly CACHE_TTL: number;
+  private readonly embeddingModel: EmbeddingModel<string>;
 
-  constructor(options: CacheMemoryOptions = {}) {
+  constructor(options: CacheMemoryOptions) {
+    this.embeddingModel = options.embeddingModel;
     const ttlInHours = options.cacheTTL ?? 1;
     this.CACHE_TTL = ttlInHours * 60 * 60;
     this.CACHE_PREFIX = options.cachePrefix ?? "memory:";
@@ -44,11 +44,11 @@ export class CacheMemory {
     }
   }
 
-  private async storeMemory(memory: CacheMemoryType) {
+  private async storeMemory(memory: CacheMemoryType, ttl?: number) {
     const prefix = this.CACHE_PREFIX;
     const key = `${prefix}${memory.id}`;
     const result = await this.redis.set(key, JSON.stringify(memory), {
-      EX: this.CACHE_TTL,
+      EX: ttl || this.CACHE_TTL,
     });
     console.log("💾 Cache memory created:", result);
   }
@@ -58,9 +58,9 @@ export class CacheMemory {
     options: MatchOptions & { userId?: string; scope?: MemoryScope } = {}
   ): Promise<
     {
-      actions: QueueResult[];
-      similarityPercentage: number;
+      data: any;
       query: string;
+      createdAt: Date;
     }[]
   > {
     console.log("\n🔍 Searching in cache");
@@ -80,7 +80,7 @@ export class CacheMemory {
         const similarity = cosineSimilarity(embedding, memory.embedding);
         const similarityPercentage = (similarity + 1) * 50;
         return {
-          actions: memory.data,
+          data: memory.data,
           query: memory.query,
           similarityPercentage,
           createdAt: memory.createdAt,
@@ -103,6 +103,7 @@ export class CacheMemory {
       results.forEach((match, index) => {
         console.log(`\n${index + 1}. Match Details:`);
         console.log(`   Query: ${match.query}`);
+        console.log(`   Data: ${JSON.stringify(match.data)}`);
         console.log(`   Similarity: ${match.similarityPercentage.toFixed(2)}%`);
         console.log("─".repeat(50));
       });
@@ -110,7 +111,13 @@ export class CacheMemory {
       console.log("\n❌ No similar queries found in cache");
     }
 
-    return results;
+    return results.map((match) => {
+      return {
+        data: match.data,
+        query: match.query,
+        createdAt: match.createdAt,
+      };
+    });
   }
 
   async getAllMemories(): Promise<CacheMemoryType[]> {
@@ -137,11 +144,10 @@ export class CacheMemory {
     input: CreateMemoryInput
   ): Promise<CacheMemoryType | undefined> {
     console.log("\n📝 Processing new memory creation");
-    console.log("Content:", input.content);
-    console.log("Type:", input.type);
-    console.log("Scope:", input.scope);
+    console.log("Content:", input.query);
+    console.log("TTL:", input.ttl ? `${input.ttl} seconds` : "default");
 
-    const existingPattern = await this.findSimilarActions(input.content, {
+    const existingPattern = await this.findSimilarActions(input.query, {
       similarityThreshold: 95,
       userId: input.userId,
       scope: input.scope,
@@ -153,7 +159,8 @@ export class CacheMemory {
       existingPattern.forEach((match, index) => {
         console.log(`\n${index + 1}. Existing Match:`);
         console.log(`   Query: ${match.query}`);
-        console.log(`   Similarity: ${match.similarityPercentage.toFixed(2)}%`);
+        console.log(`   Data: ${JSON.stringify(match.data)}`);
+        console.log(`   Created At: ${match.createdAt}`);
       });
       console.log("\n⏭️  Skipping creation of new memory");
       return;
@@ -163,11 +170,11 @@ export class CacheMemory {
 
     const memory = await this.createSingleMemory({
       id: crypto.randomUUID(),
-      content: input.content,
-      type: input.type,
+      query: input.query,
       data: input.data,
       userId: input.userId,
       scope: input.scope,
+      ttl: input.ttl,
     });
 
     return memory;
@@ -175,28 +182,27 @@ export class CacheMemory {
 
   private async createSingleMemory(params: {
     id: string;
-    content: string;
-    type: MemoryType;
+    query: string;
     data: any;
     userId?: string;
     scope?: MemoryScope;
+    ttl?: number;
   }): Promise<CacheMemoryType> {
     console.log("\n🏗️  Creating new cache memory");
     console.log("ID:", params.id);
-    console.log("Content:", params.content);
+    console.log("Content:", params.query);
 
     console.log("\n🧮 Generating embedding...");
     const { embedding } = await embed({
-      model: openai.embedding("text-embedding-3-small"),
-      value: params.content,
+      model: this.embeddingModel,
+      value: params.query,
     });
     console.log("✅ Embedding generated successfully");
 
     const memory: CacheMemoryType = {
       id: params.id,
-      type: params.type,
       data: params.data,
-      query: params.content,
+      query: params.query,
       embedding,
       userId: params.userId,
       scope:
@@ -204,8 +210,11 @@ export class CacheMemory {
       createdAt: new Date(),
     };
 
-    await this.storeMemory(memory);
-    console.log("✅ Memory created and stored successfully");
+    await this.storeMemory(memory, params.ttl);
+    console.log("✅ Short-term memory created and stored successfully", {
+      ...memory,
+      ttl: params.ttl || this.CACHE_TTL,
+    });
 
     return memory;
   }
