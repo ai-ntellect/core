@@ -41,6 +41,7 @@ export class Agent {
         persistent?: PersistentMemory;
       };
     };
+    maxIterations: number;
   };
 
   constructor(config: {
@@ -61,7 +62,7 @@ export class Agent {
       };
     };
     callbacks?: QueueCallbacks;
-    maxIterations?: number;
+    maxIterations: number;
   }) {
     this.config = config;
     this.agent = new AgentRuntime(
@@ -77,10 +78,12 @@ export class Agent {
         persistent: config.memoryManager.memory?.persistent ?? undefined,
       },
     });
+    this.config.maxIterations = 3;
   }
 
   public async process(state: State, callbacks?: QueueCallbacks): Promise<any> {
     console.log("🔄 Processing state:", state);
+    let countIterations = 0;
     const response = await this.agent.process(state);
 
     // Execute actions if needed
@@ -119,7 +122,16 @@ export class Agent {
         "\n🔁 Recursively processing with updated state",
         updatedNextState
       );
-      return this.process(updatedNextState);
+      countIterations++;
+      if (countIterations < this.config.maxIterations) {
+        return this.process(updatedNextState);
+      }
+    }
+
+    if (countIterations >= this.config.maxIterations) {
+      console.log("Max iterations reached");
+      response.shouldContinue = false;
+      console.log("Forcing stop");
     }
 
     // Handle final interpretation
@@ -207,6 +219,7 @@ export class Agent {
     memoryManager: {
       model,
     },
+    maxIterations: 3,
   });
 
   const state = {

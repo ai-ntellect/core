@@ -1,366 +1,310 @@
 # AI.ntellect Core Framework
 
-## Table of contents
+## Overview
 
-1. [Main components](#main-components)
-   - [Agent](#agent)
-   - [Orchestrator](#orchestrator)
-   - [Evaluator](#evaluator)
-   - [Interpreter](#interpreter)
-   - [Memory](#memory-architecture)
-2. [Action creation and management](#action-creation-and-management)
-3. [Agent processing](#agent-processing)
-4. [WIP (Work in Progress)](#wip-work-in-progress)
+This framework is designed to execute complex workflows using advanced orchestration, memory management, and actionable intelligence. It integrates tools, interpreters, and memory systems to:
+
+- Contextually analyze user inputs.
+- Execute predefined workflows and dynamic actions.
+- Efficiently manage short-term and long-term memory.
+- Seamlessly integrate with external APIs and tools.
 
 ---
 
-## 1. Main components
+## Table of contents
 
-The system relies on several key components that ensure smooth and efficient processing of user requests through an AI agent architecture.
+1. [Architecture components](#architecture-components)
+   - [Agent runtime](#agent-runtime)
+   - [Orchestrator](#orchestrator)
+   - [Queue manager](#queue-manager)
+   - [Interpreter](#interpreter)
+   - [Memory system](#memory-system)
+2. [Defining and executing actions](#defining-and-executing-actions)
+3. [State management and recursion](#state-management-and-recursion)
+4. [Installation and setup](#installation-and-setup)
+5. [Example usage](#example-usage)
+6. [Work in progress (WIP)](#work-in-progress)
 
-### Agent
+---
 
-The agent is the core component that processes user requests and manages the entire interaction flow. It coordinates with other components to understand user needs, execute appropriate actions, and generate relevant responses.
+## Architecture components
 
-- **Main role**: Process user requests and coordinate system components
-- **Key features**:
-  - Processes user prompts
-  - Manages conversation context
-  - Coordinates with orchestrator for action execution
-  - Handles response generation
-  - Maintains user state and memory
+### Agent runtime
+
+The `AgentRuntime` is the core engine that coordinates the global workflow. It connects all components and ensures tasks are executed efficiently.
+
+**Responsibilities:**
+
+- Build context for the current state using memory systems (RAG and CAG).
+- Orchestrate actions using the Queue Manager.
+- Leverage interpreters to analyze results and generate responses.
+
+#### Context building
+
+The `buildContext` method constructs a comprehensive context by:
+
+1. Adding tools and user requests.
+2. Retrieving recent actions using cache memory (CAG).
+3. Fetching relevant knowledge from persistent memory (RAG).
+4. Including available interpreters for the request.
+
+#### Processing workflows
+
+The `process` method:
+
+1. Generates responses based on the context using a language model.
+2. Handles recursive workflows for action execution.
+3. Selects appropriate interpreters for result analysis.
+
+---
 
 ### Orchestrator
 
-The orchestrator works under the agent's direction to manage the execution of actions. It analyzes requirements based on the agent's interpretation of user needs and coordinates the execution of appropriate tools.
+The **orchestrator** directs workflows by analyzing user inputs and planning actions. It interacts with tools, memory systems, and interpreters to ensure logical execution.
 
-- **Main role**: Organize and direct the execution of actions
-- **Interactions**:
-  - Manages available tools/actions
-  - Executes actions based on agent requests
-  - Uses memory for context and caching
-  - Coordinates with evaluator for result assessment
+**Key features:**
 
-### Evaluator
-
-The evaluator now collaborates with Interpreters to process action results and determine the next steps in the workflow.
-
-- **Main role**: Evaluate action results and coordinate with appropriate Interpreters
-- **Main functions**:
-  - Analyzes results from executed actions
-  - Determines if additional actions are needed
-  - Routes results to appropriate Interpreter
-  - Ensures completion of user requirements
-- **Interactions**:
-  - Works with orchestrator to manage workflow
-  - Coordinates with Interpreters for specialized processing
-  - Can trigger additional action cycles if needed
-
-### Interpreter
-
-The Interpreter is a specialized component responsible for interpreting action results and generating appropriate responses. Each Interpreter is configured with a specific business context and produces responses in a format adapted to its domain of expertise.
-
-**Key characteristics**:
-
-- Business-specific context configuration
-- Domain-adapted response formatting
-- Specialized data processing based on context
-
-**Operation flow**:
-
-- Receives action results via the Evaluator
-- Analyzes data according to its specific context
-- Produces formatted responses following domain rules
-
-Examples of Interpreter implementations:
-
-1. **MarketInterpreter**
-
-   - Specialized in market data analysis
-   - Format adapted for financial analysis
-
-2. **SecurityInterpreter**
-
-   - Dedicated to security verifications
-   - Optimized format for security reports
-
-3. **GeneralInterpreter**
-   - Handles general purpose requests
-   - Flexible formatting based on context
-
-These examples demonstrate the system's flexibility, which can be extended with additional Interpreter types as needed.
-
-[![Sans-titre-2024-11-08-0220.png](https://i.postimg.cc/nryjsx5y/Sans-titre-2024-11-08-0220.png)](https://postimg.cc/rR9FbBqj)
-
-### Memory
-
-The system implements a sophisticated memory architecture that combines different storage solutions for various types of memory:
-
-#### Installation and setup
-
-##### Meilisearch (Long-term memory)
-
-Meilisearch can be self-hosted for complete control over the agent's long-term memory:
-
-```bash
-# Install Meilisearch
-curl -L https://install.meilisearch.com | sh
-
-# Launch Meilisearch with a master key
-./meilisearch --master-key="YOUR_MASTER_KEY"
-```
-
-##### Redis (Short-term memory)
-
-Redis handles the short-term memory components:
-
-```bash
-# Using Docker
-docker run --name redis -d -p 6379:6379 redis
-
-# Or install locally
-sudo apt-get install redis-server
-```
-
-2. **Configuration**:
-   - Default port: 6379
-   - Configure memory limits
-   - Enable persistence if needed
-
-#### Memory types
-
-#### Short-term memory (Redis)
-
-1. **Procedural Memory**:
-
-   - Stored in Redis for fast access
-   - Contains reusable action sequences and workflows
-   - Optimizes performance through caching
-   - Example: "Common token approval + swap sequence"
-
-2. **Short-term episodic memory**:
-   - Recent messages and interactions
-   - Temporary context for ongoing conversations
-   - Stored in Redis for quick retrieval
-   - Example: "Last 10 messages in current conversation"
-
-#### Long-term memory (Meilisearch)
-
-1. **Semantic memory**:
-
-   - Permanent storage of facts and knowledge
-   - Indexed for efficient retrieval
-   - Stores relationships between concepts
-   - Example: "Token X has contract address Y on network Z"
-
-2. **Long-term episodic Memory**:
-   - Historical interactions and experiences
-   - Persistent context across sessions
-   - Searchable through vector similarity
-   - Example: "User X's past successful transactions"
-
-### Cache Augmented Generation (CAG)
-
-CAG optimizes workflow execution through Redis-based caching:
-
-- **Main role**: Cache frequently used procedural patterns
-- **Implementation**:
-
-  - Uses Redis for high-performance storage
-  - Stores action sequences and their results
-  - Enables quick retrieval of common patterns
-
-- **Benefits**:
-  - Reduces computation overhead
-  - Speeds up repeated operations
-  - Optimizes resource usage
-
-### Retrieval Augmented Generation (RAG)
-
-The RAG system enhances long-term memory access through Meilisearch:
-
-- **Implementation**:
-
-  - Vector-based search for semantic similarity
-  - Dual indexing (global and user-specific)
-  - Combines with traditional text search
-
-- **Features**:
-  - Semantic and episodic memory retrieval
-  - Context-aware search capabilities
-  - Relevance-based result ranking
+- Dynamic selection of actions based on context.
+- Management of memory interactions for RAG and CAG operations.
+- Multi-step workflow handling with iterative refinement.
 
 ---
 
-## 2. Action creation and management
+### Queue manager
 
-Actions are specific tasks to be performed within a workflow. They can involve interactions with APIs, blockchain transactions, or any other necessary operations.
+The **queue manager** organizes and executes actions in the correct order, whether sequentially or in parallel. It acts as the central mechanism for managing workflows, ensuring that each action is properly queued, validated, and executed.
 
-Each action is defined as an object containing a name, description, parameters, and an execution function.
+**Responsibilities:**
 
-### Example of an action
+1. **Queueing actions:**
+
+   - Actions are added to a queue for execution, either individually or as a batch.
+   - Logs queued actions for debugging and traceability.
+
+2. **Processing actions:**
+
+   - Executes actions in the queue while maintaining the correct order.
+   - Ensures dependencies between actions are respected.
+   - Handles errors or confirmations via callbacks.
+
+3. **Confirmation handling:**
+   - Supports confirmation prompts for critical actions.
+   - Relies on callbacks to decide whether to proceed with specific actions.
+
+**Example:**
 
 ```typescript
-import { networkConfigs } from "@config/network";
-import { parseEther } from "ethers";
+import { ActionQueueManager } from "@ai-ntellect/core";
+import { actions, callbacks } from "@ai-ntellect/core/examples";
+
+const queueManager = new ActionQueueManager(actions, callbacks);
+queueManager.addToQueue([{ name: "fetch-data", parameters: [...] }]);
+const results = await queueManager.processQueue();
+console.log("Results:", results);
+```
+
+---
+
+### Interpreter
+
+The **interpreter** specializes in analyzing results and generating domain-specific insights. Each interpreter is tailored to a specific use case and uses its own character configuration.
+
+**Examples:**
+
+1. **MarketInterpreter**: Analyzes financial market data.
+2. **SecurityInterpreter**: Conducts security checks.
+3. **GeneralInterpreter**: Processes general-purpose requests.
+
+#### Interpretation workflow
+
+1. Builds context with the current state, including results and user requests.
+2. Uses the language model to generate actionable insights.
+3. Provides detailed responses for the final user.
+
+---
+
+### Memory system
+
+The memory architecture combines short-term and long-term memory to provide contextual processing.
+
+#### Types of memory
+
+1. **Cache memory (Redis):**
+   - Stores temporary data for fast retrieval.
+   - Examples: Recent actions, session data.
+2. **Persistent memory (Meilisearch):**
+   - Stores long-term data such as historical interactions and knowledge.
+   - Enables semantic searches and vector-based retrieval.
+
+---
+
+## Defining and executing actions
+
+### What are actions?
+
+Actions are fundamental tasks executed by the framework. Each action includes:
+
+- A unique name and description.
+- Input parameters validated using schemas.
+- Execution logic encapsulated in the `execute` method.
+
+### Example action
+
+```typescript
 import { z } from "zod";
+import { parseEther } from "ethers";
 
 export const prepareTransaction = {
   name: "prepare-transaction",
-  description: "Prepare a transfer for the user to sign.",
+  description: "Prepare a token transfer for user approval.",
   parameters: z.object({
     walletAddress: z.string(),
-    amount: z.string().describe("Amount to send"),
-    networkId: z.string().describe("Target network (e.g., ethereum, arbitrum)"),
+    amount: z.string(),
+    networkId: z.string(),
   }),
-  execute: async ({
-    walletAddress,
-    amount,
-    network,
-  }: {
-    walletAddress: string;
-    amount: string;
-    networkId: string;
-  }) => {
-    try {
-      const networkConfig = networkConfigs[networkId];
-      if (!networkConfig) {
-        throw new Error(`Network ${network} not found`);
-      }
-
-      return {
-        to: walletAddress,
-        value: parseEther(amount).toString(),
-        chain: {
-          id: networkConfig.id,
-          rpc: networkConfig.rpc,
-        },
-        type: "transfer",
-      };
-    } catch (error) {
-      return "Error preparing the transaction";
-    }
+  execute: async ({ walletAddress, amount, networkId }) => {
+    return {
+      to: walletAddress,
+      value: parseEther(amount).toString(),
+      network: networkId,
+    };
   },
 };
 ```
 
-### How to define an action:
-
-1. **Name**: Unique identifier for the action.
-2. **Description**: Brief description of what the action does.
-3. **Parameters**: Parameters required to execute the action, validated by `zod`.
-4. **Execution**: `execute` function that performs the action.
-
 ---
 
-## 3. Agent processing
+## State management and recursion
 
-The agent handles the entire process of understanding user requests and coordinating responses. Here's an example of how to use the agent:
+The agent manages state and recursive workflows to ensure actions are executed in an orderly manner until completion, while respecting a maximum iteration limit to avoid infinite loops.
+
+### State management
+
+The state (`State`) includes:
+
+- `currentContext`: Current context of the user request.
+- `previousActions`: List of previously executed actions.
+
+When an action is completed, the state is updated to include:
+
+- Results of previous actions.
+- Remaining context to process.
+
+### Controlled recursion
+
+To prevent infinite loops, the system limits the number of iterations using the `maxIterations` configuration.
+
+**Workflow:**
+
+1. **Initialization:** At each iteration, the agent:
+
+   - Executes actions in the queue.
+   - Updates the state with new results.
+
+2. **Limit validation:**
+
+   - If the iteration count exceeds `maxIterations`, processing is stopped with a "Max iterations reached" message.
+
+3. **Recursion:**
+   - If actions remain to be executed, the agent recursively calls the `process` method with the updated state.
+
+**Example:**
 
 ```typescript
+const updatedNextState: State = {
+  ...state,
+  currentContext: state.currentContext,
+  previousActions: [...(state.previousActions || []), ...(results || [])],
+};
 
-const persistentMemory = new PersistentMemory({
-  host: "http://localhost:7700",
-  apiKey: "YOUR_API_KEY",
-});
-const cacheMemory = new CacheMemory();
-
-const orchestrator = new Orchestrator(
-  id: from,
-  tools: [/* your actions here */],
-  memory: {
-    persistent: persistentMemory,
-    cache: cacheMemory,
-  },
-);
-
-const securityInterpreter = new Interpreter("security", securityContext);
-const marketInterpreter = new Interpreter("market", marketContext);
-const generalInterpreter = new Interpreter("general", generalContext);
-
-const agent = new Agent({
-  interpreters: [securityInterpreter, marketInterpreter, generalInterpreter],
-  orchestrator,
-  memory: {
-    persistent: memory,
-    cache: cacheMemory,
-  },
-  stream: false,
-  maxEvaluatorIteration: 1,
-});
-
-const result = await agent.process("Your prompt here");
+if (countIterations < this.config.maxIterations) {
+  return this.process(updatedNextState);
+} else {
+  console.log("Max iterations reached");
+  response.shouldContinue = false;
+}
 ```
 
-### Agent process flow:
+---
 
-1. User sends a prompt
-2. Agent analyzes the prompt and context
-3. Orchestrator executes required tools/actions
-4. Evaluator assesses results
-5. Agent generates final response
+## Installation and setup
 
-## 4. WIP (Work in Progress)
+### Install dependencies
 
-Here are the elements currently in development or improvement:
+```bash
+npm install
+```
+
+### Configure external services
+
+#### Redis (cache memory)
+
+```bash
+docker run --name redis -d -p 6379:6379 redis
+```
+
+#### Meilisearch (persistent memory)
+
+```bash
+curl -L https://install.meilisearch.com | sh
+./meilisearch --master-key="YOUR_MASTER_KEY"
+```
 
 ---
 
-## Multi-agent collaboration
+## Example usage
 
-**Objective**: Enable multiple agents to collaborate on complex tasks with specialization and coordination.
+### Initialize the agent
 
-**Interest**: Collaboration between agents allows breaking down complex tasks into specialized subtasks, enhancing the
-efficiency and quality of results. It also enables better resource management and faster adaptation to changes.
+```typescript
+import { deepseek } from "@ai-ntellect/core";
+import { Agent } from "@ai-ntellect/core";
+import { checkHoneypot, fetchMarkPrice } from "@ai-ntellect/core/actions";
+import {
+  generalInterpreterCharacter,
+  marketInterpreterCharacter,
+  securityInterpreterCharacter,
+} from "@ai-ntellect/core/interpreter/context";
 
-**Steps to implement**:
+const model = deepseek("deepseek-reasoner");
 
-- [ ] Task delegation framework.
-- [ ] Shared context management.
-- [ ] Conflict resolution protocols.
+const agent = new Agent({
+  orchestrator: {
+    model,
+    tools: [checkHoneypot, fetchMarkPrice],
+  },
+  interpreters: [
+    new Interpreter({
+      name: "security",
+      model,
+      character: securityInterpreterCharacter,
+    }),
+    new Interpreter({
+      name: "market",
+      model,
+      character: marketInterpreterCharacter,
+    }),
+    new Interpreter({
+      name: "general",
+      model,
+      character: generalInterpreterCharacter,
+    }),
+  ],
+  memoryManager: {
+    model,
+  },
+  maxIterations: 3,
+});
+```
 
-**Status**: Research phase, architectural planning in progress.
+### Process a request
 
----
+```typescript
+const state = {
+  currentContext: "Analyze XRP/USD market trends",
+  previousActions: [],
+};
 
-## Complex on-chain interactions management
-
-**Objective**: Create a model for recognizing on-chain interactions and creating workflows for complex interactions.
-
-**Interest**: This feature allows the agent to understand and interact with smart contracts more intuitively,
-facilitating the execution of complex actions on the blockchain. It improves accessibility and efficiency in
-interacting with smart contracts.
-
-**Steps to implement**:
-
-- [ ] Extraction and processing of relevant contract ABIs.
-- [ ] Filtering of relevant functions.
-- [ ] Generation of hypothetical queries in natural language.
-- [ ] Conversion of queries into vector embeddings.
-- [ ] Storing embeddings and associated queries.
-- [ ] Similarity search based on cosine.
-- [ ] Ranking results based on relevance.
-
-**Status**: Ongoing study to determine the best approach and technologies to use.
-
----
-
-## Lit Protocol implementation
-
-**Objective**: Add the ability to execute Lit actions, enabling decentralized and secure calculations on the Lit
-network.
-
-**Interest**: Integrating the Lit Protocol allows executing Lit actions in a decentralized manner, using cryptographic
-keys to validate operations. These actions can be used to run JavaScript scripts in a decentralized environment,
-offering transparency as all interactions are recorded on the blockchain. The main benefit lies in automation and
-security while preserving user privacy, which enhances trust in on-chain interactions.
-
-**Steps to Implement**:
-
-- [x] Study Lit Protocol documentation, especially the section on Lit actions and their implementation.
-- [ ] Integrate the protocol into the existing architecture to allow execution of Lit actions.
-- [ ] Develop modules for executing Lit actions, including signature management and secure script execution.
-- [ ] Test the integration, security, and transparency of Lit actions to ensure they function properly.
-
-**Status**: Under study to determine feasibility and technical implications, particularly regarding integrating
-decentralization into the existing system.
+const result = await agent.process(state);
+console.log("Result:", result);
+```
