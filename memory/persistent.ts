@@ -1,7 +1,6 @@
-import { openai } from "@ai-sdk/openai";
-import { cosineSimilarity, embed, embedMany } from "ai";
+import { cosineSimilarity, embed, EmbeddingModel, embedMany } from "ai";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-import { Memory, MemoryScope } from "../types";
+import { LongTermMemory, MemoryScope } from "../types";
 
 interface SearchOptions {
   scope?: MemoryScope;
@@ -40,19 +39,31 @@ export class PersistentMemory {
   private readonly host: string;
   private readonly apiKey: string;
   private readonly INDEX_PREFIX: string;
-
-  constructor(options: { host: string; apiKey: string; indexPrefix?: string }) {
+  private readonly embeddingModel: EmbeddingModel<string>;
+  constructor(options: {
+    host: string;
+    apiKey: string;
+    indexPrefix?: string;
+    embeddingModel: EmbeddingModel<string>;
+  }) {
     this.host = options.host;
     this.apiKey = options.apiKey;
     this.INDEX_PREFIX = options.indexPrefix || "memory";
+    this.embeddingModel = options.embeddingModel;
   }
 
   /**
    * Initialize indexes
    */
   async init() {
-    // Create global index
-    await this._getOrCreateIndex(this.INDEX_PREFIX);
+    try {
+      // Create or get main index
+      await this._getOrCreateIndex(this.INDEX_PREFIX);
+      console.log(`✅ Index '${this.INDEX_PREFIX}' initialized successfully`);
+    } catch (error) {
+      console.error(`❌ Failed to initialize index: ${error}`);
+      throw error;
+    }
   }
 
   /**
@@ -80,19 +91,27 @@ export class PersistentMemory {
 
     return response.json() as Promise<T>;
   }
+
   /**
    * Get or create an index with proper settings
    */
   private async _getOrCreateIndex(indexName: string) {
     try {
-      // Try to create index
-      await this._makeRequest("/indexes", {
-        method: "POST",
-        body: JSON.stringify({
-          uid: indexName,
-          primaryKey: "id",
-        }),
-      });
+      // Check if index exists first
+      const indexExists = await this._makeRequest(`/indexes/${indexName}`, {
+        method: "GET",
+      }).catch(() => false);
+
+      if (!indexExists) {
+        console.log(`Creating new index: ${indexName}`);
+        await this._makeRequest("/indexes", {
+          method: "POST",
+          body: JSON.stringify({
+            uid: indexName,
+            primaryKey: "id",
+          }),
+        });
+      }
 
       // Update index settings
       const settings: MeilisearchSettings = {
@@ -104,11 +123,11 @@ export class PersistentMemory {
         method: "PATCH",
         body: JSON.stringify(settings),
       });
+
+      console.log(`Index ${indexName} configured successfully`);
     } catch (error: any) {
-      // Index might already exist, which is fine
-      if (!error.message.includes("already exists")) {
-        throw error;
-      }
+      console.error(`Failed to configure index ${indexName}:`, error);
+      throw error;
     }
   }
 
@@ -121,7 +140,7 @@ export class PersistentMemory {
 
     // Generate embeddings for all chunks
     const { embeddings } = await embedMany({
-      model: openai.embedding("text-embedding-3-small"),
+      model: this.embeddingModel,
       values: chunks.map((chunk) => chunk.pageContent),
     });
 
@@ -135,102 +154,104 @@ export class PersistentMemory {
   /**
    * Store a memory in the database
    */
-  async createMemory(memory: Memory) {
-    await this._getOrCreateIndex(memory.roomId);
+  async createMemory(memory: LongTermMemory) {
+    try {
+      console.log(`📝 Creating memory in index: ${this.INDEX_PREFIX}`);
 
-    const chunks = await this.processContent(memory.data);
+      // Process content into chunks with embeddings
+      const chunks = await this.processContent(memory.data);
 
-    const document = {
-      ...memory,
-      chunks,
-      createdAt: memory.createdAt.toISOString(),
-    };
+      // Generate unique ID if not provided
+      const id = memory.id || crypto.randomUUID();
 
-    const response = await this._makeRequest(
-      `/indexes/${this.INDEX_PREFIX}/documents`,
-      {
-        method: "POST",
-        body: JSON.stringify([document]),
-      }
-    );
-    console.log("Stored persistent memory response:", response);
-    return response;
+      const document = {
+        ...memory,
+        chunks,
+        createdAt: memory.createdAt.toISOString(),
+      };
+
+      const response = await this._makeRequest(
+        `/indexes/${this.INDEX_PREFIX}/documents`,
+        {
+          method: "POST",
+          body: JSON.stringify([document]),
+        }
+      );
+
+      console.log("✅ Memory created successfully", { id });
+      return response;
+    } catch (error) {
+      console.error("❌ Failed to create memory:", error);
+      throw error;
+    }
   }
 
   /**
    * Find best matching memories
    */
   async findRelevantDocuments(query: string, options: SearchOptions = {}) {
-    console.log("\n🔍 Searching in persistent memory");
+    console.log(`\n🔍 Searching in index: ${this.INDEX_PREFIX}`);
     console.log("Query:", query);
-    console.log("Options:", JSON.stringify(options, null, 2));
 
-    // Generate embedding for the query
-    const { embedding: queryEmbedding } = await embed({
-      model: openai.embedding("text-embedding-3-small"),
-      value: query,
-    });
-
-    const searchResults = [];
-
-    console.log("\n📚 Searching in global index:", this.INDEX_PREFIX);
     try {
-      const globalResults = await this._makeRequest<MeilisearchResponse>(
+      // Generate embedding for the query
+      const { embedding: queryEmbedding } = await embed({
+        model: this.embeddingModel,
+        value: query,
+      });
+
+      // Search in the index
+      const searchResults = await this._makeRequest<MeilisearchResponse>(
         `/indexes/${this.INDEX_PREFIX}/search`,
         {
           method: "POST",
-          body: JSON.stringify({ q: query }),
+          body: JSON.stringify({
+            q: query,
+            limit: options.maxResults || 10,
+          }),
         }
       );
-      if (globalResults?.hits) {
-        searchResults.push(...globalResults.hits);
+
+      if (!searchResults?.hits?.length) {
+        console.log("❌ No matches found");
+        return [];
       }
+
+      // Process and filter results using cosine similarity
+      const results = searchResults.hits
+        .flatMap((hit) => {
+          const chunkSimilarities = hit.chunks.map((chunk) => ({
+            query: hit.query,
+            data: hit.data,
+            similarityPercentage:
+              (cosineSimilarity(queryEmbedding, chunk.embedding) + 1) * 50,
+            createdAt: hit.createdAt,
+          }));
+
+          return chunkSimilarities.reduce(
+            (best, current) =>
+              current.similarityPercentage > best.similarityPercentage
+                ? current
+                : best,
+            chunkSimilarities[0]
+          );
+        })
+        .filter(
+          (match) =>
+            match.similarityPercentage >= (options.similarityThreshold || 70)
+        )
+        .sort((a, b) => b.similarityPercentage - a.similarityPercentage);
+
+      console.log(`✨ Found ${results.length} relevant matches`);
+      return results.map((result) => ({
+        query: result.query,
+        data: result.data,
+        createdAt: result.createdAt,
+      }));
     } catch (error) {
-      console.error("❌ Error searching global index:", error);
+      console.error("❌ Search failed:", error);
+      return [];
     }
-
-    const totalResults = searchResults.length;
-    console.log(`\n📊 Found ${totalResults} total matches`);
-
-    // Process and filter results using cosine similarity
-    const results = searchResults
-      .flatMap((hit) => {
-        const chunkSimilarities = hit.chunks.map((chunk) => ({
-          query: hit.query,
-          data: hit.data,
-          similarityPercentage:
-            (cosineSimilarity(queryEmbedding, chunk.embedding) + 1) * 50,
-          createdAt: hit.createdAt,
-        }));
-
-        return chunkSimilarities.reduce(
-          (best, current) =>
-            current.similarityPercentage > best.similarityPercentage
-              ? current
-              : best,
-          chunkSimilarities[0]
-        );
-      })
-      .filter(
-        (match) =>
-          match.similarityPercentage >= (options.similarityThreshold || 70)
-      )
-      .sort((a, b) => b.similarityPercentage - a.similarityPercentage);
-
-    // Log filtered results in a more structured way
-    if (results.length > 0) {
-      console.log("\n✨ Relevant matches found:");
-      console.log("─".repeat(50));
-
-      results.forEach((match, index) => {
-        console.log(`\n${index + 1}. Match Details:`);
-        console.log(`   Query: ${match.query}`);
-      });
-    } else {
-      console.log("\n❌ No relevant matches found");
-    }
-
-    return results;
   }
 
   /**
