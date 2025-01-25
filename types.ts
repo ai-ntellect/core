@@ -1,4 +1,4 @@
-import { Embedding, StreamTextResult } from "ai";
+import { Embedding, EmbeddingModel, StreamTextResult } from "ai";
 import { z } from "zod";
 
 export interface BaseLLM {
@@ -146,22 +146,39 @@ export interface SummarizerAgent {
 }
 
 export interface CacheMemoryOptions {
+  embeddingModel: EmbeddingModel<string>;
   cacheTTL?: number;
   redisUrl?: string;
   cachePrefix?: string;
 }
 
+export type GenerateObjectResponse = {
+  shouldContinue: boolean;
+  actions: Array<{
+    name: string;
+    parameters: Array<{
+      name: string;
+      value: any;
+    }>;
+  }>;
+  socialResponse?: {
+    shouldRespond: boolean;
+    response?: string;
+    isPartialResponse?: boolean;
+  };
+  interpreter?: string;
+};
+
 export interface CreateMemoryInput {
-  content: any;
-  type: MemoryType;
-  data: string[];
+  query: string;
+  data: any;
   userId?: string;
   scope?: MemoryScope;
+  ttl?: number;
 }
 
 export interface CacheMemoryType {
   id: string;
-  type: MemoryType;
   data: any;
   query: string;
   embedding: Embedding;
@@ -183,14 +200,15 @@ export interface MemoryChunk {
 
 export type MemoryScopeType = (typeof MemoryScope)[keyof typeof MemoryScope];
 
-export interface Memory {
+export interface LongTermMemory {
   id: string;
   query: string;
-  purpose: string;
+  category: string;
   data: any;
   roomId: string;
   createdAt: Date;
   chunks?: MemoryChunk[];
+  tags: string[];
 }
 
 export const ActionSchema = z.array(
@@ -252,4 +270,14 @@ export interface ScheduledActionEvents {
   onActionFailed?: (action: ScheduledAction, error: Error) => void;
   onActionScheduled?: (action: ScheduledAction) => void;
   onActionCancelled?: (actionId: string) => void;
+}
+
+export interface WorkflowPattern {
+  query: string;
+  actions: Array<{
+    done: boolean;
+    name: string;
+    result: string;
+  }>;
+  success: boolean;
 }
