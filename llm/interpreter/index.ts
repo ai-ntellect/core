@@ -69,9 +69,7 @@ export class Interpreter {
       context.addHeader("NEVER", warnings);
     }
 
-    context
-      .addHeader("CURRENT_RESULTS", results)
-      .addHeader("USER_REQUEST", userRequest);
+    context.addHeader("CURRENT_RESULTS", results);
     return context;
   }
 

@@ -19,6 +19,8 @@ Ce framework est conçu pour exécuter des workflows complexes à l'aide d'une o
    - [Gestionnaire de file d'attente](#gestionnaire-de-file-dattente)
    - [Interpréteur](#interpréteur)
    - [Système de mémoire](#système-de-mémoire)
+   - [Listeners](#listeners)
+   - [Schedulers](#schedulers)
 2. [Définir et exécuter des actions](#définir-et-exécuter-des-actions)
 3. [Gestion de l'état et récursivité](#gestion-de-letat-et-recursivité)
 4. [Installation et configuration](#installation-et-configuration)
@@ -135,6 +137,59 @@ L'architecture mémoire combine une mémoire à court terme et une mémoire à l
 2. **Mémoire persistante (Meilisearch) :**
    - Stocke des données à long terme comme les interactions historiques et les connaissances.
    - Permet des recherches sémantiques et des récupérations basées sur des vecteurs.
+
+---
+
+### Listeners
+
+Les **listeners** permettent de se connecter à des événements externes via WebSocket. Ils écoutent les mises à jour en temps réel et déclenchent des actions ou des callbacks spécifiques en réponse aux événements.
+
+**Caractéristiques principales :**
+
+- Connexion à des WebSockets pour écouter les événements.
+- Gestion des abonnements avec des messages personnalisés.
+- Déclenchement de callbacks pour traiter les données reçues.
+
+**Exemple d'utilisation :**
+
+```typescript
+agent.addListener(
+  "listener-id",
+  "wss://example.com/socket",
+  () => JSON.stringify({ action: "subscribe" }),
+  async (data) => {
+    console.log("Data reçue :", data);
+  }
+);
+```
+
+---
+
+### Schedulers
+
+Les **schedulers** permettent de planifier des tâches ou actions pour une exécution ultérieure. Ils utilisent des expressions cron pour définir les intervalles de planification.
+
+**Caractéristiques principales :**
+
+- Planification basée sur des expressions cron.
+- Support des tâches récurrentes et non récurrentes.
+- Gestion et annulation des tâches planifiées.
+
+**Exemple d'utilisation :**
+
+```typescript
+const scheduler = new TaskScheduler(agentRuntime, redisCache);
+
+const taskId = await scheduler.scheduleRequest({
+  originalRequest: "Analyse de marché",
+  cronExpression: "0 9 * * *", // Tous les jours à 9h
+});
+
+console.log(`Tâche planifiée avec ID : ${taskId}`);
+
+// Annuler la tâche si nécessaire
+scheduler.cancelScheduledRequest(taskId);
+```
 
 ---
 

@@ -3,6 +3,8 @@ import { z } from "zod";
 import { CacheMemory } from "../../memory/cache";
 import { PersistentMemory } from "../../memory/persistent";
 import { ActionQueueManager } from "../../services/queue";
+import { CacheConfig, RedisCache } from "../../services/redis-cache";
+import { TaskScheduler } from "../../services/scheduler";
 import {
   ActionSchema,
   GenerateObjectResponse,
@@ -21,6 +23,8 @@ export class AgentRuntime {
   private readonly tools: ActionSchema[];
   private readonly interpreters: Interpreter[];
   private readonly queueManager: ActionQueueManager;
+  private readonly scheduler: TaskScheduler;
+  private readonly cache: RedisCache;
   private memory?: {
     persistent?: PersistentMemory;
     cache?: CacheMemory;
@@ -30,6 +34,7 @@ export class AgentRuntime {
     model: LanguageModelV1,
     tools: ActionSchema[],
     interpreters: Interpreter[],
+    redisConfig: CacheConfig,
     memory?: {
       persistent?: PersistentMemory;
       cache?: CacheMemory;
@@ -41,17 +46,24 @@ export class AgentRuntime {
     this.interpreters = interpreters;
     this.queueManager = new ActionQueueManager(tools, callbacks);
     this.memory = memory;
+    this.cache = new RedisCache(redisConfig);
+    this.scheduler = new TaskScheduler(this, this.cache);
   }
 
   private async buildContext(state: State): Promise<string> {
     console.log("🧠 Building context with RAG and CAG...");
     const context = LLMHeaderBuilder.create();
 
+    // Add orchestrator instructions
+    context.addHeader("ROLE", orchestratorInstructions.role);
+    context.addHeader("LANGUAGE", orchestratorInstructions.language);
+    context.addHeader(
+      "IMPORTANT",
+      orchestratorInstructions.guidelines.important
+    );
+    context.addHeader("WARNINGS", orchestratorInstructions.guidelines.warnings);
     // Add tools to context
     context.addHeader("TOOLS", injectActions(this.tools));
-
-    // Add current request
-    context.addHeader("USER_REQUEST", state.currentContext);
 
     // Add previous actions if any
     if (state.previousActions?.length) {
@@ -112,6 +124,12 @@ export class AgentRuntime {
         name: string;
         value: any;
       }>;
+      scheduler?: {
+        isScheduled: boolean;
+        scheduledAtInC?: string;
+        interval?: string;
+        reason?: string;
+      };
     }>;
     socialResponse?: {
       shouldRespond: boolean;
@@ -121,8 +139,8 @@ export class AgentRuntime {
     interpreter?: string;
     results?: string;
   }> {
-    console.log("\n🔄 Starting new processing cycle");
-    console.log("📝 Current context:", state.currentContext);
+    console.log("🔄 Processing state:");
+    console.dir(state, { depth: null });
     if (state.previousActions?.length) {
       console.log(
         "📊 Previous actions:",
@@ -148,6 +166,13 @@ export class AgentRuntime {
                 value: z.any(),
               })
             ),
+            scheduler: z
+              .object({
+                isScheduled: z.boolean(),
+                cronExpression: z.string().optional(),
+                reason: z.string().optional(),
+              })
+              .optional(),
           })
         ),
         socialResponse: z
@@ -159,11 +184,12 @@ export class AgentRuntime {
           .optional(),
         interpreter: z.string().optional(),
       }),
-      prompt: context,
-      system: orchestratorInstructions,
+      prompt: state.currentContext,
+      system: context.toString(),
       temperature: 0,
     });
-    console.log("🔄 Orchestrator response:", response.object);
+    console.log("🔄 Orchestrator response:");
+    console.dir(response.object, { depth: null });
 
     // Force shouldContinue to false if no actions are planned
     if (response.object.actions.length === 0) {
@@ -179,6 +205,28 @@ export class AgentRuntime {
         // Ensure all parameters have a value property
       }
     }
+
+    // Handle scheduled actions
+    for (const action of response.object.actions) {
+      if (action.scheduler?.isScheduled) {
+        await this.scheduler.scheduleRequest({
+          originalRequest: state.currentContext,
+          cronExpression: action.scheduler.cronExpression,
+        });
+      }
+    }
+
+    // Store actions in Redis cache
+    if (response.object.actions.length > 0) {
+      const requestId = crypto.randomUUID();
+      await this.cache.storePreviousActions(requestId, response.object.actions);
+    }
+
+    // Store message in recent messages
+    await this.cache.storeRecentMessage(state.currentContext, {
+      socialResponse: response.object.socialResponse,
+    });
+
     return response.object;
   }
 }

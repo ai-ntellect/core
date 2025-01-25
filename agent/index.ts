@@ -1,29 +1,24 @@
-import { deepseek } from "@ai-sdk/deepseek";
 import { LanguageModel } from "ai";
+import WebSocket from "ws";
 import { Interpreter } from "../llm/interpreter";
-import {
-  generalInterpreterCharacter,
-  marketInterpreterCharacter,
-  securityInterpreterCharacter,
-} from "../llm/interpreter/context";
 import { MemoryManager } from "../llm/memory-manager";
 import { AgentRuntime } from "../llm/orchestrator";
 import { State } from "../llm/orchestrator/types";
 import { CacheMemory } from "../memory/cache";
 import { PersistentMemory } from "../memory/persistent";
 import { ActionQueueManager } from "../services/queue";
-import {
-  checkHoneypot,
-  fetchMarkPrice,
-  getChainsTVL,
-  getRssNews,
-} from "../test";
+import { CacheConfig, RedisCache } from "../services/redis-cache";
 import { ActionData, ActionSchema, QueueCallbacks } from "../types";
 import { QueueItemTransformer } from "../utils/queue-item-transformer";
-
 export class Agent {
   private readonly agent: AgentRuntime;
   private readonly memoryManager: MemoryManager;
+  private readonly cache: RedisCache;
+
+  private webSocketClients: Map<
+    string,
+    { socket: WebSocket; callback: (data: any) => Promise<void> }
+  > = new Map();
   private readonly config: {
     orchestrator: {
       model: LanguageModel;
@@ -45,6 +40,7 @@ export class Agent {
   };
 
   constructor(config: {
+    cache: CacheConfig;
     orchestrator: {
       model: LanguageModel;
       tools: ActionSchema[];
@@ -64,11 +60,13 @@ export class Agent {
     callbacks?: QueueCallbacks;
     maxIterations: number;
   }) {
+    this.cache = new RedisCache(config.cache);
     this.config = config;
     this.agent = new AgentRuntime(
       config.orchestrator.model,
       config.orchestrator.tools,
       config.interpreters,
+      config.cache,
       config.orchestrator.memory
     );
     this.memoryManager = new MemoryManager({
@@ -82,12 +80,16 @@ export class Agent {
   }
 
   public async process(state: State, callbacks?: QueueCallbacks): Promise<any> {
-    console.log("🔄 Processing state:", state);
+    console.log("🔄 Processing state:");
+    console.dir(state, { depth: null });
     let countIterations = 0;
     const response = await this.agent.process(state);
 
+    const unscheduledActions = response.actions.filter(
+      (action) => !action.scheduler?.isScheduled
+    );
     // Execute actions if needed
-    if (response.actions?.length > 0 && response.shouldContinue) {
+    if (unscheduledActions?.length > 0 && response.shouldContinue) {
       console.log("\n📋 Processing action queue");
       const queueManager = new ActionQueueManager(
         this.config.orchestrator.tools,
@@ -118,10 +120,7 @@ export class Agent {
         previousActions: [...(state.previousActions || []), ...(results || [])],
       };
 
-      console.log(
-        "\n🔁 Recursively processing with updated state",
-        updatedNextState
-      );
+      console.log("\n🔁 Recursively processing with updated state");
       countIterations++;
       if (countIterations < this.config.maxIterations) {
         return this.process(updatedNextState);
@@ -189,45 +188,56 @@ export class Agent {
   private getInterpreter(interpreters: Interpreter[], name: string) {
     return interpreters.find((interpreter) => interpreter.name === name);
   }
+
+  public addListener(
+    id: string,
+    url: string,
+    subscriptionMessageFactory: () => string,
+    callback: (data: any, agentContext: Agent) => Promise<void>
+  ): void {
+    if (this.webSocketClients.has(id)) {
+      console.warn(`WebSocket with ID ${id} already exists.`);
+      return;
+    }
+
+    const socket = new WebSocket(url);
+
+    const wrappedCallback = async (data: any) => {
+      await callback(data, this);
+    };
+
+    socket.on("open", () => {
+      console.log(`🔗 WebSocket connected for ID: ${id}`);
+
+      // Envoie le message d'abonnement si une factory est fournie
+      if (subscriptionMessageFactory) {
+        const subscriptionMessage = subscriptionMessageFactory();
+        socket.send(subscriptionMessage);
+        console.log(
+          `📡 Sent subscription message for ID ${id}:`,
+          subscriptionMessage
+        );
+      }
+    });
+
+    socket.on("message", async (message: string) => {
+      console.log(`📨 Message received for WebSocket ID ${id}:`, message);
+      try {
+        const data = JSON.parse(message);
+        await wrappedCallback(data);
+      } catch (error) {
+        console.error(`❌ Error in callback for WebSocket ID ${id}:`, error);
+      }
+    });
+
+    socket.on("error", (error) => {
+      console.error(`❌ WebSocket error for ID ${id}:`, error);
+    });
+
+    socket.on("close", () => {
+      console.log(`🔌 WebSocket closed for ID: ${id}`);
+    });
+
+    this.webSocketClients.set(id, { socket, callback: wrappedCallback });
+  }
 }
-
-(async () => {
-  const model = deepseek("deepseek-reasoner");
-
-  const securityInterpreter = new Interpreter({
-    name: "security",
-    model,
-    character: securityInterpreterCharacter,
-  });
-  const marketInterpreter = new Interpreter({
-    name: "market",
-    model,
-    character: marketInterpreterCharacter,
-  });
-  const generalInterpreter = new Interpreter({
-    name: "general",
-    model,
-    character: generalInterpreterCharacter,
-  });
-
-  const agent = new Agent({
-    orchestrator: {
-      model,
-      tools: [checkHoneypot, fetchMarkPrice, getChainsTVL, getRssNews],
-    },
-    interpreters: [securityInterpreter, marketInterpreter, generalInterpreter],
-    memoryManager: {
-      model,
-    },
-    maxIterations: 3,
-  });
-
-  const state = {
-    currentContext: "tu pourrais analyser xrp/usd",
-    previousActions: [],
-  };
-
-  const result = await agent.process(state);
-
-  console.log("Result:", result);
-})();

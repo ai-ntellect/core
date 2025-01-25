@@ -1,167 +1,128 @@
-import { Orchestrator } from "../llm/orchestrator";
-import { ActionSchema, ScheduledAction, ScheduledActionEvents } from "../types";
-import { ActionQueueManager } from "./queue";
+import cron from "node-cron";
+import { AgentRuntime } from "../llm/orchestrator";
+import { RedisCache } from "./redis-cache";
 
-export class ActionScheduler {
-  private scheduledActions: Map<string, NodeJS.Timeout> = new Map();
-  private storage: ScheduledActionStorage;
-  private events: ScheduledActionEvents;
-
-  constructor(
-    private actionQueueManager: ActionQueueManager,
-    private orchestrator: Orchestrator,
-    events: ScheduledActionEvents = {}
-  ) {
-    this.storage = new ScheduledActionStorage();
-    this.events = events;
-    this.initializeScheduledActions();
-  }
-
-  async scheduleAction(
-    action: ActionSchema,
-    scheduledTime: Date,
-    userId: string,
-    recurrence?: ScheduledAction["recurrence"]
-  ): Promise<string> {
-    const scheduledAction: ScheduledAction = {
-      id: crypto.randomUUID(),
-      action: {
-        name: action.name,
-        parameters: [],
-      },
-      scheduledTime,
-      userId,
-      status: "pending",
-      recurrence,
-    };
-
-    await this.storage.saveScheduledAction(scheduledAction);
-    this.scheduleExecution(scheduledAction);
-    this.events.onActionScheduled?.(scheduledAction);
-
-    return scheduledAction.id;
-  }
-
-  private async initializeScheduledActions() {
-    const pendingActions = await this.storage.getPendingActions();
-    pendingActions.forEach((action) => this.scheduleExecution(action));
-  }
-
-  private scheduleExecution(scheduledAction: ScheduledAction) {
-    const now = new Date();
-    const delay = scheduledAction.scheduledTime.getTime() - now.getTime();
-
-    if (delay < 0) return;
-
-    const timeout = setTimeout(async () => {
-      try {
-        await this.executeScheduledAction(scheduledAction);
-
-        if (scheduledAction.recurrence) {
-          const nextExecutionTime = this.calculateNextExecutionTime(
-            scheduledAction.scheduledTime,
-            scheduledAction.recurrence
-          );
-          const actionSchema = this.orchestrator.tools.find(
-            (tool: ActionSchema) => tool.name === scheduledAction.action.name
-          );
-          if (actionSchema) {
-            await this.scheduleAction(
-              actionSchema,
-              nextExecutionTime,
-              scheduledAction.userId,
-              scheduledAction.recurrence
-            );
-          }
-        }
-      } catch (error) {
-        console.error(
-          `Failed to execute scheduled action ${scheduledAction.id}:`,
-          error
-        );
-        await this.storage.updateActionStatus(scheduledAction.id, "failed");
-      }
-    }, delay);
-
-    this.scheduledActions.set(scheduledAction.id, timeout);
-  }
-
-  private async executeScheduledAction(scheduledAction: ScheduledAction) {
-    try {
-      this.events.onActionStart?.(scheduledAction);
-
-      this.actionQueueManager.addToQueue({
-        name: scheduledAction.action.name,
-        parameters: scheduledAction.action.parameters,
-      });
-
-      const result = await this.actionQueueManager.processQueue();
-      await this.storage.updateActionStatus(scheduledAction.id, "completed");
-
-      this.events.onActionComplete?.(scheduledAction, result);
-    } catch (error) {
-      await this.storage.updateActionStatus(scheduledAction.id, "failed");
-      this.events.onActionFailed?.(scheduledAction, error as Error);
-      throw error;
-    }
-  }
-
-  private calculateNextExecutionTime(
-    currentTime: Date,
-    recurrence: NonNullable<ScheduledAction["recurrence"]>
-  ): Date {
-    const nextTime = new Date(currentTime);
-
-    switch (recurrence.type) {
-      case "daily":
-        nextTime.setDate(nextTime.getDate() + recurrence.interval);
-        break;
-      case "weekly":
-        nextTime.setDate(nextTime.getDate() + 7 * recurrence.interval);
-        break;
-      case "monthly":
-        nextTime.setMonth(nextTime.getMonth() + recurrence.interval);
-        break;
-    }
-
-    return nextTime;
-  }
-
-  async cancelScheduledAction(actionId: string): Promise<boolean> {
-    const timeout = this.scheduledActions.get(actionId);
-    if (timeout) {
-      clearTimeout(timeout);
-      this.scheduledActions.delete(actionId);
-      await this.storage.deleteScheduledAction(actionId);
-      this.events.onActionCancelled?.(actionId);
-      return true;
-    }
-    return false;
-  }
+interface ScheduledRequest {
+  id: string;
+  originalRequest: string;
+  cronExpression: string;
+  isRecurring: boolean;
+  createdAt: Date;
 }
 
-class ScheduledActionStorage {
-  private actions: ScheduledAction[] = [];
+export class TaskScheduler {
+  private scheduledRequests: Map<string, ScheduledRequest> = new Map();
+  private cronJobs: Map<string, cron.ScheduledTask> = new Map();
+  private readonly agentRuntime: AgentRuntime;
+  private readonly cache: RedisCache;
 
-  async saveScheduledAction(action: ScheduledAction): Promise<void> {
-    this.actions.push(action);
+  constructor(agentRuntime: AgentRuntime, cache: RedisCache) {
+    this.agentRuntime = agentRuntime;
+    this.cache = cache;
   }
 
-  async getPendingActions(): Promise<ScheduledAction[]> {
-    return this.actions.filter((action) => action.status === "pending");
+  /**
+   * Schedule a new request to be processed later
+   */
+  async scheduleRequest(request: {
+    originalRequest: string;
+    cronExpression: string;
+  }): Promise<string> {
+    const id = crypto.randomUUID();
+
+    const scheduledRequest: ScheduledRequest = {
+      id,
+      originalRequest: request.originalRequest,
+      cronExpression: request.cronExpression,
+      isRecurring: false,
+      createdAt: new Date(),
+    };
+
+    // Create cron job
+    const cronJob = cron.schedule(request.cronExpression, async () => {
+      await this.executeScheduledRequest(scheduledRequest);
+
+      if (!scheduledRequest.isRecurring) {
+        this.cancelScheduledRequest(id);
+      }
+    });
+
+    // Store request and job
+    this.scheduledRequests.set(id, scheduledRequest);
+    this.cronJobs.set(id, cronJob);
+
+    console.log(
+      `✅ Request scheduled with cron expression: ${request.cronExpression}`
+    );
+
+    return id;
   }
 
-  async updateActionStatus(
-    actionId: string,
-    status: ScheduledAction["status"]
+  /**
+   * Execute a scheduled request by launching a new process
+   */
+  private async executeScheduledRequest(
+    request: ScheduledRequest
   ): Promise<void> {
-    const action = this.actions.find((a) => a.id === actionId);
-    if (action) {
-      action.status = status;
+    try {
+      console.log(`🔄 Executing scheduled request from ${request.createdAt}`);
+
+      // Récupérer les actions précédentes du cache
+      const previousActions = await this.cache.getPreviousActions(request.id);
+
+      // Add context about when this request was scheduled
+      const contextualRequest = `You are a scheduler. 
+        You were asked to execute this request: ${request.originalRequest}\n 
+        Date of the request: ${request.createdAt.toISOString()}\n
+        Act like if you know the request was scheduled.
+        Don't reschedule the same action. 
+        Just execute it.`;
+
+      // Process the request as if it was just received
+      const result = await this.agentRuntime.process({
+        currentContext: contextualRequest,
+        previousActions,
+      });
+
+      // Store the new actions in cache
+      if (result.actions.length > 0) {
+        await this.cache.storePreviousActions(request.id, result.actions);
+      }
+
+      console.log(`✅ Scheduled request executed successfully`);
+    } catch (error) {
+      console.error(`❌ Failed to execute scheduled request:`, error);
     }
   }
 
-  async deleteScheduledAction(actionId: string): Promise<void> {
-    this.actions = this.actions.filter((a) => a.id !== actionId);
+  /**
+   * Cancel a scheduled request
+   */
+  cancelScheduledRequest(requestId: string): boolean {
+    const cronJob = this.cronJobs.get(requestId);
+    if (cronJob) {
+      cronJob.stop();
+      this.cronJobs.delete(requestId);
+    }
+    return this.scheduledRequests.delete(requestId);
+  }
+
+  /**
+   * Get all scheduled requests
+   */
+  getScheduledRequests(): ScheduledRequest[] {
+    return Array.from(this.scheduledRequests.values());
+  }
+
+  /**
+   * Stop all cron jobs
+   */
+  stopAll(): void {
+    for (const [id, cronJob] of this.cronJobs) {
+      cronJob.stop();
+      this.cronJobs.delete(id);
+      this.scheduledRequests.delete(id);
+    }
+    console.log("All scheduled requests stopped");
   }
 }

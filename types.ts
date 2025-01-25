@@ -160,6 +160,11 @@ export type GenerateObjectResponse = {
       name: string;
       value: any;
     }>;
+    scheduler?: {
+      isScheduled: boolean;
+      cronExpression: string;
+      reason?: string;
+    };
   }>;
   socialResponse?: {
     shouldRespond: boolean;

@@ -45,9 +45,12 @@ export class MemoryManager {
 
   buildContext(state: State) {
     const context = LLMHeaderBuilder.create()
+      .addHeader("ROLE", memoryManagerInstructions.role)
+      .addHeader("LANGUAGE", memoryManagerInstructions.language)
+      .addHeader("IMPORTANT", memoryManagerInstructions.guidelines.important)
+      .addHeader("WARNINGS", memoryManagerInstructions.guidelines.warnings)
       .addHeader("CURRENT_CONTEXT", state.currentContext)
-      .addHeader("RESULTS", JSON.stringify(state.results))
-      .addHeader("INSTRUCTIONS", memoryManagerInstructions);
+      .addHeader("RESULTS", JSON.stringify(state.results));
     return context.toString();
   }
 
@@ -76,12 +79,8 @@ export class MemoryManager {
           })
         ),
       }),
-      prompt: context,
-      system: `You are a memory curator. Your role is to extract and format memories from interactions.
-          - Always match the language of the initial request
-          - Be concise and clear
-          - Properly categorize between short and long term based on the data volatility
-        `,
+      prompt: state.currentContext,
+      system: context.toString(),
       temperature: 1,
     });
 
