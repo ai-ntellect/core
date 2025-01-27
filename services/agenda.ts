@@ -1,6 +1,6 @@
 import cron from "node-cron";
-import { AgentRuntime } from "../llm/orchestrator";
-import { RedisCache } from "./redis-cache";
+import { Orchestrator } from "../llm/orchestrator";
+import { RedisCache } from "./cache";
 
 interface ScheduledRequest {
   id: string;
@@ -10,24 +10,30 @@ interface ScheduledRequest {
   createdAt: Date;
 }
 
-export class TaskScheduler {
+export class Agenda {
   private scheduledRequests: Map<string, ScheduledRequest> = new Map();
   private cronJobs: Map<string, cron.ScheduledTask> = new Map();
-  private readonly agentRuntime: AgentRuntime;
+  private readonly orchestrator: Orchestrator;
   private readonly cache: RedisCache;
 
-  constructor(agentRuntime: AgentRuntime, cache: RedisCache) {
-    this.agentRuntime = agentRuntime;
+  constructor(orchestrator: Orchestrator, cache: RedisCache) {
+    this.orchestrator = orchestrator;
     this.cache = cache;
   }
 
   /**
    * Schedule a new request to be processed later
    */
-  async scheduleRequest(request: {
-    originalRequest: string;
-    cronExpression: string;
-  }): Promise<string> {
+  async scheduleRequest(
+    request: {
+      originalRequest: string;
+      cronExpression: string;
+    },
+    callbacks?: {
+      onScheduled?: (id: string) => void;
+      onExecuted?: (id: string, originalRequest: string) => void;
+    }
+  ): Promise<string> {
     const id = crypto.randomUUID();
 
     const scheduledRequest: ScheduledRequest = {
@@ -42,6 +48,9 @@ export class TaskScheduler {
     const cronJob = cron.schedule(request.cronExpression, async () => {
       await this.executeScheduledRequest(scheduledRequest);
 
+      if (callbacks?.onExecuted)
+        callbacks.onExecuted(id, scheduledRequest.originalRequest);
+
       if (!scheduledRequest.isRecurring) {
         this.cancelScheduledRequest(id);
       }
@@ -51,9 +60,7 @@ export class TaskScheduler {
     this.scheduledRequests.set(id, scheduledRequest);
     this.cronJobs.set(id, cronJob);
 
-    console.log(
-      `✅ Request scheduled with cron expression: ${request.cronExpression}`
-    );
+    if (callbacks?.onScheduled) callbacks.onScheduled(id);
 
     return id;
   }
@@ -66,28 +73,6 @@ export class TaskScheduler {
   ): Promise<void> {
     try {
       console.log(`🔄 Executing scheduled request from ${request.createdAt}`);
-
-      // Récupérer les actions précédentes du cache
-      const previousActions = await this.cache.getPreviousActions(request.id);
-
-      // Add context about when this request was scheduled
-      const contextualRequest = `You are a scheduler. 
-        You were asked to execute this request: ${request.originalRequest}\n 
-        Date of the request: ${request.createdAt.toISOString()}\n
-        Act like if you know the request was scheduled.
-        Don't reschedule the same action. 
-        Just execute it.`;
-
-      // Process the request as if it was just received
-      const result = await this.agentRuntime.process({
-        currentContext: contextualRequest,
-        previousActions,
-      });
-
-      // Store the new actions in cache
-      if (result.actions.length > 0) {
-        await this.cache.storePreviousActions(request.id, result.actions);
-      }
 
       console.log(`✅ Scheduled request executed successfully`);
     } catch (error) {

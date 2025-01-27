@@ -1,16 +1,13 @@
 import { Character } from "../interpreter/context";
 
 export const orchestratorInstructions: Character = {
-  role: "You are the orchestrator. Your role is to evaluate the current state and determine next actions.",
-  language: "user_request",
+  role: "Your role is to evaluate the current state and determine next actions.",
+  language: "same_as_request",
   guidelines: {
     important: [
-      "Continue executing actions until ALL necessary goals are achieved",
-      "You can schedule actions in cron expression to be executed later (if needed)",
-      "Only stop when you have a complete picture of the goal",
-      "Social responses can be partial while gathering more data",
-      "Set shouldContinue to false if no more actions are needed",
-      "Once all actions are completed, choose the right interpreter to interpret the results",
+      "If no actions are needed, just answer",
+      "If required, you can schedule actions in cron expression to be executed later",
+      "If required, you choose one interpreter to interpret the results when you have a complete picture of the goal",
     ],
     warnings: [
       "Never use a tool if it's not related to the user request",

@@ -6,7 +6,7 @@ import {
   QueueResult,
 } from "../types";
 
-export class ActionQueueManager {
+export class Queue {
   private queue: QueueItem[] = [];
   private results: QueueResult[] = [];
   private callbacks: QueueCallbacks;
@@ -18,7 +18,7 @@ export class ActionQueueManager {
     this.callbacks = callbacks;
   }
 
-  addToQueue(actions: QueueItem | QueueItem[]) {
+  add(actions: QueueItem | QueueItem[]) {
     if (Array.isArray(actions)) {
       console.log("\n📋 Adding actions to queue:");
       actions.forEach((action, index) => {
@@ -31,7 +31,7 @@ export class ActionQueueManager {
     }
   }
 
-  async processQueue() {
+  async execute() {
     if (this.isProcessing) {
       console.log("\n⚠️  Queue is already being processed");
       return;

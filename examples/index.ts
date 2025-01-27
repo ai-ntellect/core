@@ -4,32 +4,26 @@ import { deepseek } from "@ai-sdk/deepseek";
 import { configDotenv } from "dotenv";
 import readline from "readline";
 import { Agent } from "../agent";
-import { getRssNews } from "../agent/tools/get-rss";
 import { Interpreter } from "../llm/interpreter";
 import {
-  generalInterpreterCharacter,
   marketInterpreterCharacter,
   securityInterpreterCharacter,
 } from "../llm/interpreter/context";
+import { getRssNews } from "./actions/get-rss";
 configDotenv();
 // Initialiser l'agent une fois pour toute la session
 const initializeAgent = () => {
-  const model = deepseek("deepseek-reasoner");
+  const model = deepseek("deepseek-chat");
 
   const securityInterpreter = new Interpreter({
-    name: "security",
+    name: "security-check",
     model,
     character: securityInterpreterCharacter,
   });
   const marketInterpreter = new Interpreter({
-    name: "market",
+    name: "market-analysis",
     model,
     character: marketInterpreterCharacter,
-  });
-  const generalInterpreter = new Interpreter({
-    name: "general",
-    model,
-    character: generalInterpreterCharacter,
   });
 
   const agent = new Agent({
@@ -41,7 +35,7 @@ const initializeAgent = () => {
       model,
       tools: [getRssNews],
     },
-    interpreters: [securityInterpreter, marketInterpreter, generalInterpreter],
+    interpreters: [securityInterpreter, marketInterpreter],
     memoryManager: {
       model,
     },
@@ -80,12 +74,13 @@ const startChatSession = async () => {
       return;
     }
 
-    state.currentContext = input;
-
     console.log("Agent en réflexion...");
     try {
-      const result = await agent.process(state);
-      console.log(`Agent > ${result}\n`);
+      const result = await agent.process(input, {
+        onMessage: (message) => {
+          console.log(`Agent > ${message.socialResponse?.response}\n`);
+        },
+      });
     } catch (error) {
       console.error("Erreur avec l'agent :", error);
     }

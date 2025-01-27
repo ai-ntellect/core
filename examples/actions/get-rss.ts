@@ -20,7 +20,14 @@ function stripHtmlTags(content: string): string {
 export const getRssNews = {
   name: "get-news-rss",
   description: "Get latest news about on website",
-  parameters: z.object({}),
+  parameters: z.object({
+    url: z.enum([
+      "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx1YlY4U0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US:en",
+      "https://www.investing.com/rss/news_301.rss",
+      "https://cointelegraph.com/rss/category/analysis",
+      "https://cointelegraph.com/rss/category/top-10-cryptocurrencies",
+    ]),
+  }),
   execute: async () => {
     const itemsPerSource = 5;
 

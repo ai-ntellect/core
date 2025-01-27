@@ -1,25 +1,33 @@
 import { LanguageModel } from "ai";
 import WebSocket from "ws";
+import { createMainGraph } from "../graphs/index";
 import { Interpreter } from "../llm/interpreter";
 import { MemoryManager } from "../llm/memory-manager";
-import { AgentRuntime } from "../llm/orchestrator";
-import { State } from "../llm/orchestrator/types";
+import { Orchestrator } from "../llm/orchestrator";
 import { CacheMemory } from "../memory/cache";
 import { PersistentMemory } from "../memory/persistent";
-import { ActionQueueManager } from "../services/queue";
-import { CacheConfig, RedisCache } from "../services/redis-cache";
-import { ActionData, ActionSchema, QueueCallbacks } from "../types";
-import { QueueItemTransformer } from "../utils/queue-item-transformer";
-export class Agent {
-  private readonly agent: AgentRuntime;
-  private readonly memoryManager: MemoryManager;
-  private readonly cache: RedisCache;
+import { Agenda } from "../services/agenda";
+import { CacheConfig, RedisCache } from "../services/cache";
+import { Graph } from "../services/graph";
+import {
+  ActionSchema,
+  AgentEvent,
+  MyContext,
+  QueueCallbacks,
+  SharedState,
+} from "../types";
 
-  private webSocketClients: Map<
+export class Agent {
+  public readonly orchestrator: Orchestrator;
+  public readonly memoryManager: MemoryManager;
+  public readonly cache: RedisCache;
+  public agenda: Agenda;
+
+  private listeners: Map<
     string,
     { socket: WebSocket; callback: (data: any) => Promise<void> }
   > = new Map();
-  private readonly config: {
+  public readonly config: {
     orchestrator: {
       model: LanguageModel;
       tools: ActionSchema[];
@@ -44,10 +52,6 @@ export class Agent {
     orchestrator: {
       model: LanguageModel;
       tools: ActionSchema[];
-      memory?: {
-        cache?: CacheMemory;
-        persistent?: PersistentMemory;
-      };
     };
     interpreters: Interpreter[];
     memoryManager: {
@@ -62,12 +66,11 @@ export class Agent {
   }) {
     this.cache = new RedisCache(config.cache);
     this.config = config;
-    this.agent = new AgentRuntime(
+    this.orchestrator = new Orchestrator(
       config.orchestrator.model,
       config.orchestrator.tools,
       config.interpreters,
-      config.cache,
-      config.orchestrator.memory
+      config.memoryManager.memory
     );
     this.memoryManager = new MemoryManager({
       model: config.memoryManager.model,
@@ -77,141 +80,77 @@ export class Agent {
       },
     });
     this.config.maxIterations = 3;
+    this.agenda = new Agenda(this.orchestrator, this.cache);
   }
 
-  public async process(state: State, callbacks?: QueueCallbacks): Promise<any> {
+  public async process(prompt: string, callbacks?: AgentEvent): Promise<any> {
     console.log("🔄 Processing state:");
-    console.dir(state, { depth: null });
-    let countIterations = 0;
-    const response = await this.agent.process(state);
+    const agent = this;
+    const recentMessages = await this.cache.getRecentMessages();
+    const previousActions = await this.cache.getRecentPreviousActions(1);
 
-    const unscheduledActions = response.actions.filter(
-      (action) => !action.scheduler?.isScheduled
-    );
-    // Execute actions if needed
-    if (unscheduledActions?.length > 0 && response.shouldContinue) {
-      console.log("\n📋 Processing action queue");
-      const queueManager = new ActionQueueManager(
-        this.config.orchestrator.tools,
-        callbacks
-      );
-      const queueItems = QueueItemTransformer.transformActionsToQueueItems(
-        response.actions as ActionData[]
-      );
-      if (!queueItems) {
-        throw new Error("No queue items found");
-      }
-
-      console.log(
-        "📋 Actions to execute:",
-        queueItems
-          .map((item) => (typeof item === "string" ? item : item.name))
-          .join(", ")
-      );
-
-      queueManager.addToQueue(queueItems);
-      console.log("\n⚡ Executing actions...");
-      const results = await queueManager.processQueue();
-      console.log("✅ Execution results:", results);
-
-      const updatedNextState: State = {
-        ...state,
-        currentContext: state.currentContext,
-        previousActions: [...(state.previousActions || []), ...(results || [])],
-      };
-
-      console.log("\n🔁 Recursively processing with updated state");
-      countIterations++;
-      if (countIterations < this.config.maxIterations) {
-        return this.process(updatedNextState);
-      }
-    }
-
-    if (countIterations >= this.config.maxIterations) {
-      console.log("Max iterations reached");
-      response.shouldContinue = false;
-      console.log("Forcing stop");
-    }
-
-    // Handle final interpretation
-    if (
-      !response.shouldContinue &&
-      state.previousActions?.length &&
-      response.interpreter
-    ) {
-      console.log("\n🏁 Analysis complete - generating final interpretation");
-      const interpreter = this.getInterpreter(
-        this.config.interpreters,
-        response.interpreter
-      );
-      console.log("🎭 Selected Interpreter:", interpreter?.name);
-      console.dir(state, { depth: null });
-      const interpretationResult = (await interpreter?.process(
-        "Interpret the analysis results",
-        {
-          ...state,
-          results: JSON.stringify(state.previousActions),
-          userRequest: state.currentContext,
-        }
-      )) as { response: string };
-
-      console.log("\n📊 Final Analysis:", interpretationResult.response);
-
-      const finalState: State = {
-        ...state,
-        results: interpretationResult.response,
-      };
-
-      console.log("🔄 Final state:", finalState);
-    }
-
-    // Return the final response at the end of the function
-    const validatedActions = response.actions.map((action) => ({
-      ...action,
-      parameters: action.parameters.map((param) => ({
-        ...param,
-        value: param.value ?? null, // Set a default value if undefined
-      })),
-    }));
-
-    const result = {
-      ...response,
-      actions: validatedActions,
-      results: JSON.stringify(state.previousActions),
+    const initialState: SharedState<MyContext> = {
+      messages: [...recentMessages, { role: "user", content: prompt }],
+      context: {
+        prompt,
+        processing: {
+          stop: false,
+        },
+        results: previousActions,
+      },
     };
-    if (!result.shouldContinue) {
-      await this.memoryManager.process(state, JSON.stringify(result));
+
+    const mainGraphDefinition = createMainGraph(agent, prompt, callbacks);
+    const runtime = new Graph<MyContext>(mainGraphDefinition);
+    const hasCycles = runtime.checkForCycles();
+
+    const mermaidDiagram = runtime.generateMermaidDiagram("Agent");
+    console.log(mermaidDiagram);
+    if (hasCycles) {
+      console.error("Cycle detected in the graph");
+      throw new Error("Cycle detected in the graph");
     }
-    return result;
+    await runtime.execute(
+      initialState,
+      mainGraphDefinition.entryNode,
+      async (state) => {
+        callbacks?.onMessage && (await callbacks.onMessage(state));
+      }
+    );
   }
 
-  private getInterpreter(interpreters: Interpreter[], name: string) {
+  public getInterpreter(interpreters: Interpreter[], name: string) {
     return interpreters.find((interpreter) => interpreter.name === name);
   }
 
-  public addListener(
-    id: string,
-    url: string,
-    subscriptionMessageFactory: () => string,
-    callback: (data: any, agentContext: Agent) => Promise<void>
-  ): void {
-    if (this.webSocketClients.has(id)) {
+  public addListener({
+    id,
+    url,
+    onSubscribe,
+    onMessage,
+  }: {
+    id: string;
+    url: string;
+    onSubscribe: () => string;
+    onMessage: (data: any, agentContext: Agent) => Promise<void>;
+  }): void {
+    if (this.listeners.has(id)) {
       console.warn(`WebSocket with ID ${id} already exists.`);
       return;
     }
 
     const socket = new WebSocket(url);
 
-    const wrappedCallback = async (data: any) => {
-      await callback(data, this);
+    const wrappedOnMessage = async (data: any) => {
+      await onMessage(data, this);
     };
 
     socket.on("open", () => {
       console.log(`🔗 WebSocket connected for ID: ${id}`);
 
       // Envoie le message d'abonnement si une factory est fournie
-      if (subscriptionMessageFactory) {
-        const subscriptionMessage = subscriptionMessageFactory();
+      if (onSubscribe) {
+        const subscriptionMessage = onSubscribe();
         socket.send(subscriptionMessage);
         console.log(
           `📡 Sent subscription message for ID ${id}:`,
@@ -224,7 +163,7 @@ export class Agent {
       console.log(`📨 Message received for WebSocket ID ${id}:`, message);
       try {
         const data = JSON.parse(message);
-        await wrappedCallback(data);
+        await wrappedOnMessage(data);
       } catch (error) {
         console.error(`❌ Error in callback for WebSocket ID ${id}:`, error);
       }
@@ -238,6 +177,6 @@ export class Agent {
       console.log(`🔌 WebSocket closed for ID: ${id}`);
     });
 
-    this.webSocketClients.set(id, { socket, callback: wrappedCallback });
+    this.listeners.set(id, { socket, callback: wrappedOnMessage });
   }
 }

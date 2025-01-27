@@ -1,30 +1,17 @@
-import { LanguageModelV1 } from "ai";
+import { generateObject, LanguageModelV1 } from "ai";
 import { z } from "zod";
 import { CacheMemory } from "../../memory/cache";
 import { PersistentMemory } from "../../memory/persistent";
-import { ActionQueueManager } from "../../services/queue";
-import { CacheConfig, RedisCache } from "../../services/redis-cache";
-import { TaskScheduler } from "../../services/scheduler";
-import {
-  ActionSchema,
-  GenerateObjectResponse,
-  MemoryScope,
-  QueueCallbacks,
-} from "../../types";
-import { generateObject } from "../../utils/generate-object";
+import { ActionSchema, MemoryScope, MyContext, SharedState } from "../../types";
 import { LLMHeaderBuilder } from "../../utils/header-builder";
 import { injectActions } from "../../utils/inject-actions";
 import { Interpreter } from "../interpreter";
 import { orchestratorInstructions } from "./context";
-import { State } from "./types";
 
-export class AgentRuntime {
+export class Orchestrator {
   private readonly model: LanguageModelV1;
   private readonly tools: ActionSchema[];
   private readonly interpreters: Interpreter[];
-  private readonly queueManager: ActionQueueManager;
-  private readonly scheduler: TaskScheduler;
-  private readonly cache: RedisCache;
   private memory?: {
     persistent?: PersistentMemory;
     cache?: CacheMemory;
@@ -34,23 +21,18 @@ export class AgentRuntime {
     model: LanguageModelV1,
     tools: ActionSchema[],
     interpreters: Interpreter[],
-    redisConfig: CacheConfig,
     memory?: {
       persistent?: PersistentMemory;
       cache?: CacheMemory;
-    },
-    callbacks?: QueueCallbacks
+    }
   ) {
     this.model = model;
     this.tools = tools;
     this.interpreters = interpreters;
-    this.queueManager = new ActionQueueManager(tools, callbacks);
     this.memory = memory;
-    this.cache = new RedisCache(redisConfig);
-    this.scheduler = new TaskScheduler(this, this.cache);
   }
 
-  private async buildContext(state: State): Promise<string> {
+  private async buildContext(state: SharedState<MyContext>): Promise<string> {
     console.log("🧠 Building context with RAG and CAG...");
     const context = LLMHeaderBuilder.create();
 
@@ -65,18 +47,10 @@ export class AgentRuntime {
     // Add tools to context
     context.addHeader("TOOLS", injectActions(this.tools));
 
-    // Add previous actions if any
-    if (state.previousActions?.length) {
-      context.addHeader(
-        "PREVIOUS_ACTIONS",
-        JSON.stringify(state.previousActions)
-      );
-    }
-
     // Get recent similar actions (CAG)
     if (this.memory?.cache) {
       const cacheMemories = await this.memory.cache.findSimilarActions(
-        state.currentContext,
+        state.messages[state.messages.length - 1].content.toString(),
         {
           similarityThreshold: 80,
           maxResults: 3,
@@ -93,7 +67,7 @@ export class AgentRuntime {
     if (this.memory?.persistent) {
       const persistentMemory =
         await this.memory.persistent.findRelevantDocuments(
-          state.currentContext,
+          state.messages[state.messages.length - 1].content.toString(),
           {
             similarityThreshold: 80,
           }
@@ -109,15 +83,25 @@ export class AgentRuntime {
 
     // Add available interpreters
     context.addHeader(
-      "AVAILABLE_INTERPRETERS",
+      "INTERPRETERS (choose one)",
       JSON.stringify(this.interpreters.map((i) => i.name))
+        .replace("[", "")
+        .replace("]", "")
     );
-    console.log("Context built with memories", context.toString());
     return context.toString();
   }
 
-  async process(state: State): Promise<{
-    shouldContinue: boolean;
+  async process(
+    state: SharedState<MyContext>,
+    callbacks?: {
+      onStart?: () => void;
+      onFinish?: (event: any) => void;
+    }
+  ): Promise<{
+    processing: {
+      stop: boolean;
+      stopReason?: string;
+    };
     actions: Array<{
       name: string;
       parameters: Array<{
@@ -126,37 +110,39 @@ export class AgentRuntime {
       }>;
       scheduler?: {
         isScheduled: boolean;
-        scheduledAtInC?: string;
-        interval?: string;
+        cronExpression?: string;
         reason?: string;
       };
     }>;
-    socialResponse?: {
-      shouldRespond: boolean;
-      response?: string;
-      isPartialResponse?: boolean;
-    };
-    interpreter?: string;
+    response: string;
+    interpreter?: string | null;
     results?: string;
   }> {
-    console.log("🔄 Processing state:");
-    console.dir(state, { depth: null });
-    if (state.previousActions?.length) {
-      console.log(
-        "📊 Previous actions:",
-        state.previousActions
-          .map((a) => (typeof a === "string" ? a : a.name))
-          .join(", ")
-      );
-    }
+    if (callbacks?.onStart) callbacks.onStart();
 
     const context = await this.buildContext(state);
+    let prompt = LLMHeaderBuilder.create();
+    prompt.addHeader(
+      "REQUEST",
+      state.messages[state.messages.length - 1].content.toString()
+    );
 
-    console.log("\n🧠 Generating response from LLM...");
-    const response = await generateObject<GenerateObjectResponse>({
+    if (state.messages.length > 1) {
+      prompt.addHeader("RECENT_MESSAGES", JSON.stringify(state.messages));
+    }
+
+    if (state.context.results) {
+      prompt.addHeader("ACTIONS_DONE", JSON.stringify(state.context.results));
+    }
+
+    console.log("\n🧠 Generating response from Orchestrator...");
+    const response = await generateObject({
       model: this.model,
       schema: z.object({
-        shouldContinue: z.boolean(),
+        processing: z.object({
+          stop: z.boolean(),
+          stopReason: z.string(),
+        }),
         actions: z.array(
           z.object({
             name: z.string(),
@@ -166,67 +152,40 @@ export class AgentRuntime {
                 value: z.any(),
               })
             ),
-            scheduler: z
-              .object({
-                isScheduled: z.boolean(),
-                cronExpression: z.string().optional(),
-                reason: z.string().optional(),
-              })
-              .optional(),
+            scheduler: z.object({
+              isScheduled: z.boolean(),
+              cronExpression: z.string(),
+              reason: z.string(),
+            }),
           })
         ),
-        socialResponse: z
-          .object({
-            shouldRespond: z.boolean(),
-            response: z.string().optional(),
-            isPartialResponse: z.boolean().optional(),
-          })
-          .optional(),
-        interpreter: z.string().optional(),
+        response: z.string(),
+        interpreter: z.string().or(z.null()),
       }),
-      prompt: state.currentContext,
       system: context.toString(),
       temperature: 0,
+      prompt: prompt.toString(),
     });
     console.log("🔄 Orchestrator response:");
     console.dir(response.object, { depth: null });
 
     // Force shouldContinue to false if no actions are planned
     if (response.object.actions.length === 0) {
-      response.object.shouldContinue = false;
-      console.log("⚠️ No actions planned, forcing shouldContinue to false");
+      response.object.processing.stop = true;
+      console.log("⚠️ No actions planned, forcing isProcessing to false");
     }
 
     // Handle social interactions and actions in a single block
-    if (response.object.socialResponse?.shouldRespond) {
+    if (response.object.response) {
       console.log("\n💬 Processing social response");
-      if (response.object.socialResponse.response) {
-        console.log("📢 Response:", response.object.socialResponse.response);
+      if (response.object.response) {
+        console.log("📢 Response:", response.object.response);
         // Ensure all parameters have a value property
       }
     }
 
-    // Handle scheduled actions
-    for (const action of response.object.actions) {
-      if (action.scheduler?.isScheduled) {
-        await this.scheduler.scheduleRequest({
-          originalRequest: state.currentContext,
-          cronExpression: action.scheduler.cronExpression,
-        });
-      }
-    }
+    if (callbacks?.onFinish) callbacks.onFinish(response.object);
 
-    // Store actions in Redis cache
-    if (response.object.actions.length > 0) {
-      const requestId = crypto.randomUUID();
-      await this.cache.storePreviousActions(requestId, response.object.actions);
-    }
-
-    // Store message in recent messages
-    await this.cache.storeRecentMessage(state.currentContext, {
-      socialResponse: response.object.socialResponse,
-    });
-
-    return response.object;
+    return response.object as any;
   }
 }

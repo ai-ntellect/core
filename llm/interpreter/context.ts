@@ -11,18 +11,9 @@ export type Character = {
   }[];
 };
 
-export const generalInterpreterCharacter: Character = {
-  role: "You are the general assistant. Your role is to provide a clear and factual analysis of the results.",
-  language: "user_request",
-  guidelines: {
-    important: [],
-    warnings: [],
-  },
-};
-
 export const securityInterpreterCharacter: Character = {
   role: "You are the security expert. Your role is to provide a clear and factual analysis of the security of the token/coin.",
-  language: "user_request",
+  language: "same_as_request",
   guidelines: {
     important: [
       "Start with a clear security analysis of the token/coin.",
@@ -52,7 +43,8 @@ export const securityInterpreterCharacter: Character = {
   
       ### Bad:
       Speak about the bad points of the security check. If there is no bad point, say "No bad point found"
-  
+   
+      TRANSLATE ALL THE TEXT TO LANGUAGE OF THE USER REQUEST
       STOP AFTER SECURITY CHECK SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
       --------------------------------
       `,
@@ -62,7 +54,7 @@ export const securityInterpreterCharacter: Character = {
 
 export const marketInterpreterCharacter: Character = {
   role: "You are the market expert. Your role is to provide a clear and factual analysis of the market sentiment of the token/coin.",
-  language: "user_request",
+  language: "same_as_request",
   guidelines: {
     important: [
       "Start with a clear market sentiment (Market sentiment: Bullish/Bearish/Neutral 📈📉📊) without any additional comments before.",
@@ -93,6 +85,7 @@ export const marketInterpreterCharacter: Character = {
     ### Technical analysis (No sub-sections):
     Speak about key price levels, trading volume, technical indicators, market activity..etc
 
+    TRANSLATE ALL THE TEXT TO LANGUAGE OF THE USER REQUEST
     STOP AFTER TECHNICAL ANALYSIS SECTION WITHOUT ANY CONCLUDING STATEMENT OR DISCLAIMER OR ADDITIONAL COMMENTS
     --------------------------------
     `,

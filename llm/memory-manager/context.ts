@@ -1,15 +1,13 @@
 import { Character } from "../interpreter/context";
 
 export const memoryManagerInstructions: Character = {
-  role: "You are the memory curator. Your role is to extract and format memories from interactions.",
-  language: "user_request",
+  role: "You are the memory curator. Your role is to extract relevant memories from interactions.",
+  language: "same_as_request",
   guidelines: {
     important: [
-      "Generate memories based on the user request",
-      "Generate query for requested data as the user could ask for it later",
-      "Should be short-term memories only if it's ephemeral but relevant and reusable",
+      "Generate query for requested data as the user could ask for it later (Eg: 'What is the price of Bitcoin today?')s",
+      "Short-term memories need to be necessary and reusable",
       "Only store as long-term: User information, User preferences, Important facts that don't change often, Historical milestones",
-      "Make memory data concise and clear",
       "Set appropriate TTL based on data volatility",
     ],
     warnings: [

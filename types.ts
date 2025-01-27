@@ -1,4 +1,4 @@
-import { Embedding, EmbeddingModel, StreamTextResult } from "ai";
+import { CoreMessage, Embedding, EmbeddingModel, StreamTextResult } from "ai";
 import { z } from "zod";
 
 export interface BaseLLM {
@@ -68,11 +68,6 @@ export type Behavior = {
     role: string;
     content: string;
   }[];
-};
-
-export type State = {
-  userRequest: string;
-  results: string;
 };
 
 export interface ActionSchema {
@@ -153,7 +148,10 @@ export interface CacheMemoryOptions {
 }
 
 export type GenerateObjectResponse = {
-  shouldContinue: boolean;
+  processing: {
+    stop: boolean;
+    stopReason?: string;
+  };
   actions: Array<{
     name: string;
     parameters: Array<{
@@ -166,11 +164,7 @@ export type GenerateObjectResponse = {
       reason?: string;
     };
   }>;
-  socialResponse?: {
-    shouldRespond: boolean;
-    response?: string;
-    isPartialResponse?: boolean;
-  };
+  response: string;
   interpreter?: string;
 };
 
@@ -285,4 +279,77 @@ export interface WorkflowPattern {
     result: string;
   }>;
   success: boolean;
+}
+
+// État partagé
+export type MyContext = {
+  prompt?: string;
+  processing: {
+    stop: boolean;
+    reason?: string;
+  };
+  actions?: {
+    name: string;
+    parameters: Record<string, any>;
+    result?: any;
+    error?: any;
+    scheduler?: {
+      isScheduled: boolean;
+      cronExpression?: string;
+      reason?: string;
+    };
+  }[];
+  interpreter?: string | null;
+  results?: any;
+};
+
+export interface SharedState<T> {
+  messages: CoreMessage[]; // Historique des interactions
+  context: T;
+}
+
+export function mergeState<T>(
+  current: SharedState<T>,
+  updates: Partial<SharedState<T>>
+): SharedState<T> {
+  const uniqueMessages = new Map(
+    [...current.messages, ...(updates.messages || [])].map((msg) => [
+      JSON.stringify(msg),
+      msg,
+    ])
+  );
+  return {
+    ...current,
+    context: { ...current.context, ...updates.context },
+    messages: Array.from(uniqueMessages.values()), // Messages uniques
+  };
+}
+export interface RetryConfig {
+  maxRetries: number;
+  retryDelay: number;
+  shouldRetry?: (error: Error) => boolean;
+}
+
+export interface Node<T> {
+  name: string;
+  execute: (state: SharedState<T>) => Promise<Partial<SharedState<T>>>;
+  condition?: (state: SharedState<T>) => boolean;
+  next?: string[];
+  events?: string[];
+  retry?: RetryConfig;
+}
+
+export interface Persistence<T> {
+  saveState(
+    graphName: string,
+    state: SharedState<T>,
+    currentNode: string
+  ): Promise<void>;
+  loadState(
+    graphName: string
+  ): Promise<{ state: SharedState<T>; currentNode: string } | null>;
+}
+
+export interface RealTimeNotifier {
+  notify(event: string, data: any): void;
 }

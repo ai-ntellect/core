@@ -1,4 +1,4 @@
-import { LanguageModelV1, generateText } from "ai";
+import { CoreMessage, LanguageModelV1, generateText } from "ai";
 import { z } from "zod";
 
 export const describeZodSchema = (schema: z.ZodType): string => {
@@ -54,19 +54,16 @@ export const describeZodSchema = (schema: z.ZodType): string => {
 export const generateObject = async <T>(config: {
   model: LanguageModelV1;
   schema: z.ZodSchema;
-  prompt: string;
   system: string;
   temperature: number;
+  prompt?: string;
+  messages?: CoreMessage[];
 }): Promise<{ object: T }> => {
   // Generate a detailed description of the schema
   const schemaDescription = describeZodSchema(config.schema);
 
-  console.log("🔍 Schema Description:\n", schemaDescription);
-
-  const response = await generateText({
-    model: config.model,
-    prompt: `${config.prompt}
-  
+  const baseContext = `
+  ${config.system}
   EXPECTED SCHEMA:
   ${schemaDescription}
   
@@ -76,16 +73,31 @@ export const generateObject = async <T>(config: {
     "key": "value"
   }
   \`\`\`
-  
+
   GOOD EXAMPLE:
   {
     "key": "value"
   }
-  
-  Output only the JSON schema, no 'triple quotes'json or any other text. Only the JSON schema.
-  `,
+
+  OUTPUT ONLY THE JSON SCHEMA, NO 'TRIPLE QUOTES'JSON OR ANY OTHER TEXT. ONLY THE JSON SCHEMA.
+  `;
+
+  console.log("🔍 Generating object with context:");
+  console.log(`${config.prompt}\n${baseContext}\n`);
+  const response = await generateText({
+    model: config.model,
+    messages: !config.prompt
+      ? [
+          {
+            role: "system",
+            content: baseContext,
+          },
+          ...(config.messages ?? []),
+        ]
+      : undefined,
     system: config.system,
     temperature: config.temperature,
+    prompt: !config.prompt ? undefined : `${config.prompt}\n\n${baseContext}`,
   });
 
   try {

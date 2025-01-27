@@ -2,10 +2,9 @@ import { LanguageModelV1 } from "ai";
 import { z } from "zod";
 import { CacheMemory } from "../../memory/cache";
 import { PersistentMemory } from "../../memory/persistent";
-import { MemoryScope } from "../../types";
+import { MyContext, SharedState } from "../../types";
 import { generateObject } from "../../utils/generate-object";
 import { LLMHeaderBuilder } from "../../utils/header-builder";
-import { State } from "../orchestrator/types";
 import { memoryManagerInstructions } from "./context";
 
 interface MemoryResponse {
@@ -27,7 +26,7 @@ interface MemoryResponse {
 }
 export class MemoryManager {
   private readonly model: LanguageModelV1;
-  private readonly memory?: {
+  public readonly memory?: {
     cache?: CacheMemory;
     persistent?: PersistentMemory;
   };
@@ -43,19 +42,37 @@ export class MemoryManager {
     this.memory = config.memory;
   }
 
-  buildContext(state: State) {
+  buildContext() {
     const context = LLMHeaderBuilder.create()
       .addHeader("ROLE", memoryManagerInstructions.role)
       .addHeader("LANGUAGE", memoryManagerInstructions.language)
       .addHeader("IMPORTANT", memoryManagerInstructions.guidelines.important)
-      .addHeader("WARNINGS", memoryManagerInstructions.guidelines.warnings)
-      .addHeader("CURRENT_CONTEXT", state.currentContext)
-      .addHeader("RESULTS", JSON.stringify(state.results));
+      .addHeader("WARNINGS", memoryManagerInstructions.guidelines.warnings);
     return context.toString();
   }
 
-  async process(state: State, result: string) {
-    const context = this.buildContext(state);
+  async process(
+    state: SharedState<MyContext>,
+    callbacks?: {
+      onMemoriesGenerated?: (event: any) => void;
+    }
+  ) {
+    const context = this.buildContext();
+    let prompt = LLMHeaderBuilder.create();
+    prompt.addHeader(
+      "REQUEST",
+      state.messages[state.messages.length - 2].content.toString()
+    );
+    if (state.messages.length > 0) {
+      prompt.addHeader("RECENT_MESSAGES", JSON.stringify(state.messages));
+    }
+
+    if (state.context.actions) {
+      prompt.addHeader(
+        "PREVIOUS_ACTIONS",
+        JSON.stringify(state.context.actions)
+      );
+    }
 
     const memories = await generateObject<MemoryResponse>({
       model: this.model,
@@ -79,85 +96,18 @@ export class MemoryManager {
           })
         ),
       }),
-      prompt: state.currentContext,
       system: context.toString(),
       temperature: 1,
+      prompt: prompt.toString(),
     });
-
-    console.log("Memories:", memories.object.memories);
 
     if (!this.memory) {
       return;
     }
 
-    // Store memories after all processing is complete
-    await Promise.all([
-      // Store short-term memories in cache
-      ...memories.object.memories
-        .filter((m: any) => m.type === "short-term")
-        .map(async (memoryItem: any) => {
-          if (!this.memory?.cache) {
-            return;
-          }
+    if (callbacks?.onMemoriesGenerated)
+      callbacks.onMemoriesGenerated(memories.object);
 
-          const existingCacheMemories =
-            await this.memory.cache.findSimilarActions(memoryItem.data, {
-              similarityThreshold: 85,
-              maxResults: 3,
-              scope: MemoryScope.GLOBAL,
-            });
-
-          if (existingCacheMemories.length > 0) {
-            console.log(
-              "⚠️ Similar memory already exists in cache:",
-              memoryItem.data
-            );
-            return;
-          }
-
-          await this.memory.cache.createMemory({
-            query: memoryItem.queryForMemory,
-            data: memoryItem.data,
-            ttl: memoryItem.ttl, // Use TTL from LLM
-          });
-          console.log("✅ Memory stored in cache:", memoryItem.data);
-        }),
-
-      // Store long-term memories in persistent storage
-      ...memories.object.memories
-        .filter((m) => m.type === "long-term")
-        .map(async (memoryItem) => {
-          if (!this.memory?.persistent) {
-            return;
-          }
-
-          const existingPersistentMemories =
-            await this.memory.persistent.findRelevantDocuments(
-              memoryItem.data,
-              {
-                similarityThreshold: 85,
-              }
-            );
-
-          if (existingPersistentMemories.length > 0) {
-            console.log(
-              "⚠️ Similar memory already exists in persistent storage:",
-              memoryItem.data
-            );
-            return;
-          }
-
-          await this.memory.persistent.createMemory({
-            query: memoryItem.queryForMemory,
-            data: memoryItem.data,
-            category: memoryItem.category,
-            tags: memoryItem.tags,
-            roomId: "global",
-            createdAt: new Date(),
-            id: crypto.randomUUID(),
-          });
-          console.log("✅ Memory stored in persistent storage:", memoryItem);
-        }),
-    ]);
+    return memories.object;
   }
 }

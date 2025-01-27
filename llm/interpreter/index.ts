@@ -1,8 +1,9 @@
 import { LanguageModel, streamText, StreamTextResult } from "ai";
 import { z } from "zod";
-import { Behavior, State } from "../../types";
+import { Behavior, MyContext, SharedState } from "../../types";
 import { generateObject } from "../../utils/generate-object";
 import { LLMHeaderBuilder } from "../../utils/header-builder";
+import { State } from "../orchestrator/types";
 
 const interpreterSchema = z.object({
   requestLanguage: z
@@ -46,8 +47,7 @@ export class Interpreter {
     this.character = character;
   }
 
-  private buildContext(state: State) {
-    const { userRequest, results } = state;
+  private buildContext() {
     const { role, language, guidelines } = this.character;
     const { important, warnings, steps } = guidelines;
 
@@ -68,14 +68,11 @@ export class Interpreter {
     if (warnings.length > 0) {
       context.addHeader("NEVER", warnings);
     }
-
-    context.addHeader("CURRENT_RESULTS", results);
     return context;
   }
 
   async process(
-    prompt: string,
-    state: State,
+    state: SharedState<MyContext>,
     onFinish?: (event: any) => void
   ): Promise<
     | {
@@ -88,17 +85,22 @@ export class Interpreter {
     | StreamTextResult<Record<string, any>>
   > {
     try {
-      console.log("\n🎨 Starting interpretation process");
-      console.log("Prompt:", prompt);
-      console.log("Results to interpret:", JSON.stringify(state, null, 2));
+      console.log("\n🎨 Start ing interpretation process");
 
-      const context = this.buildContext(state);
-      console.log("Context:", context.toString());
+      const context = this.buildContext();
+      let prompt = LLMHeaderBuilder.create();
+      prompt.addHeader(
+        "REQUEST",
+        state.messages[state.messages.length - 2].content.toString()
+      );
+      if (state.context.results) {
+        prompt.addHeader("RESULTS", JSON.stringify(state.context.results));
+      }
       const result = await generateObject<InterpretationResult>({
         model: this.model,
-        prompt,
+        prompt: prompt.toString(),
         system: context.toString(),
-        temperature: 1.3,
+        temperature: 0.5,
         schema: interpreterSchema,
       });
 
@@ -118,7 +120,7 @@ export class Interpreter {
     console.log("\n🎨 Starting streaming interpretation");
     console.log("Prompt:", prompt);
 
-    const context = this.buildContext(state);
+    const context = this.buildContext();
 
     const result = await streamText({
       model: this.model,
