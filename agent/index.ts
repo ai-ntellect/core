@@ -1,42 +1,25 @@
 import { LanguageModel } from "ai";
 import WebSocket from "ws";
-import { createMainGraph } from "../graphs/index";
 import { Interpreter } from "../llm/interpreter";
 import { MemoryManager } from "../llm/memory-manager";
 import { Orchestrator } from "../llm/orchestrator";
 import { CacheMemory } from "../memory/cache";
 import { PersistentMemory } from "../memory/persistent";
-import { Agenda } from "../services/agenda";
-import { CacheConfig, RedisCache } from "../services/cache";
 import { Graph } from "../services/graph";
-import {
-  ActionSchema,
-  AgentEvent,
-  MyContext,
-  QueueCallbacks,
-  SharedState,
-} from "../types";
+import { AgentEvent, MyContext, QueueCallbacks, SharedState } from "../types";
+import { createMainGraph } from "./graph";
 
 export class Agent {
-  public readonly orchestrator: Orchestrator;
   public readonly memoryManager: MemoryManager;
-  public readonly cache: RedisCache;
-  public agenda: Agenda;
+  public readonly orchestrator: Orchestrator;
+  public graph!: Graph<MyContext>;
 
   private listeners: Map<
     string,
     { socket: WebSocket; callback: (data: any) => Promise<void> }
   > = new Map();
   public readonly config: {
-    orchestrator: {
-      model: LanguageModel;
-      tools: ActionSchema[];
-      memory?: {
-        cache?: CacheMemory;
-        persistent?: PersistentMemory;
-      };
-    };
-    interpreters: Interpreter[];
+    orchestrator: Orchestrator;
     memoryManager: {
       model: LanguageModel;
       memory?: {
@@ -48,12 +31,7 @@ export class Agent {
   };
 
   constructor(config: {
-    cache: CacheConfig;
-    orchestrator: {
-      model: LanguageModel;
-      tools: ActionSchema[];
-    };
-    interpreters: Interpreter[];
+    orchestrator: Orchestrator;
     memoryManager: {
       model: LanguageModel;
       memory?: {
@@ -64,14 +42,7 @@ export class Agent {
     callbacks?: QueueCallbacks;
     maxIterations: number;
   }) {
-    this.cache = new RedisCache(config.cache);
     this.config = config;
-    this.orchestrator = new Orchestrator(
-      config.orchestrator.model,
-      config.orchestrator.tools,
-      config.interpreters,
-      config.memoryManager.memory
-    );
     this.memoryManager = new MemoryManager({
       model: config.memoryManager.model,
       memory: {
@@ -79,19 +50,25 @@ export class Agent {
         persistent: config.memoryManager.memory?.persistent ?? undefined,
       },
     });
+    this.orchestrator = config.orchestrator;
     this.config.maxIterations = 3;
-    this.agenda = new Agenda(this.orchestrator, this.cache);
   }
 
-  public async process(prompt: string, callbacks?: AgentEvent): Promise<any> {
-    console.log("🔄 Processing state:");
-    const agent = this;
-    const recentMessages = await this.cache.getRecentMessages();
-    const previousActions = await this.cache.getRecentPreviousActions(1);
+  public async process(
+    prompt: string,
+    callbacks?: AgentEvent
+  ): Promise<SharedState<MyContext>> {
+    const recentMessages =
+      await this.memoryManager.memory?.cache?.getRecentMessages();
+    const previousActions =
+      await this.memoryManager.memory?.cache?.findSimilarActions(prompt);
 
     const initialState: SharedState<MyContext> = {
-      messages: [...recentMessages, { role: "user", content: prompt }],
       context: {
+        messages: [
+          ...(recentMessages || []),
+          { role: "user", content: prompt },
+        ],
         prompt,
         processing: {
           stop: false,
@@ -99,24 +76,21 @@ export class Agent {
         results: previousActions,
       },
     };
+    console.log("🔄 Initial state:", initialState);
 
-    const mainGraphDefinition = createMainGraph(agent, prompt, callbacks);
-    const runtime = new Graph<MyContext>(mainGraphDefinition);
-    const hasCycles = runtime.checkForCycles();
+    const mainGraph = createMainGraph(this, prompt, callbacks);
+    this.graph = new Graph<MyContext>(mainGraph);
+    this.graph.updateState(initialState);
 
-    const mermaidDiagram = runtime.generateMermaidDiagram("Agent");
-    console.log(mermaidDiagram);
-    if (hasCycles) {
-      console.error("Cycle detected in the graph");
-      throw new Error("Cycle detected in the graph");
-    }
-    await runtime.execute(
+    await this.graph.execute(
       initialState,
-      mainGraphDefinition.entryNode,
+      mainGraph.entryNode,
       async (state) => {
         callbacks?.onMessage && (await callbacks.onMessage(state));
       }
     );
+
+    return this.graph.getState();
   }
 
   public getInterpreter(interpreters: Interpreter[], name: string) {

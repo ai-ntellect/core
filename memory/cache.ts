@@ -9,11 +9,24 @@ import {
   MemoryScope,
 } from "../types";
 
+interface RecentMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: Date;
+}
+
+interface RecentAction {
+  action: any;
+  timestamp: Date;
+}
+
 export class CacheMemory {
   private redis;
   private readonly CACHE_PREFIX: string;
   private readonly CACHE_TTL: number;
   private readonly embeddingModel: EmbeddingModel<string>;
+  private readonly MESSAGE_PREFIX = "message:";
+  private readonly ACTION_PREFIX = "action:";
 
   constructor(options: CacheMemoryOptions) {
     this.embeddingModel = options.embeddingModel;
@@ -217,5 +230,88 @@ export class CacheMemory {
     });
 
     return memory;
+  }
+
+  async storeRecentMessage(
+    role: "user" | "assistant" | "system",
+    content: string
+  ): Promise<void> {
+    const id = crypto.randomUUID();
+    const key = `${this.MESSAGE_PREFIX}${id}`;
+
+    const message: RecentMessage = {
+      role,
+      content,
+      timestamp: new Date(),
+    };
+
+    await this.redis.set(key, JSON.stringify(message), {
+      EX: this.CACHE_TTL,
+    });
+    console.log("💬 Recent message stored:", { role, content });
+  }
+
+  async getRecentMessages(limit: number = 10): Promise<RecentMessage[]> {
+    const keys = await this.redis.keys(`${this.MESSAGE_PREFIX}*`);
+    const messages: RecentMessage[] = [];
+
+    for (const key of keys) {
+      const data = await this.redis.get(key);
+      if (data) {
+        const parsedData = JSON.parse(data);
+        parsedData.timestamp = new Date(parsedData.timestamp);
+        messages.push(parsedData);
+      }
+    }
+
+    return messages
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .slice(0, limit);
+  }
+
+  async storeAction(action: any): Promise<void> {
+    const id = crypto.randomUUID();
+    const key = `${this.ACTION_PREFIX}${id}`;
+
+    const actionData: RecentAction = {
+      action,
+      timestamp: new Date(),
+    };
+
+    await this.redis.set(key, JSON.stringify(actionData), {
+      EX: this.CACHE_TTL,
+    });
+    console.log("🎯 Action stored:", action);
+  }
+
+  async getRecentActions(limit: number = 10): Promise<any[]> {
+    const keys = await this.redis.keys(`${this.ACTION_PREFIX}*`);
+    const actions: RecentAction[] = [];
+
+    for (const key of keys) {
+      const data = await this.redis.get(key);
+      if (data) {
+        const parsedData = JSON.parse(data);
+        parsedData.timestamp = new Date(parsedData.timestamp);
+        actions.push(parsedData);
+      }
+    }
+
+    console.log("🔄 Returning recent actions:", actions);
+
+    return actions
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .slice(0, limit)
+      .map((item) => item.action);
+  }
+
+  private async cleanupExpiredData(): Promise<void> {
+    const messageKeys = await this.redis.keys(`${this.MESSAGE_PREFIX}*`);
+    const actionKeys = await this.redis.keys(`${this.ACTION_PREFIX}*`);
+
+    console.log("📊 Cache status:", {
+      messages: messageKeys.length,
+      actions: actionKeys.length,
+    });
   }
 }

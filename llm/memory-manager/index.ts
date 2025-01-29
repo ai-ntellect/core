@@ -59,12 +59,19 @@ export class MemoryManager {
   ) {
     const context = this.buildContext();
     let prompt = LLMHeaderBuilder.create();
-    prompt.addHeader(
-      "REQUEST",
-      state.messages[state.messages.length - 2].content.toString()
-    );
-    if (state.messages.length > 0) {
-      prompt.addHeader("RECENT_MESSAGES", JSON.stringify(state.messages));
+    if (state.context.messages) {
+      prompt.addHeader(
+        "REQUEST",
+        state.context.messages[
+          state.context.messages.length - 2
+        ].content.toString()
+      );
+    }
+    if (state.context.messages && state.context.messages.length > 0) {
+      prompt.addHeader(
+        "RECENT_MESSAGES",
+        JSON.stringify(state.context.messages)
+      );
     }
 
     if (state.context.actions) {

@@ -1,18 +1,17 @@
 import { CoreMessage } from "ai";
-import { Agent } from "../../agent";
-import { MyContext, SharedState } from "../../types";
+import { Agent } from "../..";
+import { Agenda } from "../../../services/agenda";
+import { MyContext, SharedState } from "../../../types";
 
-export const handleScheduler = async (
+export const handleAgenda = async (
   prompt: string,
   sharedState: SharedState<MyContext>,
   agent: Agent
 ) => {
-  console.log("🔄 Checking for scheduled actions");
-  // Handle scheduled actions
-
   for (const action of sharedState.context.actions ?? []) {
     if (action.scheduler?.isScheduled && action.scheduler?.cronExpression) {
-      await agent.agenda.scheduleRequest(
+      const agenda = new Agenda();
+      await agenda.scheduleRequest(
         {
           originalRequest: prompt,
           cronExpression: action.scheduler.cronExpression,
@@ -39,7 +38,7 @@ export const handleScheduler = async (
                   role: "user",
                   content: contextualRequest,
                 },
-                ...sharedState.messages,
+                ...(sharedState.messages ?? []),
               ] as CoreMessage[],
               context: {
                 ...sharedState.context,
@@ -52,7 +51,9 @@ export const handleScheduler = async (
 
             // Store the new actions in cache
             if (result.actions.length > 0) {
-              await agent.cache.storePreviousActions(id, result.actions);
+              await agent.memoryManager.memory?.cache?.storeAction(
+                result.actions
+              );
             }
           },
         }

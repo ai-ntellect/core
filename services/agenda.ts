@@ -1,7 +1,4 @@
 import cron from "node-cron";
-import { Orchestrator } from "../llm/orchestrator";
-import { RedisCache } from "./cache";
-
 interface ScheduledRequest {
   id: string;
   originalRequest: string;
@@ -13,13 +10,6 @@ interface ScheduledRequest {
 export class Agenda {
   private scheduledRequests: Map<string, ScheduledRequest> = new Map();
   private cronJobs: Map<string, cron.ScheduledTask> = new Map();
-  private readonly orchestrator: Orchestrator;
-  private readonly cache: RedisCache;
-
-  constructor(orchestrator: Orchestrator, cache: RedisCache) {
-    this.orchestrator = orchestrator;
-    this.cache = cache;
-  }
 
   /**
    * Schedule a new request to be processed later

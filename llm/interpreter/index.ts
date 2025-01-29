@@ -89,11 +89,15 @@ export class Interpreter {
 
       const context = this.buildContext();
       let prompt = LLMHeaderBuilder.create();
-      prompt.addHeader(
-        "REQUEST",
-        state.messages[state.messages.length - 2].content.toString()
-      );
-      if (state.context.results) {
+      if (state.context.messages) {
+        prompt.addHeader(
+          "REQUEST",
+          state.context.messages[
+            state.context.messages.length - 2
+          ].content.toString()
+        );
+      }
+      if (state.context?.results) {
         prompt.addHeader("RESULTS", JSON.stringify(state.context.results));
       }
       const result = await generateObject<InterpretationResult>({

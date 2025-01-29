@@ -1,5 +1,6 @@
 import { CoreMessage, Embedding, EmbeddingModel, StreamTextResult } from "ai";
 import { z } from "zod";
+import { StateScore } from "./llm/orchestrator/context";
 
 export interface BaseLLM {
   process: (prompt: string) => Promise<string | object>;
@@ -166,6 +167,7 @@ export type GenerateObjectResponse = {
   }>;
   response: string;
   interpreter?: string;
+  score: number;
 };
 
 export interface CreateMemoryInput {
@@ -271,7 +273,7 @@ export interface ScheduledActionEvents {
   onActionCancelled?: (actionId: string) => void;
 }
 
-export interface WorkflowPattern {
+export interface GraphPattern {
   query: string;
   actions: Array<{
     done: boolean;
@@ -281,8 +283,15 @@ export interface WorkflowPattern {
   success: boolean;
 }
 
-// État partagé
-export type MyContext = {
+export interface ScoreHistory {
+  current: number;
+  previous: number;
+  attempts: number;
+  threshold: number;
+}
+
+export interface MyContext {
+  messages?: CoreMessage[];
   prompt?: string;
   processing: {
     stop: boolean;
@@ -301,11 +310,15 @@ export type MyContext = {
   }[];
   interpreter?: string | null;
   results?: any;
-};
+  stateScore?: StateScore;
+  scoreHistory: ScoreHistory;
+  score: number;
+}
 
 export interface SharedState<T> {
-  messages: CoreMessage[]; // Historique des interactions
-  context: T;
+  messages?: CoreMessage[];
+  context: Partial<T>;
+  scoreHistory?: ScoreHistory;
 }
 
 export function mergeState<T>(
@@ -313,7 +326,7 @@ export function mergeState<T>(
   updates: Partial<SharedState<T>>
 ): SharedState<T> {
   const uniqueMessages = new Map(
-    [...current.messages, ...(updates.messages || [])].map((msg) => [
+    [...(current.messages || []), ...(updates.messages || [])].map((msg) => [
       JSON.stringify(msg),
       msg,
     ])
@@ -321,22 +334,30 @@ export function mergeState<T>(
   return {
     ...current,
     context: { ...current.context, ...updates.context },
-    messages: Array.from(uniqueMessages.values()), // Messages uniques
+    messages: Array.from(uniqueMessages.values()),
   };
 }
+
 export interface RetryConfig {
   maxRetries: number;
   retryDelay: number;
   shouldRetry?: (error: Error) => boolean;
 }
 
-export interface Node<T> {
+export interface NodeRelationship {
   name: string;
-  execute: (state: SharedState<T>) => Promise<Partial<SharedState<T>>>;
+  description: string;
+}
+
+export interface Node<T, P = any> {
+  name: string;
+  description?: string;
+  execute: (params: P, state: SharedState<T>) => Promise<Partial<T>>;
   condition?: (state: SharedState<T>) => boolean;
-  next?: string[];
+  relationships?: NodeRelationship[];
+  schema?: z.ZodSchema<P>;
+  state?: any;
   events?: string[];
-  retry?: RetryConfig;
 }
 
 export interface Persistence<T> {
@@ -352,4 +373,11 @@ export interface Persistence<T> {
 
 export interface RealTimeNotifier {
   notify(event: string, data: any): void;
+}
+
+export interface GraphDefinition<T> {
+  name: string;
+  entryNode: string;
+  nodes: Record<string, Node<T>>;
+  schema?: z.ZodSchema<T>;
 }

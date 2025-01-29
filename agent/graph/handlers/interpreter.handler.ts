@@ -1,16 +1,14 @@
-import { Agent } from "../../agent";
-import { StateManager } from "../../agent/utils/state.utils";
-import { ActionData, MyContext, SharedState } from "../../types";
+import { Agent } from "../..";
+import { ActionData, MyContext, SharedState } from "../../../types";
+import { StateManager } from "../../../utils/state-manager";
 
 export const handleInterpreter = async (
   sharedState: SharedState<MyContext>,
   agent: Agent
 ) => {
   console.log("🔄 Interpreting actions");
-  console.log("\n🏁 Analysis complete - generating final interpretation");
-
   const interpreter = agent.getInterpreter(
-    agent.config.interpreters,
+    agent.config.orchestrator.interpreters,
     sharedState.context.interpreter ?? ""
   );
 
@@ -23,7 +21,10 @@ export const handleInterpreter = async (
     console.log("🎭 Interpreter event:", event);
 
     // Store message in recent messages
-    await agent.cache.storeMessage("assistant", event.response);
+    await agent.memoryManager.memory?.cache?.storeRecentMessage(
+      "assistant",
+      event.response
+    );
   })) as { response: string };
 
   const validatedActions = sharedState.context.actions?.map(
@@ -39,12 +40,10 @@ export const handleInterpreter = async (
   );
 
   return StateManager.updateState(sharedState, {
-    context: {
-      actions: validatedActions,
-      prompt: sharedState.context.prompt,
-      processing: {
-        stop: true,
-      },
+    actions: validatedActions,
+    prompt: sharedState.context.prompt,
+    processing: {
+      stop: true,
     },
   });
 };

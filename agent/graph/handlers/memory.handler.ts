@@ -1,13 +1,14 @@
-import { Agent } from "../../agent";
-import { StateManager } from "../../agent/utils/state.utils";
-import { MemoryScope, MyContext, SharedState } from "../../types";
+import { Agent } from "../..";
+import { MemoryScope, MyContext, SharedState } from "../../../types";
+import { StateManager } from "../../../utils/state-manager";
 
 export const handleMemory = async (
   sharedState: SharedState<MyContext>,
   agent: Agent
 ) => {
   console.log("🔄 Storing memories");
-  const recentMessages = await agent.cache.getRecentMessages();
+  const recentMessages =
+    await agent.memoryManager.memory?.cache?.getRecentMessages();
 
   const updatedState = StateManager.updateState(sharedState, {
     messages: recentMessages,
@@ -24,12 +25,11 @@ export const handleMemory = async (
         ...event.memories
           .filter((m: any) => m.type === "short-term")
           .map(async (memoryItem: any) => {
-            await agent.cache.storeMemory(
-              memoryItem.data,
-              memoryItem.category,
-              memoryItem.tags,
-              memoryItem.ttl
-            );
+            await agent.memoryManager.memory?.cache?.createMemory({
+              query: memoryItem.queryForMemory,
+              data: memoryItem.data,
+              ttl: memoryItem.ttl, // Use TTL from LLM
+            });
 
             const existingCacheMemories =
               await agent.memoryManager.memory?.cache?.findSimilarActions(

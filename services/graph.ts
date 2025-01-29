@@ -1,9 +1,10 @@
 import { configDotenv } from "dotenv";
 import EventEmitter from "events";
-import { GraphDefinition } from "../graphs/index";
+import { z } from "zod";
 import {
-  mergeState,
+  GraphDefinition,
   Node,
+  NodeRelationship,
   Persistence,
   RealTimeNotifier,
   SharedState,
@@ -11,46 +12,53 @@ import {
 
 configDotenv();
 
+interface GraphOptions<T> {
+  initialState?: SharedState<T>;
+  schema?: z.ZodSchema<T>;
+  autoDetectCycles?: boolean;
+}
+
 /**
- * Represents a directed graph structure capable of executing nodes in sequence or parallel.
- * The graph can handle state management, event emissions, and conditional execution paths.
+ * Represents a directed worflow structure capable of executing nodes in sequence or parallel.
+ * The worflow can handle state management, event emissions, and conditional execution paths.
  *
- * @template T - The type of data stored in the graph's context
+ * @template T - The type of data stored in the worflow's context
  */
 export class Graph<T> {
   /** Stores global context data accessible to all nodes */
   public globalContext: Map<string, any>;
 
-  /** Event emitter for handling graph-wide events */
+  /** Event emitter for handling worflow-wide events */
   private eventEmitter: EventEmitter;
 
-  /** Map of all nodes in the graph */
+  /** Map of all nodes in the worflow */
   public nodes: Map<string, Node<T>>;
 
   /** Set of nodes that have been executed */
   public executedNodes: Set<string>;
 
-  /** Name identifier for the graph */
+  /** Name identifier for the worflow */
   public name: string;
 
-  /** Optional persistence layer for saving graph state */
+  /** Optional persistence layer for saving worflow state */
   private persistence: Persistence<T> | null;
 
   /** Optional notifier for real-time updates */
   private notifier: RealTimeNotifier | null;
 
+  private schema?: z.ZodSchema<T>;
+
+  private currentState: SharedState<T>;
+
   /**
    * Creates a new Graph instance.
    *
-   * @param {GraphDefinition<T>} [definition] - Initial graph structure and configuration
+   * @param {GraphDefinition<T>} [definition] - Initial worflow structure and configuration
    * @param {Object} [config] - Additional configuration options
    * @param {boolean} [config.autoDetectCycles] - Whether to check for cycles during initialization
    * @throws {Error} If cycles are detected when autoDetectCycles is true
    */
-  constructor(
-    definition?: GraphDefinition<T>,
-    config?: { autoDetectCycles?: boolean }
-  ) {
+  constructor(definition?: GraphDefinition<T>, options?: GraphOptions<T>) {
     this.name = definition?.name || "anonymous";
     this.eventEmitter = new EventEmitter();
     this.globalContext = new Map();
@@ -58,13 +66,19 @@ export class Graph<T> {
     this.executedNodes = new Set();
     this.persistence = null;
     this.notifier = null;
+    this.schema = options?.schema;
+    this.currentState = { context: {} } as SharedState<T>;
 
     if (definition) {
       this.loadFromDefinition(definition);
     }
 
-    if (config?.autoDetectCycles && this.checkForCycles()) {
-      throw new Error("Cycle detected in the graph");
+    if (options?.autoDetectCycles && this.checkForCycles()) {
+      throw new Error("Cycle detected in the workflow");
+    }
+
+    if (options?.initialState) {
+      this.setState(options.initialState);
     }
   }
 
@@ -95,7 +109,7 @@ export class Graph<T> {
   }
 
   /**
-   * Sets the persistence layer for the graph.
+   * Sets the persistence layer for the worflow.
    * @param {Persistence<T>} persistence - The persistence implementation
    */
   setPersistence(persistence: Persistence<T>): void {
@@ -103,7 +117,7 @@ export class Graph<T> {
   }
 
   /**
-   * Sets the real-time notifier for the graph.
+   * Sets the real-time notifier for the worflow.
    * @param {RealTimeNotifier} notifier - The notifier implementation
    */
   setNotifier(notifier: RealTimeNotifier): void {
@@ -111,15 +125,15 @@ export class Graph<T> {
   }
 
   /**
-   * Loads a graph structure from a definition object.
+   * Loads a worflow structure from a definition object.
    * @private
-   * @param {GraphDefinition<T>} definition - The graph definition
+   * @param {GraphDefinition<T>} definition - The worflow definition
    */
   private loadFromDefinition(definition: GraphDefinition<T>): void {
     Object.entries(definition.nodes).forEach(([_, nodeConfig]) => {
       this.addNode(nodeConfig, {
         condition: nodeConfig.condition,
-        next: nodeConfig.next,
+        relationships: nodeConfig.relationships,
       });
     });
   }
@@ -142,14 +156,15 @@ export class Graph<T> {
       recStack.add(nodeName);
 
       const currentNode = this.nodes.get(nodeName);
-      if (currentNode?.next) {
-        for (const nextNode of currentNode.next) {
+      if (currentNode?.relationships) {
+        for (const relation of currentNode.relationships) {
+          const targetNode = relation.name;
           if (
-            !visited.has(nextNode) &&
-            this.isCyclic(nextNode, visited, recStack)
+            !visited.has(targetNode) &&
+            this.isCyclic(targetNode, visited, recStack)
           ) {
             return true;
-          } else if (recStack.has(nextNode)) {
+          } else if (recStack.has(targetNode)) {
             return true;
           }
         }
@@ -160,7 +175,7 @@ export class Graph<T> {
   }
 
   /**
-   * Checks if the graph contains any cycles.
+   * Checks if the worflow contains any cycles.
    * @returns {boolean} True if cycles are detected, false otherwise
    */
   public checkForCycles(): boolean {
@@ -176,26 +191,26 @@ export class Graph<T> {
   }
 
   /**
-   * Adds a new node to the graph.
+   * Adds a new node to the worflow.
    * @param {Node<T>} node - The node to add
    * @param {Object} options - Node configuration options
    * @param {Function} [options.condition] - Condition function for node execution
-   * @param {string[]} [options.next] - Array of next node names
+   * @param {string[]} [options.relations] - Array of relations node names
    * @param {string[]} [options.events] - Array of event names to listen for
    */
   addNode(
     node: Node<T>,
     {
       condition,
-      next,
+      relationships,
       events,
     }: {
       condition?: (state: SharedState<T>) => boolean;
-      next?: string[];
+      relationships?: NodeRelationship[];
       events?: string[];
     }
   ): void {
-    node.next = next;
+    node.relationships = relationships;
     node.condition = condition;
 
     if (events) {
@@ -212,7 +227,7 @@ export class Graph<T> {
   }
 
   /**
-   * Emits an event to the graph's event emitter.
+   * Emits an event to the worflow's event emitter.
    * @param {string} eventName - Name of the event to emit
    * @param {any} data - Data to pass with the event
    */
@@ -222,16 +237,16 @@ export class Graph<T> {
   }
 
   /**
-   * Adds a subgraph as a node in the current graph.
-   * @param {Graph<T>} subGraph - The subgraph to add
-   * @param {string} entryNode - The entry node name in the subgraph
-   * @param {string} name - The name for the subgraph node
+   * Adds a subworflow as a node in the current worflow.
+   * @param {Graph<T>} subGraph - The subworflow to add
+   * @param {string} entryNode - The entry node name in the subworflow
+   * @param {string} name - The name for the subworflow node
    */
   addSubGraph(subGraph: Graph<T>, entryNode: string, name: string): void {
     const subGraphNode: Node<T> = {
-      name,
+      name: name,
       execute: async (state) => {
-        console.log(`Executing subgraph: ${name}`);
+        console.log(`Executing subworflow: ${name}`);
         await subGraph.execute(state, entryNode);
         return state;
       },
@@ -240,7 +255,7 @@ export class Graph<T> {
   }
 
   /**
-   * Executes the graph starting from a specific node.
+   * Executes the worflow starting from a specific node.
    * @param {SharedState<T>} state - The initial state
    * @param {string} startNode - The name of the starting node
    * @param {Function} [onStream] - Callback for streaming state updates
@@ -252,15 +267,30 @@ export class Graph<T> {
     onStream?: (state: SharedState<T>) => void,
     onError?: (error: Error, nodeName: string, state: SharedState<T>) => void
   ): Promise<void> {
+    this.currentState = state;
     let currentNodeName = startNode;
+
+    // Validation initiale de l'état
+    if (this.schema) {
+      try {
+        this.schema.parse(this.currentState);
+      } catch (error) {
+        const validationError = new Error(
+          `Initial state validation failed: ${
+            error instanceof Error ? error.message : error
+          }`
+        );
+        if (onError) onError(validationError, startNode, this.currentState);
+        throw validationError;
+      }
+    }
 
     while (currentNodeName) {
       this.executedNodes.add(currentNodeName);
-
       const currentNode = this.nodes.get(currentNodeName);
       if (!currentNode) throw new Error(`Node ${currentNodeName} not found.`);
 
-      if (currentNode.condition && !currentNode.condition(state)) {
+      if (currentNode.condition && !currentNode.condition(this.currentState)) {
         console.log(
           `Condition for node "${currentNodeName}" not met. Ending Graph.`
         );
@@ -270,52 +300,62 @@ export class Graph<T> {
       try {
         if (this.notifier) {
           this.notifier.notify("nodeExecutionStarted", {
-            graph: this.name,
+            workflow: this.name,
             node: currentNodeName,
           });
         }
 
         console.log(`Executing node: ${currentNodeName}`);
-        const newState = await currentNode.execute(state);
-        Object.assign(state, mergeState(state, newState));
+        const params = currentNode.schema?.parse(this.currentState);
+        const newState = await currentNode.execute(
+          params || {},
+          this.currentState
+        );
 
-        if (onStream) onStream(state);
+        this.setState(newState);
+
+        if (onStream) onStream(this.currentState);
 
         if (this.persistence) {
-          await this.persistence.saveState(this.name, state, currentNodeName);
+          await this.persistence.saveState(
+            this.name,
+            this.currentState,
+            currentNodeName
+          );
         }
 
         if (this.notifier) {
           await this.notifier.notify("nodeExecutionCompleted", {
-            graph: this.name,
+            workflow: this.name,
             node: currentNodeName,
-            state,
+            state: this.currentState,
           });
         }
       } catch (error) {
         console.error(`Error in node ${currentNodeName}:`, error);
-        if (onError) onError(error as Error, currentNodeName, state);
+        if (onError)
+          onError(error as Error, currentNodeName, this.currentState);
         if (this.notifier) {
           this.notifier.notify("nodeExecutionFailed", {
-            graph: this.name,
+            workflow: this.name,
             node: currentNodeName,
-            state,
+            state: this.currentState,
             error,
           });
         }
         break;
       }
 
-      const nextNodes = currentNode.next || [];
-      if (nextNodes.length > 1) {
+      const relationsNodes = currentNode.relationships || [];
+      if (relationsNodes.length > 1) {
         await Promise.all(
-          nextNodes.map((nextNode) =>
-            this.execute(state, nextNode, onStream, onError)
+          relationsNodes.map((relation) =>
+            this.execute(this.currentState, relation.name, onStream, onError)
           )
         );
         break;
       } else {
-        currentNodeName = nextNodes[0] || "";
+        currentNodeName = relationsNodes[0]?.name || "";
       }
     }
 
@@ -354,27 +394,28 @@ export class Graph<T> {
   }
 
   /**
-   * Updates the graph structure with a new definition.
-   * @param {GraphDefinition<T>} definition - The new graph definition
+   * Updates the worflow structure with a new definition.
+   * @param {GraphDefinition<T>} definition - The new worflow definition
    */
   updateGraph(definition: GraphDefinition<T>): void {
     Object.entries(definition.nodes).forEach(([_, nodeConfig]) => {
       if (this.nodes.has(nodeConfig.name)) {
         const existingNode = this.nodes.get(nodeConfig.name)!;
-        existingNode.next = nodeConfig.next || existingNode.next;
+        existingNode.relationships =
+          nodeConfig.relationships || existingNode.relationships;
         existingNode.condition = nodeConfig.condition || existingNode.condition;
       } else {
         this.addNode(nodeConfig, {
           condition: nodeConfig.condition,
-          next: nodeConfig.next,
+          relationships: nodeConfig.relationships,
         });
       }
     });
   }
 
   /**
-   * Replace the graph with a new definition.
-   * @param {GraphDefinition<T>} definition - The new graph definition
+   * Replace the worflow with a new definition.
+   * @param {GraphDefinition<T>} definition - The new worflow definition
    */
   replaceGraph(definition: GraphDefinition<T>): void {
     this.nodes.clear();
@@ -382,20 +423,20 @@ export class Graph<T> {
   }
 
   /**
-   * Generates a visual representation of the graph using Mermaid diagram syntax.
+   * Generates a visual representation of the worflow using Mermaid diagram syntax.
    * The diagram shows all nodes and their connections, with special highlighting for:
    * - Entry nodes (green)
    * - Event nodes (yellow)
    * - Conditional nodes (orange)
    *
    * @param {string} [title] - Optional title for the diagram
-   * @returns {string} Mermaid diagram syntax representing the graph
+   * @returns {string} Mermaid diagram syntax representing the worflow
    */
   generateMermaidDiagram(title?: string): string {
-    const lines: string[] = ["graph TD"];
+    const lines: string[] = ["worflow TD"];
 
     if (title) {
-      lines.push(`  subgraph ${title}`);
+      lines.push(`  subworflow ${title}`);
     }
 
     // Add nodes with styling
@@ -420,21 +461,21 @@ export class Graph<T> {
 
     // Add connections
     this.nodes.forEach((node, nodeName) => {
-      if (node.next) {
-        node.next.forEach((nextNode) => {
+      if (node.relationships) {
+        node.relationships.forEach((relationsNode) => {
           let connectionStyle = "";
           if (node.condition) {
             connectionStyle = "---|condition|"; // Add label for conditional connections
           } else {
             connectionStyle = "-->"; // Normal connection
           }
-          lines.push(`  ${nodeName} ${connectionStyle} ${nextNode}`);
+          lines.push(`  ${nodeName} ${connectionStyle} ${relationsNode}`);
         });
       }
 
       // Add event connections if any
       if (node.events && node.events.length > 0) {
-        node.events.forEach((event) => {
+        node.events.forEach((event: string) => {
           const eventNodeId = `${event}_event`;
           lines.push(`  ${eventNodeId}((${event})):::event`);
           lines.push(`  ${eventNodeId} -.->|trigger| ${nodeName}`);
@@ -452,18 +493,195 @@ export class Graph<T> {
   }
 
   /**
-   * Renders the graph visualization using Mermaid syntax.
-   * This method can be used to visualize the graph structure in supported environments.
+   * Renders the worflow visualization using Mermaid syntax.
+   * This method can be used to visualize the worflow structure in supported environments.
    *
    * @param {string} [title] - Optional title for the visualization
    */
   visualize(title?: string): void {
     const diagram = this.generateMermaidDiagram(title);
     console.log(
-      "To visualize this graph, use a Mermaid-compatible renderer with this syntax:"
+      "To visualize this worflow, use a Mermaid-compatible renderer with this syntax:"
     );
     console.log("\n```mermaid");
     console.log(diagram);
     console.log("```\n");
+  }
+
+  exportGraphToJson<T>(worflow: GraphDefinition<T>): string {
+    const result = {
+      worflowName: worflow.name,
+      entryNode: worflow.entryNode,
+      nodes: Object.entries(worflow.nodes).reduce((acc, [key, node]) => {
+        acc[key] = {
+          name: node.name,
+          description: node.description || "No description provided",
+          execute: node.execute.name,
+          condition: node.condition ? node.condition.toString() : "None",
+          relationships: node.relationships || [],
+        };
+        return acc;
+      }, {} as Record<string, any>),
+    };
+    return JSON.stringify(result, null, 2);
+  }
+
+  /**
+   * Génère une représentation visuelle du schéma du workflow.
+   * Affiche la structure des données attendues pour chaque nœud.
+   *
+   * @returns {string} Une chaîne formatée décrivant le schéma du workflow
+   */
+  visualizeSchema(): string {
+    const output: string[] = [];
+
+    output.push(`📋 Graph: ${this.name}`);
+    output.push("=".repeat(50));
+
+    if (this.schema) {
+      output.push("🔷 Global Schema:");
+      output.push("-".repeat(30));
+
+      if (this.schema instanceof z.ZodObject) {
+        const shape = this.schema.shape;
+        Object.entries(shape).forEach(([key, value]) => {
+          const description = this.describeZodType(value as z.ZodType, 1);
+          output.push(`${key}:`);
+          output.push(description);
+        });
+      }
+      output.push("");
+    }
+
+    // Schémas des nœuds
+    output.push("🔷 Nodes:");
+    output.push("-".repeat(30));
+
+    this.nodes.forEach((node, nodeName) => {
+      output.push(`\n📍 Node: ${nodeName}`);
+      output.push(
+        `Description: ${node.description || "No description provided"}`
+      );
+
+      if (node.relationships && node.relationships.length > 0) {
+        output.push(`Next nodes: ${node.relationships.join(", ")}`);
+      }
+
+      output.push("");
+    });
+
+    return output.join("\n");
+  }
+
+  /**
+   * Décrit récursivement un type Zod.
+   */
+  public describeZodType(type: z.ZodType, indent: number = 0): string {
+    const padding = "  ".repeat(indent);
+
+    if (type instanceof z.ZodObject) {
+      const shape = type.shape;
+      const lines: string[] = [];
+
+      Object.entries(shape).forEach(([key, value]) => {
+        const isOptional = value instanceof z.ZodOptional;
+        const actualType = isOptional
+          ? (value as z.ZodOptional<z.ZodType<any, any, any>>).unwrap()
+          : (value as z.ZodType<any, any, any>);
+        const description = this.describeZodType(actualType, indent + 1);
+
+        lines.push(`${padding}${key}${isOptional ? "?" : ""}: ${description}`);
+      });
+
+      return lines.join("\n");
+    }
+
+    if (type instanceof z.ZodArray) {
+      const elementType = this.describeZodType(type.element, indent);
+      return `Array<${elementType}>`;
+    }
+
+    if (type instanceof z.ZodString) {
+      const checks = type._def.checks || [];
+      const constraints = checks
+        .map((check) => {
+          if (check.kind === "url") return "url";
+          if (check.kind === "email") return "email";
+          return check.kind;
+        })
+        .join(", ");
+
+      return constraints ? `string (${constraints})` : "string";
+    }
+
+    if (type instanceof z.ZodNumber) {
+      return "number";
+    }
+
+    if (type instanceof z.ZodBoolean) {
+      return "boolean";
+    }
+
+    if (type instanceof z.ZodOptional) {
+      return `${this.describeZodType(type.unwrap(), indent)} (optional)`;
+    }
+
+    return type.constructor.name.replace("Zod", "") || "unknown";
+  }
+
+  protected updateNodeState(state: SharedState<T>, updates: Partial<T>) {
+    return {
+      ...state,
+      context: {
+        ...(state.context || {}),
+        ...updates,
+      },
+    };
+  }
+
+  public getState(): SharedState<T> {
+    return this.currentState;
+  }
+
+  public setState(state: Partial<SharedState<T>>): void {
+    this.currentState = this.mergeStates(this.currentState, state);
+
+    // Mettre à jour le contexte global
+    if (state.context) {
+      Object.entries(state.context).forEach(([key, value]) => {
+        this.globalContext.set(key, value);
+      });
+    }
+
+    // Mettre à jour l'état du nœud actuel
+    const currentNode = Array.from(this.executedNodes).pop();
+    if (currentNode) {
+      const node = this.nodes.get(currentNode);
+      if (node) {
+        node.state = {
+          ...(node.state || {}),
+          ...(state.context || {}),
+        };
+      }
+    }
+  }
+
+  private mergeStates(
+    currentState: SharedState<T>,
+    newState: Partial<SharedState<T>>
+  ): SharedState<T> {
+    return {
+      ...currentState,
+      context: {
+        ...(currentState.context || {}),
+        ...(newState.context || {}),
+      },
+    };
+  }
+
+  public updateState(updates: Partial<SharedState<T>>): SharedState<T> {
+    const currentState = this.getState();
+    this.setState(updates);
+    return currentState;
   }
 }
