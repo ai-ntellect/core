@@ -1,11 +1,5 @@
+import { ScheduledRequest } from "@/types";
 import cron from "node-cron";
-interface ScheduledRequest {
-  id: string;
-  originalRequest: string;
-  cronExpression: string;
-  isRecurring: boolean;
-  createdAt: Date;
-}
 
 export class Agenda {
   private scheduledRequests: Map<string, ScheduledRequest> = new Map();
@@ -35,16 +29,23 @@ export class Agenda {
     };
 
     // Create cron job
-    const cronJob = cron.schedule(request.cronExpression, async () => {
-      await this.executeScheduledRequest(scheduledRequest);
+    const cronJob = cron.schedule(request.cronExpression, () => {
+      console.log(`🔄 Executing scheduled request: ${id}`);
 
-      if (callbacks?.onExecuted)
+      if (callbacks?.onExecuted) {
         callbacks.onExecuted(id, scheduledRequest.originalRequest);
+      }
 
+      console.log(`✅ Scheduled request executed successfully: ${id}`);
+
+      // Auto-stop pour les tâches non récurrentes
       if (!scheduledRequest.isRecurring) {
         this.cancelScheduledRequest(id);
       }
     });
+
+    // Démarrer le job en mode non-running
+    cronJob.stop();
 
     // Store request and job
     this.scheduledRequests.set(id, scheduledRequest);
@@ -52,22 +53,10 @@ export class Agenda {
 
     if (callbacks?.onScheduled) callbacks.onScheduled(id);
 
+    // Démarrer le job après l'avoir stocké
+    cronJob.start();
+
     return id;
-  }
-
-  /**
-   * Execute a scheduled request by launching a new process
-   */
-  private async executeScheduledRequest(
-    request: ScheduledRequest
-  ): Promise<void> {
-    try {
-      console.log(`🔄 Executing scheduled request from ${request.createdAt}`);
-
-      console.log(`✅ Scheduled request executed successfully`);
-    } catch (error) {
-      console.error(`❌ Failed to execute scheduled request:`, error);
-    }
   }
 
   /**
@@ -76,10 +65,17 @@ export class Agenda {
   cancelScheduledRequest(requestId: string): boolean {
     const cronJob = this.cronJobs.get(requestId);
     if (cronJob) {
-      cronJob.stop();
-      this.cronJobs.delete(requestId);
+      try {
+        cronJob.stop();
+        this.cronJobs.delete(requestId);
+        this.scheduledRequests.delete(requestId);
+        return true;
+      } catch (error) {
+        console.error(`Failed to stop cron job ${requestId}:`, error);
+        return false;
+      }
     }
-    return this.scheduledRequests.delete(requestId);
+    return false;
   }
 
   /**
@@ -93,11 +89,30 @@ export class Agenda {
    * Stop all cron jobs
    */
   stopAll(): void {
-    for (const [id, cronJob] of this.cronJobs) {
-      cronJob.stop();
-      this.cronJobs.delete(id);
-      this.scheduledRequests.delete(id);
+    const ids = Array.from(this.cronJobs.keys());
+
+    // Arrêter tous les jobs de manière synchrone
+    for (const id of ids) {
+      const job = this.cronJobs.get(id);
+      if (job) {
+        job.stop();
+        this.cronJobs.delete(id);
+        this.scheduledRequests.delete(id);
+      }
     }
-    console.log("All scheduled requests stopped");
+
+    // Double vérification
+    this.cronJobs.clear();
+    this.scheduledRequests.clear();
+  }
+
+  public async stop(): Promise<void> {
+    this.stopAll();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  public async cancel(query: {}): Promise<void> {
+    this.stopAll();
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }

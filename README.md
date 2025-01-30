@@ -1,365 +1,404 @@
-# AI.ntellect Core Framework
-
-## Overview
-
-This framework is designed to execute complex workflows using advanced orchestration, memory management, and actionable intelligence. It integrates tools, interpreters, and memory systems to:
-
-- Analyze user inputs in their context.
-- Execute predefined workflows and dynamic actions.
-- Efficiently manage short-term and long-term memory.
-- Enable seamless integration with external APIs and tools.
+# @ai.ntellect/core
 
 ---
 
-## Table of Contents
+## Introduction
 
-1. [Architecture Components](#architecture-components)
-   - [Agent Runtime](#agent-runtime)
-   - [Orchestrator](#orchestrator)
-   - [Queue Manager](#queue-manager)
-   - [Interpreter](#interpreter)
-   - [Memory System](#memory-system)
-   - [Listeners](#listeners)
-   - [Schedulers](#schedulers)
-2. [Defining and Executing Actions](#defining-and-executing-actions)
-3. [State Management and Recursion](#state-management-and-recursion)
-4. [Installation and Configuration](#installation-and-configuration)
-5. [Usage Example](#usage-example)
-6. [Work in Progress (WIP)](#work-in-progress-wip)
+**@ai.ntellect/core** is a highly extensible, graph-based workflow framework designed to tackle complex automation scenarios, pipelines, AI-driven agent flows, and even blockchain process orchestration. By modeling your processes as **Graphs** composed of **Nodes**, you can intuitively define both sequential and parallel task execution. The framework provides robust features including:
+
+- **Dynamic state management** with optional schema validation
+- **Parallel and conditional branching** execution
+- **Controller-based orchestration** of multiple workflows
+- **Subgraph** delegation for modular design
+- **Memory management** for agents and chatbots (e.g., storing user context or embeddings)
+- **Integration** with real-time notifiers and persistence layers
+
+Whether you’re building a data pipeline, an AI-driven bot, or an automated blockchain process, @ai.ntellect/core offers a concise yet powerful suite of tooling to handle the complexity of stateful, event-driven orchestration.
 
 ---
 
-## Architecture Components
+## Installation
 
-### Agent Runtime
+### Prerequisites
 
-The `AgentRuntime` is the main engine coordinating the overall workflow. It connects all components and ensures tasks are executed efficiently.
+- **Node.js** (14.x or higher recommended)
+- A package manager such as **npm** or **yarn**
 
-**Responsibilities:**
+### Installing the package
 
-- Build context for the current state using memory systems (RAG and CAG).
-- Orchestrate actions using the queue manager.
-- Leverage interpreters to analyze results and generate responses.
-
-#### Context Building
-
-The `buildContext` method creates a complete context by:
-
-1. Adding tools and user requests.
-2. Retrieving recent actions via cache memory (CAG).
-3. Fetching relevant knowledge from persistent memory (RAG).
-4. Including available interpreters for the request.
-
-#### Workflow Processing
-
-The `process` method:
-
-1. Generates responses based on context using a language model.
-2. Handles recursive workflows for action execution.
-3. Selects appropriate interpreters to analyze results.
-
----
-
-### Orchestrator
-
-The **orchestrator** directs workflows by analyzing user inputs and planning actions. It interacts with tools, memory systems, and interpreters to ensure logical execution.
-
-**Key Features:**
-
-- Dynamic action selection based on context.
-- Memory interaction management for RAG and CAG operations.
-- Multi-step workflow management with iterative refinement.
-
----
-
-### Queue Manager
-
-The **queue manager** is responsible for organizing and executing actions in the correct order, whether sequential or parallel. It acts as the central mechanism for managing workflows, ensuring each action is properly queued, validated, and executed.
-
-**Main Responsibilities:**
-
-1. **Action Queueing:**
-
-   - Actions are added to a queue for execution, individually or in batches.
-   - Includes logging support for debugging and traceability.
-
-2. **Action Processing:**
-
-   - Executes actions while maintaining correct order.
-   - Respects dependencies between actions.
-   - Handles errors or confirmations via callbacks.
-
-3. **Confirmation Management:**
-   - Supports prompts for critical actions.
-   - Relies on callbacks to decide whether to proceed with specific actions.
-
-**Example:**
-
-```typescript
-import { ActionQueueManager } from "@ai-ntellect/core";
-import { actions, callbacks } from "@ai-ntellect/core/examples";
-
-const queueManager = new ActionQueueManager(actions, callbacks);
-queueManager.addToQueue([{ name: "fetch-data", parameters: [...] }]);
-const results = await queueManager.processQueue();
-console.log("Results:", results);
+```bash
+npm install @ai.ntellect/core
 ```
 
----
+Or using Yarn:
 
-### Interpreter
-
-The **interpreter** specializes in analyzing results and generating domain-specific insights. Each interpreter is tailored for a specific use case and uses its own character configuration.
-
-**Examples:**
-
-1. **MarketInterpreter**: Analyzes financial market data.
-2. **SecurityInterpreter**: Performs security checks.
-3. **GeneralInterpreter**: Processes general-purpose requests.
-
-#### Interpretation Workflow
-
-1. Builds context with the current state, including results and user requests.
-2. Uses the language model to generate actionable insights.
-3. Provides detailed responses for the end user.
-
----
-
-### Memory System
-
-The memory architecture combines short-term and long-term memory to provide contextual processing.
-
-#### Memory Types
-
-1. **Cache Memory (Redis):**
-   - Stores temporary data for quick access.
-   - Examples: Recent actions, session data.
-2. **Persistent Memory (Meilisearch):**
-   - Stores long-term data such as historical interactions and knowledge.
-   - Supports semantic searches and vector-based retrievals.
-
----
-
-### Listeners
-
-**Listeners** connect to external events via WebSocket. They listen for real-time updates and trigger specific actions or callbacks in response to events.
-
-**Key Features:**
-
-- Connect to WebSockets to listen for events.
-- Manage subscriptions with custom messages.
-- Trigger callbacks to process received data.
-
-**Usage Example:**
-
-```typescript
-agent.addListener(
-  "listener-id",
-  "wss://example.com/socket",
-  () => JSON.stringify({ action: "subscribe" }),
-  async (data) => {
-    console.log("Received data:", data);
-  }
-);
+```bash
+yarn add @ai.ntellect/core
 ```
 
----
+Or using pnpm:
 
-### Schedulers
-
-**Schedulers** allow tasks or actions to be scheduled for later execution. They use cron expressions to define scheduling intervals.
-
-**Key Features:**
-
-- Cron-based scheduling.
-- Support for recurring and non-recurring tasks.
-- Management and cancellation of scheduled tasks.
-
-**Usage Example:**
-
-```typescript
-const scheduler = new TaskScheduler(agentRuntime, redisCache);
-
-const taskId = await scheduler.scheduleRequest({
-  originalRequest: "Market analysis",
-  cronExpression: "0 9 * * *", // Every day at 9 AM
-});
-
-console.log(`Task scheduled with ID: ${taskId}`);
-
-// Cancel the task if needed
-scheduler.cancelScheduledRequest(taskId);
+```bash
+pnpm add @ai.ntellect/core
 ```
 
+### Initial configuration
+
+- **Import the necessary classes**:
+
+  ```ts
+  import { GraphEngine, GraphController } from "@ai.ntellect/core";
+  ```
+
+- **(Optional) Define your state schema** using a validation library like [Zod](https://zod.dev) to ensure your data remains consistent throughout workflow execution.
+- **Configure** advanced features (e.g., persistence, notifications, memory services) before running your workflows.
+
 ---
 
-## Defining and Executing Actions
+## Core concepts
 
-### What is an Action?
+@ai.ntellect/core revolves around the idea of **Graphs** and **Nodes**. On top of these concepts, the framework provides a powerful **Engine**, a high-level **Controller**, and optional **Memory** management for specialized use cases (like AI agents). This section explores each concept in detail.
 
-Actions are the fundamental tasks executed by the framework. Each action includes:
+### Graph
 
-- A unique name and description.
-- Input parameters validated using schemas.
-- Execution logic encapsulated in the `execute` method.
+A **Graph** is a directed structure describing a workflow. It consists of:
 
-### Action Example
+- **Nodes**: the tasks or steps in your workflow
+- **Edges (relationships)**: transitions from one node to another
 
-```typescript
-import { z } from "zod";
-import { parseEther } from "ethers";
+You define a **Graph** via a `GraphDefinition`, specifying:
 
-export const prepareTransaction = {
-  name: "prepare-transaction",
-  description: "Prepares a token transfer for user approval.",
-  parameters: z.object({
-    walletAddress: z.string(),
-    amount: z.string(),
-    networkId: z.string(),
-  }),
-  execute: async ({ walletAddress, amount, networkId }) => {
-    return {
-      to: walletAddress,
-      value: parseEther(amount).toString(),
-      network: networkId,
-    };
+1. A unique **name** for the graph
+2. An **entryNode** (starting point)
+3. A map of **node objects** (each one describes a single node’s logic and transitions)
+
+#### Why use graphs?
+
+- **Clear visualization**: easily see the flow of tasks, including parallel branches.
+- **Condition-based transitions**: skip or filter nodes on the fly.
+- **Subgraph usage**: encapsulate common flows for reuse.
+
+#### Example of a simple graph definition
+
+```ts
+const myGraphDefinition = {
+  name: "my-simple-graph",
+  entryNode: "start",
+  nodes: {
+    start: {
+      name: "start",
+      execute: async (_params, state) => {
+        return { context: { ...state.context, status: "initialized" } };
+      },
+      relationships: [{ name: "process" }],
+    },
+    process: {
+      name: "process",
+      execute: async (_params, state) => {
+        // do something
+        return { context: { ...state.context, processed: true } };
+      },
+      relationships: [{ name: "finish" }],
+    },
+    finish: {
+      name: "finish",
+      execute: async (_params, state) => state,
+      relationships: [],
+    },
   },
 };
 ```
 
----
+### Node
 
-## State Management and Recursion
+A **Node** is a fundamental unit of work within a graph. Each node defines:
 
-The agent manages state and recursive workflows to ensure actions are executed in an orderly manner and to completion, while adhering to a maximum number of iterations to avoid infinite loops.
+- **name**: a unique identifier within the graph
+- **execute**: the asynchronous function that implements the node’s logic
+- **condition** (optional): a function returning a boolean determining if this node should run
+- **relationships**: an array of transitions to subsequent nodes
+- **events** (optional): an array of event names that can trigger the node (bypassing usual transitions)
 
-### State Management
+#### Listening to events
 
-The state (`State`) includes:
+Besides sequential or parallel execution, a node can listen to custom events:
 
-- `currentContext`: The current context of the user request.
-- `previousActions`: A list of previously executed actions.
-
-When an action is completed, the state is updated to include:
-
-- Results from previous actions.
-- Remaining context to be processed.
-
-### Controlled Recursion
-
-To prevent infinite loops, the system limits the number of iterations via the `maxIterations` configuration.
-
-**Workflow:**
-
-1. **Initialization:** At each iteration, the agent:
-
-   - Executes actions in the queue.
-   - Updates the state with new results.
-
-2. **Limit Validation:**
-
-   - If the number of iterations exceeds `maxIterations`, processing is stopped with a "Max iterations reached" message.
-
-3. **Recursion:**
-   - If actions remain to be executed, the agent recursively calls the `process` method with the updated state.
-
-**State and Recursion Example:**
-
-```typescript
-const updatedNextState: State = {
-  ...state,
-  currentContext: state.currentContext,
-  previousActions: [...(state.previousActions || []), ...(results || [])],
-};
-
-if (countIterations < this.config.maxIterations) {
-  return this.process(updatedNextState);
-} else {
-  console.log("Max iterations reached");
-  response.shouldContinue = false;
+```ts
+{
+  name: "eventDrivenNode",
+  events: ["USER_CREATED"],
+  execute: async (params, state) => {
+    console.log("User created:", params);
+    return state;
+  },
 }
 ```
 
----
+If the **Engine** later calls `engine.emit("USER_CREATED", {...})`, this node will be triggered. This mechanism is extremely powerful for event-driven architectures (e.g., a chatbot responding to user events, or a blockchain node responding to on-chain events).
 
-## Installation and Configuration
+### GraphEngine
 
-### Install Dependencies
+#### Overview
 
-```bash
-npm install
+The **GraphEngine** (often shortened to “engine”) is responsible for:
+
+- Loading a `GraphDefinition`
+- Executing its nodes according to **relationships** and optional **conditions**
+- Handling **state** updates after each node execution
+- Managing **event** emissions and listening for event-driven nodes
+- Allowing **parallel** or **sequential** node execution
+- Managing **subgraphs** if your workflow references external graph definitions
+
+```ts
+import { GraphEngine } from "ai.ntellect/core";
+
+const engine = new GraphEngine(myGraphDefinition);
+await engine.execute({ context: { user: "Alice" } }, "start");
 ```
 
-### Configure External Services
+### GraphController
 
-#### Redis (Cache Memory)
+#### Overview
 
-```bash
-docker run --name redis -d -p 6379:6379 redis
-```
+The **GraphController** provides a **high-level orchestration** mechanism for multiple graphs. Instead of running a single workflow, you can define **actions**—each tied to a particular workflow—and the controller executes them in sequence (or other patterns) based on your configuration.
 
-#### Meilisearch (Persistent Memory)
+```ts
+import { GraphController } from "ai.ntellect/core";
 
-```bash
-curl -L https://install.meilisearch.com | sh
-./meilisearch --master-key="YOUR_MASTER_KEY"
-```
-
----
-
-## Usage Example
-
-### Initialize the Agent
-
-```typescript
-import { deepseek } from "@ai-ntellect/core";
-import { Agent } from "@ai-ntellect/core";
-import { checkHoneypot, fetchMarkPrice } from "@ai-ntellect/core/actions";
-import {
-  generalInterpreterCharacter,
-  marketInterpreterCharacter,
-  securityInterpreterCharacter,
-} from "@ai-ntellect/core/interpreter/context";
-
-const model = deepseek("deepseek-reasoner");
-
-const agent = new Agent({
-  orchestrator: {
-    model,
-    tools: [checkHoneypot, fetchMarkPrice],
-  },
-  interpreters: [
-    new Interpreter({
-      name: "security",
-      model,
-      character: securityInterpreterCharacter,
-    }),
-    new Interpreter({
-      name: "market",
-      model,
-      character: marketInterpreterCharacter,
-    }),
-    new Interpreter({
-      name: "general",
-      model,
-      character: generalInterpreterCharacter,
-    }),
+const controller = new GraphController<any>();
+const resultState = await controller.run(
+  [
+    {
+      name: "my-simple-graph",
+      parameters: [
+        { name: "user", value: "Alice" },
+        { name: "count", value: 10 },
+      ],
+    },
   ],
-  memoryManager: {
-    model,
+  [myGraphDefinition, someOtherGraphDef]
+);
+
+console.log(resultState);
+// => final state after running 'my-simple-graph'
+```
+
+**Use cases**:
+
+- **Batch execution** of multiple workflows
+- **Multi-tenant** orchestration where each tenant’s configuration is an “action”
+- **Chained flows**: run workflow A, then run workflow B with the result of A
+
+### Memory management
+
+In advanced workflows, especially with chatbots or AI agents, you might want to maintain a **memory** of previous interactions or references. @ai.ntellect/core accommodates this via an abstract class **BaseMemory** and a dedicated **BaseMemoryService** for storing and retrieving data. This can be used to store embeddings, historical context, or any ephemeral data needed for your workflows.
+
+```ts
+import { BaseMemory } from "ai.ntellect/core";
+
+// Example concrete class
+class MyMemory extends BaseMemory {
+  async init(): Promise<void> {
+    /*...*/
+  }
+  async createMemory(input): Promise<BaseMemoryType | undefined> {
+    /*...*/
+  }
+  async getMemoryById(id, roomId): Promise<BaseMemoryType | null> {
+    /*...*/
+  }
+  // ... other methods
+}
+```
+
+**Possible storage backends**:
+
+- In-memory
+- Redis / Key-value stores
+- SQL / NoSQL databases
+
+**Key benefits**:
+
+- Store query embeddings for AI-based search
+- Maintain user session context (e.g., conversation flows)
+- Rapidly retrieve and update relevant data at runtime
+
+---
+
+## Advanced usage and features
+
+### Subgraphs for modularity
+
+Nodes can delegate execution to a **subgraph**, enabling large workflows to be broken into reusable components:
+
+```ts
+const subGraphEngine = new GraphEngine(subGraphDef);
+mainGraphEngine.addSubGraph(subGraphEngine, "sub-start", "sub-workflow");
+```
+
+**Why subgraphs**:
+
+- **Reusability**: common routines can be maintained independently
+- **Maintainability**: isolate large logic in smaller workflows
+
+### Parallel execution
+
+The `executeParallel` method allows you to simultaneously run multiple nodes that don’t have direct dependencies on each other. You can limit concurrency to prevent overwhelming external resources:
+
+```ts
+await engine.executeParallel(
+  { context: { userId: 42 } },
+  ["nodeA", "nodeB", "nodeC"],
+  2 // concurrency limit
+);
+```
+
+### Real-time notifications and events
+
+By attaching a **RealTimeNotifier**, each node’s start, completion, or error can be broadcast to external systems (WebSocket, Slack, logging, etc.):
+
+```ts
+const notifier = {
+  notify: (event, data) => {
+    console.log(`[NOTIFY] ${event}`, data);
   },
-  maxIterations: 3,
+};
+engine.setNotifier(notifier);
+```
+
+### Persistence and error recovery
+
+For long-running or mission-critical workflows, implement a **Persistence** interface:
+
+```ts
+const myPersistence = {
+  saveState: async (graphName, state, currentNode) => {
+    /* store in DB */
+  },
+  loadState: async () => {
+    /* retrieve from DB */ return null;
+  },
+};
+engine.setPersistence(myPersistence);
+```
+
+If a workflow fails, you can reload from the last checkpoint and resume execution.
+
+---
+
+## Example: agent workflow with memory
+
+Below is an example `createMainGraph` definition demonstrating how you can structure an AI or chatbot-like agent using a controller node, agenda scheduling, interpretation, and memory storage. This pattern is useful in:
+
+- **Chatbots** handling complex dialogues
+- **AI reasoning systems** that need to store partial results
+- **Planning agents** that schedule tasks or actions asynchronously
+
+```ts
+import { GraphDefinition } from "@/types";
+// Assume Agent, MyContext, isNotStopped, shouldRetry, etc. are defined
+
+export const createMainGraph = (
+  agent: Agent,
+  prompt: string,
+  callbacks?: any
+): GraphDefinition<MyContext> => ({
+  name: "agent",
+  entryNode: "orchestrator",
+  nodes: {
+    orchestrator: {
+      name: "orchestrator",
+      description: "Make a decision following the current context",
+      execute: async () => {
+        /* your orchestrator logic */
+      },
+      condition: (state) => isNotStopped(state) || shouldRetry(state),
+      relationships: [
+        { name: "controller", description: "Execute multiple workflows" },
+        { name: "agenda", description: "Schedule actions for the future" },
+        {
+          name: "interpreter",
+          description: "Interpret the results of actions",
+        },
+      ],
+    },
+    controller: {
+      name: "controller",
+      description: "Execute multiple workflows if available",
+      execute: async () => {
+        /* handle or queue workflow actions */
+      },
+      condition: () => {
+        const currentState = agent.graph.getState();
+        return hasActions(currentState) && isNotStopped(currentState);
+      },
+      relationships: [{ name: "orchestrator" }],
+    },
+    agenda: {
+      name: "agenda",
+      description: "Schedule actions for the future",
+      execute: async () => {
+        /* handle scheduling logic */
+      },
+      condition: hasActions,
+    },
+    interpreter: {
+      name: "interpreter",
+      description: "Interpret the results of the actions",
+      execute: async () => {
+        /* interpret results, maybe using memory */
+      },
+      condition: () => {
+        const currentState = agent.graph.getState();
+        return (
+          isInterpreterDefined(currentState) &&
+          isResultsDefined(currentState) &&
+          isStopped(currentState)
+        );
+      },
+      relationships: [{ name: "memory", description: "Save memory" }],
+    },
+    memory: {
+      name: "memory",
+      description: "Save memory",
+      execute: async () => {
+        /* store or retrieve conversation states */
+      },
+      condition: () => {
+        const currentState = agent.graph.getState();
+        return isResultsDefined(currentState);
+      },
+    },
+  },
 });
 ```
 
-### Process a Request
+This structure highlights how an **Agent** can leverage the **GraphEngine** for decision-making, scheduling tasks, interpreting outcomes, and ultimately storing relevant data in memory before concluding.
 
-```typescript
-const state = {
-  currentContext: "Analyze XRP/USD market trends",
-  previousActions: [],
-};
+---
 
-const result = await agent.process(state);
-console.log("Result:", result);
-```
+## Real-world use cases
+
+1. **Automation**: Orchestrate tasks like file processing, data validation, and uploading in a single graph.
+2. **Data pipeline**: Stream logs into a transformation flow with parallel processing and conditional branches.
+3. **AI bots**: Manage conversation state, memory, and advanced decision trees for chat-based agents.
+4. **Blockchain**: Sequence complex contract interactions, handle parallel on-chain calls, and revert safely on errors.
+5. **Task scheduling**: Combine GraphController with multiple workflows to handle enterprise-wide daily or weekly tasks.
+
+---
+
+## Conclusion
+
+@ai.ntellect/core offers a **comprehensive**, **modular**, and **event-driven** environment to model, execute, and extend workflows of any complexity. By leveraging **Graphs** and **Nodes** alongside robust tooling such as **GraphEngine**, **GraphController**, and **Memory** services, you can adapt the framework to fit an array of domains, from classic data pipelines to cutting-edge AI agent systems.
+
+### Key points to remember
+
+- **Graphs** define the structure of your workflow; **Nodes** encapsulate the logic.
+- **GraphEngine** executes a single graph, handling state, conditions, and events.
+- **GraphController** orchestrates multiple graphs in a higher-level scope.
+- **Memory** management supports advanced agent use cases, storing embeddings or conversation history.
+- **Parallel execution**, **subgraphs**, **real-time notifications**, and **persistence** provide powerful abstractions to scale with your needs.
+
+For more in-depth guides, examples, or to contribute, visit our repository or consult the extended documentation. If you need specialized solutions—like a custom memory store or a unique scheduling system—**@ai.ntellect/core**’s open architecture makes it straightforward to extend or integrate with your existing stack.
+
+Use it for automation, AI bots, blockchain interactions, or any stateful workflow that demands reliability, flexibility, and clarity.

@@ -1,14 +1,8 @@
+import { Persistence, RealTimeNotifier } from "@/interfaces";
+import { GraphDefinition, Node, NodeRelationship, SharedState } from "@/types";
 import { configDotenv } from "dotenv";
 import EventEmitter from "events";
 import { z } from "zod";
-import {
-  GraphDefinition,
-  Node,
-  NodeRelationship,
-  Persistence,
-  RealTimeNotifier,
-  SharedState,
-} from "../types";
 
 configDotenv();
 
@@ -24,7 +18,7 @@ interface GraphOptions<T> {
  *
  * @template T - The type of data stored in the worflow's context
  */
-export class Graph<T> {
+export class GraphEngine<T> {
   /** Stores global context data accessible to all nodes */
   public globalContext: Map<string, any>;
 
@@ -216,7 +210,6 @@ export class Graph<T> {
     if (events) {
       events.forEach((event) => {
         this.eventEmitter.on(event, async (data) => {
-          console.log(`Event "${event}" received by node "${node.name}"`);
           const state = data.state || {};
           await this.execute(state, node.name);
         });
@@ -232,7 +225,6 @@ export class Graph<T> {
    * @param {any} data - Data to pass with the event
    */
   public emit(eventName: string, data: any): void {
-    console.log(`Event "${eventName}" emitted with data:`, data);
     this.eventEmitter.emit(eventName, data);
   }
 
@@ -242,11 +234,10 @@ export class Graph<T> {
    * @param {string} entryNode - The entry node name in the subworflow
    * @param {string} name - The name for the subworflow node
    */
-  addSubGraph(subGraph: Graph<T>, entryNode: string, name: string): void {
+  addSubGraph(subGraph: GraphEngine<T>, entryNode: string, name: string): void {
     const subGraphNode: Node<T> = {
       name: name,
       execute: async (state) => {
-        console.log(`Executing subworflow: ${name}`);
         await subGraph.execute(state, entryNode);
         return state;
       },
@@ -266,100 +257,105 @@ export class Graph<T> {
     startNode: string,
     onStream?: (state: SharedState<T>) => void,
     onError?: (error: Error, nodeName: string, state: SharedState<T>) => void
-  ): Promise<void> {
-    this.currentState = state;
-    let currentNodeName = startNode;
-
-    // Validation initiale de l'état
-    if (this.schema) {
-      try {
-        this.schema.parse(this.currentState);
-      } catch (error) {
-        const validationError = new Error(
-          `Initial state validation failed: ${
-            error instanceof Error ? error.message : error
-          }`
-        );
-        if (onError) onError(validationError, startNode, this.currentState);
-        throw validationError;
-      }
-    }
-
-    while (currentNodeName) {
-      this.executedNodes.add(currentNodeName);
-      const currentNode = this.nodes.get(currentNodeName);
-      if (!currentNode) throw new Error(`Node ${currentNodeName} not found.`);
-
-      if (currentNode.condition && !currentNode.condition(this.currentState)) {
-        console.log(
-          `Condition for node "${currentNodeName}" not met. Ending Graph.`
-        );
-        break;
-      }
-
-      try {
-        if (this.notifier) {
-          this.notifier.notify("nodeExecutionStarted", {
-            workflow: this.name,
-            node: currentNodeName,
-          });
-        }
-
-        console.log(`Executing node: ${currentNodeName}`);
-        const params = currentNode.schema?.parse(this.currentState);
-        const newState = await currentNode.execute(
-          params || {},
-          this.currentState
-        );
-
-        this.setState(newState);
-
-        if (onStream) onStream(this.currentState);
-
-        if (this.persistence) {
-          await this.persistence.saveState(
-            this.name,
-            this.currentState,
-            currentNodeName
+  ): Promise<SharedState<T>> {
+    try {
+      if (this.schema) {
+        try {
+          this.schema.parse(state.context);
+        } catch (error) {
+          const validationError = new Error(
+            `Initial state validation failed: ${
+              error instanceof Error ? error.message : error
+            }`
           );
+          if (onError) onError(validationError, startNode, state);
+          throw validationError;
         }
-
-        if (this.notifier) {
-          await this.notifier.notify("nodeExecutionCompleted", {
-            workflow: this.name,
-            node: currentNodeName,
-            state: this.currentState,
-          });
-        }
-      } catch (error) {
-        console.error(`Error in node ${currentNodeName}:`, error);
-        if (onError)
-          onError(error as Error, currentNodeName, this.currentState);
-        if (this.notifier) {
-          this.notifier.notify("nodeExecutionFailed", {
-            workflow: this.name,
-            node: currentNodeName,
-            state: this.currentState,
-            error,
-          });
-        }
-        break;
       }
 
-      const relationsNodes = currentNode.relationships || [];
-      if (relationsNodes.length > 1) {
-        await Promise.all(
-          relationsNodes.map((relation) =>
-            this.execute(this.currentState, relation.name, onStream, onError)
-          )
-        );
-        break;
-      } else {
-        currentNodeName = relationsNodes[0]?.name || "";
+      this.setState(state);
+      let currentNodeName = startNode;
+
+      while (currentNodeName) {
+        this.executedNodes.add(currentNodeName);
+        const currentNode = this.nodes.get(currentNodeName);
+        if (!currentNode) throw new Error(`Node ${currentNodeName} not found.`);
+
+        if (
+          currentNode.condition &&
+          !currentNode.condition(this.currentState)
+        ) {
+          break;
+        }
+
+        try {
+          if (this.notifier) {
+            this.notifier.notify("nodeExecutionStarted", {
+              workflow: this.name,
+              node: currentNodeName,
+            });
+          }
+
+          const params = currentNode.schema?.parse(this.currentState);
+          const newState = await currentNode.execute(
+            params || {},
+            this.currentState
+          );
+
+          if (newState) {
+            this.setState(newState);
+            if (onStream) onStream(this.currentState);
+          }
+
+          if (this.persistence) {
+            await this.persistence.saveState(
+              this.name,
+              this.currentState,
+              currentNodeName
+            );
+          }
+
+          if (this.notifier) {
+            await this.notifier.notify("nodeExecutionCompleted", {
+              workflow: this.name,
+              node: currentNodeName,
+              state: this.currentState,
+            });
+          }
+        } catch (error) {
+          if (onError)
+            onError(error as Error, currentNodeName, this.currentState);
+          if (this.notifier) {
+            this.notifier.notify("nodeExecutionFailed", {
+              workflow: this.name,
+              node: currentNodeName,
+              state: this.currentState,
+              error,
+            });
+          }
+          break;
+        }
+
+        const relationsNodes = currentNode.relationships || [];
+        if (relationsNodes.length > 1) {
+          await Promise.all(
+            relationsNodes.map((relation) =>
+              this.execute(this.currentState, relation.name, onStream, onError)
+            )
+          );
+          break;
+        } else {
+          currentNodeName = relationsNodes[0]?.name || "";
+        }
       }
+
+      return this.getState();
+    } catch (error) {
+      if (onError) {
+        onError(error as Error, startNode, state);
+      }
+      throw error;
     }
-
-    console.log(`Graph completed for node: ${startNode}`);
   }
 
   /**
@@ -377,8 +373,6 @@ export class Graph<T> {
     onStream?: (state: SharedState<T>) => void,
     onError?: (error: Error, nodeName: string, state: SharedState<T>) => void
   ): Promise<void> {
-    console.log(`Executing nodes in parallel: ${nodeNames.join(", ")}`);
-
     const executeWithLimit = async (nodeName: string) => {
       await this.execute(state, nodeName, onStream, onError);
     };
@@ -433,10 +427,10 @@ export class Graph<T> {
    * @returns {string} Mermaid diagram syntax representing the worflow
    */
   generateMermaidDiagram(title?: string): string {
-    const lines: string[] = ["worflow TD"];
+    const lines: string[] = ["flowchart TD"];
 
     if (title) {
-      lines.push(`  subworflow ${title}`);
+      lines.push(`  subgraph ${title}`);
     }
 
     // Add nodes with styling
@@ -527,10 +521,10 @@ export class Graph<T> {
   }
 
   /**
-   * Génère une représentation visuelle du schéma du workflow.
-   * Affiche la structure des données attendues pour chaque nœud.
+   * Generates a visual representation of the workflow schema.
+   * Displays the structure of the data expected for each node.
    *
-   * @returns {string} Une chaîne formatée décrivant le schéma du workflow
+   * @returns {string} A formatted string describing the workflow schema
    */
   visualizeSchema(): string {
     const output: string[] = [];
@@ -553,7 +547,6 @@ export class Graph<T> {
       output.push("");
     }
 
-    // Schémas des nœuds
     output.push("🔷 Nodes:");
     output.push("-".repeat(30));
 
@@ -574,7 +567,7 @@ export class Graph<T> {
   }
 
   /**
-   * Décrit récursivement un type Zod.
+   * Recursively describes a Zod type.
    */
   public describeZodType(type: z.ZodType, indent: number = 0): string {
     const padding = "  ".repeat(indent);
@@ -629,6 +622,12 @@ export class Graph<T> {
     return type.constructor.name.replace("Zod", "") || "unknown";
   }
 
+  /**
+   * Updates the state of a node.
+   * @param {SharedState<T>} state - The current state
+   * @param {Partial<T>} updates - The updates to apply
+   * @returns {SharedState<T>} The updated state
+   */
   protected updateNodeState(state: SharedState<T>, updates: Partial<T>) {
     return {
       ...state,
@@ -639,21 +638,26 @@ export class Graph<T> {
     };
   }
 
+  /**
+   * Retrieves the current state of the workflow.
+   * @returns {SharedState<T>} The current state
+   */
   public getState(): SharedState<T> {
     return this.currentState;
   }
 
+  /**
+   * Sets the state of the workflow.
+   * @param {Partial<SharedState<T>>} state - The new state
+   */
   public setState(state: Partial<SharedState<T>>): void {
     this.currentState = this.mergeStates(this.currentState, state);
 
-    // Mettre à jour le contexte global
     if (state.context) {
       Object.entries(state.context).forEach(([key, value]) => {
         this.globalContext.set(key, value);
       });
     }
-
-    // Mettre à jour l'état du nœud actuel
     const currentNode = Array.from(this.executedNodes).pop();
     if (currentNode) {
       const node = this.nodes.get(currentNode);
@@ -666,6 +670,12 @@ export class Graph<T> {
     }
   }
 
+  /**
+   * Merges two states.
+   * @param {SharedState<T>} currentState - The current state
+   * @param {Partial<SharedState<T>>} newState - The new state
+   * @returns {SharedState<T>} The merged state
+   */
   private mergeStates(
     currentState: SharedState<T>,
     newState: Partial<SharedState<T>>
@@ -679,9 +689,21 @@ export class Graph<T> {
     };
   }
 
+  /**
+   * Updates the state of the workflow.
+   * @param {Partial<SharedState<T>>} updates - The updates to apply
+   * @returns {SharedState<T>} The updated state
+   */
   public updateState(updates: Partial<SharedState<T>>): SharedState<T> {
     const currentState = this.getState();
-    this.setState(updates);
-    return currentState;
+    const newState = {
+      ...currentState,
+      context: {
+        ...currentState.context,
+        ...(updates.context || {}),
+      },
+    };
+    this.setState(newState);
+    return newState;
   }
 }
