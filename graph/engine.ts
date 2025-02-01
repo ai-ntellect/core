@@ -68,7 +68,7 @@ export class GraphEngine<T> {
     }
 
     if (options?.initialState) {
-      // this.setState(options.initialState);
+      this.setState(options.initialState);
     }
   }
 
@@ -317,12 +317,24 @@ export class GraphEngine<T> {
           break;
         }
 
-        // Gestion des relations (branchements)
         const relationsNodes = currentNode.relationships || [];
-        if (relationsNodes.length > 1) {
+        // Check condition for all relations
+        let nextNodes = [];
+        for (const relation of relationsNodes) {
+          const nextNode = this.nodes.get(relation.name);
+          if (nextNode?.condition && !nextNode.condition(this.currentState)) {
+            // Skip this relation
+            continue;
+          }
+          nextNodes.push({
+            name: relation.name,
+            condition: nextNode?.condition,
+          });
+        }
+        if (nextNodes.length > 1) {
           // Exécution parallèle des branches
           await Promise.all(
-            relationsNodes.map((relation) =>
+            nextNodes.map((relation) =>
               this.execute(this.currentState, relation.name, onStream, onError)
             )
           );

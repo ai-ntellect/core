@@ -33,9 +33,9 @@ describe("Graph", () => {
       start: {
         name: "start",
         description: "Starting node",
-        execute: async (_params: any, state: SharedState<TestState>) => {
+        execute: async (state: SharedState<TestState>) => {
           return graph.updateState({
-            ...state.context,
+            ...state,
             status: "started",
             step: 1,
           });
@@ -45,22 +45,22 @@ describe("Graph", () => {
       process: {
         name: "process",
         description: "Processing node",
-        execute: async (_params: any, state: SharedState<TestState>) => {
+        execute: async (state: SharedState<TestState>) => {
           return graph.updateState({
-            ...state.context,
+            ...state,
             status: "processing",
             step: 2,
           });
         },
-        condition: (state) => state.context.step === 1,
+        condition: (state) => state.step === 1,
         relationships: [{ name: "end" }],
       },
       end: {
         name: "end",
         description: "End node",
-        execute: async (_params: any, state: SharedState<TestState>) => {
+        execute: async (state: SharedState<TestState>) => {
           return graph.updateState({
-            ...state.context,
+            ...state,
             status: "completed",
             step: 3,
           });
@@ -82,10 +82,8 @@ describe("Graph", () => {
      */
     it("should execute the complete workflow sequence", async () => {
       const initialState: SharedState<TestState> = {
-        context: {
-          status: "init",
-          step: 0,
-        },
+        status: "init",
+        step: 0,
       };
 
       // Initialiser le graph avec l'état initial
@@ -98,7 +96,7 @@ describe("Graph", () => {
       await graph.execute(initialState, "start");
       const result = graph.getState();
 
-      expect(result.context).to.deep.equal({
+      expect(result).to.deep.equal({
         status: "completed",
         step: 3,
       });
@@ -110,10 +108,8 @@ describe("Graph", () => {
      */
     it("should respect conditions in workflow", async () => {
       const initialState: SharedState<TestState> = {
-        context: {
-          status: "init",
-          step: 2,
-        },
+        status: "init",
+        step: 2,
       };
 
       // Initialiser le graph avec l'état initial
@@ -125,7 +121,7 @@ describe("Graph", () => {
       await graph.execute(initialState, "process");
       const result = graph.getState();
 
-      expect(result.context).to.deep.equal({
+      expect(result).to.deep.equal({
         status: "init",
         step: 2,
       });
@@ -137,9 +133,9 @@ describe("Graph", () => {
       const newNode = {
         name: "new-node",
         description: "A new test node",
-        execute: async (_params: any, state: SharedState<TestState>) => {
+        execute: async (state: SharedState<TestState>) => {
           return graph.updateState({
-            ...state.context,
+            ...state,
             status: "new",
             step: 4,
           });
@@ -163,9 +159,9 @@ describe("Graph", () => {
           "new-step": {
             name: "new-step",
             description: "New step node",
-            execute: async (_params: any, state: SharedState<TestState>) => {
+            execute: async (state: SharedState<TestState>) => {
               return graph.updateState({
-                ...state.context,
+                ...state,
                 status: "new-step",
                 step: 4,
               });
@@ -184,24 +180,20 @@ describe("Graph", () => {
   describe("State Management", () => {
     it("should properly update and retrieve state", async () => {
       const newState: SharedState<TestState> = {
-        context: {
-          status: "test",
-          step: 5,
-        },
+        status: "test",
+        step: 5,
       };
 
       graph.setState(newState);
       const retrievedState = graph.getState();
 
-      expect(retrievedState.context).to.deep.equal(newState.context);
+      expect(retrievedState).to.deep.equal(newState);
     });
 
     it("should merge states correctly when updating partially", () => {
       const initialState: SharedState<TestState> = {
-        context: {
-          status: "initial",
-          step: 1,
-        },
+        status: "initial",
+        step: 1,
       };
 
       graph.setState(initialState);
@@ -212,7 +204,7 @@ describe("Graph", () => {
 
       const updatedState = graph.updateState(partialUpdate);
 
-      expect(updatedState.context).to.deep.equal({
+      expect(updatedState).to.deep.equal({
         status: "updated",
         step: 1,
       });
@@ -233,7 +225,7 @@ describe("Graph", () => {
       let errorCaught = false;
       try {
         await graph.execute(
-          { context: { status: "test", step: 1 } },
+          { status: "test", step: 1 },
           "error-node",
           undefined,
           (error) => {
@@ -254,10 +246,8 @@ describe("Graph", () => {
       const strictGraph = new GraphEngine(testDefinition, {
         schema: TestSchema,
         initialState: {
-          context: {
-            status: "init",
-            step: 0,
-          },
+          status: "init",
+          step: 0,
         },
       });
 
@@ -295,7 +285,7 @@ describe("Graph", () => {
 
       const parallelNodes = ["node1", "node2", "node3"].map((name) => ({
         name,
-        execute: async (_params: any, state: SharedState<TestState>) => {
+        execute: async (state: SharedState<TestState>) => {
           executionOrder.push(name);
           await new Promise((resolve) => setTimeout(resolve, 10));
           return state;
@@ -307,7 +297,7 @@ describe("Graph", () => {
       });
 
       await graph.executeParallel(
-        { context: { status: "test", step: 1 } },
+        { status: "test", step: 1 },
         ["node1", "node2", "node3"],
         2
       );
@@ -326,9 +316,9 @@ describe("Graph", () => {
     it("should emit and handle events correctly", async () => {
       const eventNode = {
         name: "event-node",
-        execute: async (_params: any, state: SharedState<TestState>) => {
+        execute: async (state: SharedState<TestState>) => {
           return graph.updateState({
-            ...state.context,
+            ...state,
             status: "event-triggered",
             step: 10,
           });
@@ -347,8 +337,7 @@ describe("Graph", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const state = graph.getState();
-      expect(state.context.status).to.equal("event-triggered");
-      expect(state.context.status).to.equal("event-triggered");
+      expect(state.status).to.equal("event-triggered");
     });
   });
 
@@ -365,9 +354,9 @@ describe("Graph", () => {
         nodes: {
           "sub-start": {
             name: "sub-start",
-            execute: async (_params: any, state: SharedState<TestState>) => {
+            execute: async (state: SharedState<TestState>) => {
               return graph.updateState({
-                ...state.context,
+                ...state,
                 status: "sub-completed",
                 step: 100,
               });
@@ -382,17 +371,15 @@ describe("Graph", () => {
       graph.addSubGraph(subGraph, "sub-start", "sub-workflow");
 
       const initialState: SharedState<TestState> = {
-        context: {
-          status: "init",
-          step: 0,
-        },
+        status: "init",
+        step: 0,
       };
 
       await graph.execute(initialState, "sub-workflow");
       const state = graph.getState();
 
-      expect(state.context.status).to.equal("sub-completed");
-      expect(state.context.step).to.equal(100);
+      expect(state.status).to.equal("sub-completed");
+      expect(state.step).to.equal(100);
     });
   });
 
@@ -463,14 +450,14 @@ describe("Graph", () => {
       const mockPersistence: Persistence<TestState> = {
         saveState: async (graphName, state, currentNode) => {
           expect(graphName).to.equal("simple-workflow");
-          expect(state.context).to.exist;
+          expect(state).to.exist;
           expect(currentNode).to.exist;
         },
         loadState: async () => null,
       };
 
       graph.setPersistence(mockPersistence);
-      await graph.execute({ context: { status: "init", step: 0 } }, "start");
+      await graph.execute({ status: "init", step: 0 }, "start");
     });
   });
 
@@ -492,7 +479,7 @@ describe("Graph", () => {
       };
 
       graph.setNotifier(mockNotifier);
-      await graph.execute({ context: { status: "init", step: 0 } }, "start");
+      await graph.execute({ status: "init", step: 0 }, "start");
 
       expect(notifications).to.have.length.greaterThan(0);
       expect(notifications[0].event).to.equal("nodeExecutionStarted");
