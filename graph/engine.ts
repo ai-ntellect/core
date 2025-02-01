@@ -1,5 +1,5 @@
 import { Persistence, RealTimeNotifier } from "@/interfaces";
-import { GraphDefinition, Node, SharedState } from "@/types";
+import { Action, GraphDefinition, Node, SharedState } from "@/types";
 import EventEmitter from "events";
 import { z } from "zod";
 
@@ -68,7 +68,7 @@ export class GraphEngine<T> {
     }
 
     if (options?.initialState) {
-      this.setState(options.initialState);
+      // this.setState(options.initialState);
     }
   }
 
@@ -112,7 +112,6 @@ export class GraphEngine<T> {
   setNotifier(notifier: RealTimeNotifier): void {
     this.notifier = notifier;
   }
-
   /**
    * Charge un workflow à partir d'une définition.
    * @private
@@ -260,7 +259,7 @@ export class GraphEngine<T> {
         this.executedNodes.add(currentNodeName);
         const currentNode = this.nodes.get(currentNodeName);
         if (!currentNode) {
-          throw new Error(`Nœud ${currentNodeName} introuvable.`);
+          throw new Error(`Node ${currentNodeName} introuvable.`);
         }
 
         // Vérification de condition (si présente)
@@ -280,12 +279,7 @@ export class GraphEngine<T> {
             });
           }
 
-          const params = currentNode.schema?.parse(this.currentState);
-          const newState = await currentNode.execute(
-            params || {},
-            this.currentState
-          );
-
+          const newState = await currentNode.execute(this.currentState);
           if (newState) {
             this.setState(newState);
             if (onStream) onStream(this);
@@ -702,10 +696,12 @@ export class GraphEngine<T> {
     graphs: GraphEngine<U>[],
     startNodes: string[],
     initialStates: SharedState<U>[],
+    actions: Action[], // Pass actions here
     onStream?: (graph: GraphEngine<U>) => void,
     onError?: (error: Error, nodeName: string, state: SharedState<U>) => void
-  ): Promise<SharedState<U>[]> {
-    const finalStates: SharedState<U>[] = [];
+  ): Promise<Action[]> {
+    // Return updated actions directly
+    const finalStates: { name: string; result: SharedState<U> }[] = [];
 
     for (let i = 0; i < graphs.length; i++) {
       const graph = graphs[i];
@@ -717,10 +713,20 @@ export class GraphEngine<T> {
         onStream,
         onError
       );
-      finalStates.push(result);
+      finalStates.push({
+        name: graph.name,
+        result,
+      });
     }
 
-    return finalStates;
+    // Map results to actions
+    return actions.map((action) => {
+      const result = finalStates.find((state) => state.name === action.name);
+      return {
+        ...action,
+        result: result ? result.result : null,
+      };
+    });
   }
 
   /**

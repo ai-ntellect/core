@@ -209,7 +209,7 @@ export type SharedState<T> = T;
 export type Node<T, P = any> = {
   name: string;
   description?: string;
-  execute: (params: P, state: SharedState<T>) => Promise<SharedState<T> | void>;
+  execute: (state: SharedState<T>) => Promise<SharedState<T> | void>;
   condition?: (state: SharedState<T>) => boolean;
   relationships?: NodeRelationship[];
   schema?: z.ZodSchema<P>;
