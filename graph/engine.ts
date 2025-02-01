@@ -1,10 +1,7 @@
 import { Persistence, RealTimeNotifier } from "@/interfaces";
 import { GraphDefinition, Node, SharedState } from "@/types";
-import { configDotenv } from "dotenv";
 import EventEmitter from "events";
 import { z } from "zod";
-
-configDotenv();
 
 interface GraphOptions<T> {
   initialState?: SharedState<T>;

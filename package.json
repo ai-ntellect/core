@@ -1,10 +1,10 @@
 {
   "name": "@ai.ntellect/core",
-  "version": "0.6.1",
+  "version": "0.6.6",
   "description": "",
   "main": "dist/index.js",
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && tsc-alias",
     "test": "mocha --require ts-node/register",
     "test:watch": "mocha --require ts-node/register 'test/**/*.test.ts' --watch"
   },
@@ -35,13 +35,14 @@
     "@types/sinon": "^17.0.3",
     "@types/ws": "^8.5.14",
     "chai": "^4.5.0",
-    "mocha": "^10.0.0",
-    "ts-node": "^10.9.0",
-    "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.7.2",
+    "dotenv": "^16.4.5",
     "meilisearch": "^0.37.0",
+    "mocha": "^10.0.0",
     "redis": "^4.6.13",
-    "dotenv": "^16.4.5"
+    "ts-node": "^10.9.0",
+    "tsc-alias": "^1.8.10",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.2"
   },
   "repository": {
     "type": "git",

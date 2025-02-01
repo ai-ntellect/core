@@ -37,15 +37,13 @@ export class GraphController<T> {
       console.log("graph", graph);
 
       // Construct the initial state from action parameters.
-      const initialState = {
-        context: action.parameters.reduce(
-          (acc: Record<string, any>, param: { name: string; value: any }) => {
-            acc[param.name] = param.value;
-            return acc;
-          },
-          {}
-        ),
-      };
+      const initialState = action.parameters.reduce(
+        (acc: Record<string, any>, param: { name: string; value: any }) => {
+          acc[param.name] = param.value;
+          return acc;
+        },
+        {}
+      );
 
       console.log("initialState", initialState);
 
