@@ -1,13 +1,10 @@
-import {
-  ActionData,
-  QueueItem,
-  QueueItemParameter,
-  QueueResult,
-  TransformedQueueItem,
-} from "../types";
+import { QueueItem, QueueItemParameter, QueueResult } from "@/types";
 
 export class QueueItemTransformer {
-  static transformActionToQueueItem(action: ActionData): TransformedQueueItem {
+  static transformActionToQueueItem(action: {
+    name: string;
+    parameters: Record<string, any>;
+  }): QueueItem {
     return {
       name: action.name || "",
       parameters: QueueItemTransformer.transformParameters(
@@ -18,8 +15,8 @@ export class QueueItemTransformer {
 
   static transformFromSimilarActions(
     similarActions: QueueResult[]
-  ): TransformedQueueItem[] | undefined {
-    return similarActions?.map((action: ActionData) =>
+  ): QueueItem[] | undefined {
+    return similarActions?.map((action: QueueResult) =>
       QueueItemTransformer.transformActionToQueueItem(action)
     );
   }
@@ -34,7 +31,7 @@ export class QueueItemTransformer {
   }
 
   static transformActionsToQueueItems(
-    actions: ActionData[] | undefined
+    actions: { name: string; parameters: Record<string, any> }[] | undefined
   ): QueueItem[] | undefined {
     return actions?.map((action) => this.transformActionToQueueItem(action));
   }

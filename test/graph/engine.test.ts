@@ -35,11 +35,9 @@ describe("Graph", () => {
         description: "Starting node",
         execute: async (_params: any, state: SharedState<TestState>) => {
           return graph.updateState({
-            context: {
-              ...state.context,
-              status: "started",
-              step: 1,
-            },
+            ...state.context,
+            status: "started",
+            step: 1,
           });
         },
         relationships: [{ name: "process" }],
@@ -49,11 +47,9 @@ describe("Graph", () => {
         description: "Processing node",
         execute: async (_params: any, state: SharedState<TestState>) => {
           return graph.updateState({
-            context: {
-              ...state.context,
-              status: "processing",
-              step: 2,
-            },
+            ...state.context,
+            status: "processing",
+            step: 2,
           });
         },
         condition: (state) => state.context.step === 1,
@@ -64,11 +60,9 @@ describe("Graph", () => {
         description: "End node",
         execute: async (_params: any, state: SharedState<TestState>) => {
           return graph.updateState({
-            context: {
-              ...state.context,
-              status: "completed",
-              step: 3,
-            },
+            ...state.context,
+            status: "completed",
+            step: 3,
           });
         },
         relationships: [],
@@ -145,18 +139,15 @@ describe("Graph", () => {
         description: "A new test node",
         execute: async (_params: any, state: SharedState<TestState>) => {
           return graph.updateState({
-            context: {
-              ...state.context,
-              status: "new",
-              step: 4,
-            },
+            ...state.context,
+            status: "new",
+            step: 4,
           });
         },
+        relationships: [{ name: "end" }],
       };
 
-      graph.addNode(newNode, {
-        relationships: [{ name: "end" }],
-      });
+      graph.addNode(newNode);
 
       expect(graph.nodes.has("new-node")).to.be.true;
       const addedNode = graph.nodes.get("new-node");
@@ -174,11 +165,9 @@ describe("Graph", () => {
             description: "New step node",
             execute: async (_params: any, state: SharedState<TestState>) => {
               return graph.updateState({
-                context: {
-                  ...state.context,
-                  status: "new-step",
-                  step: 4,
-                },
+                ...state.context,
+                status: "new-step",
+                step: 4,
               });
             },
             relationships: [],
@@ -218,9 +207,7 @@ describe("Graph", () => {
       graph.setState(initialState);
 
       const partialUpdate = {
-        context: {
-          status: "updated",
-        },
+        status: "updated",
       };
 
       const updatedState = graph.updateState(partialUpdate);
@@ -241,7 +228,7 @@ describe("Graph", () => {
         },
       };
 
-      graph.addNode(errorNode, {});
+      graph.addNode(errorNode);
 
       let errorCaught = false;
       try {
@@ -316,7 +303,7 @@ describe("Graph", () => {
       }));
 
       parallelNodes.forEach((node) => {
-        graph.addNode(node, {});
+        graph.addNode(node);
       });
 
       await graph.executeParallel(
@@ -341,17 +328,15 @@ describe("Graph", () => {
         name: "event-node",
         execute: async (_params: any, state: SharedState<TestState>) => {
           return graph.updateState({
-            context: {
-              ...state.context,
-              status: "event-triggered",
-              step: 10,
-            },
+            ...state.context,
+            status: "event-triggered",
+            step: 10,
           });
         },
         events: ["test-event"],
       };
 
-      graph.addNode(eventNode, { events: ["test-event"] });
+      graph.addNode(eventNode);
 
       // Émettre l'événement
       graph.emit("test-event", {
@@ -382,11 +367,9 @@ describe("Graph", () => {
             name: "sub-start",
             execute: async (_params: any, state: SharedState<TestState>) => {
               return graph.updateState({
-                context: {
-                  ...state.context,
-                  status: "sub-completed",
-                  step: 100,
-                },
+                ...state.context,
+                status: "sub-completed",
+                step: 100,
               });
             },
             relationships: [],

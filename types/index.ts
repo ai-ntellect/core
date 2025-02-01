@@ -192,9 +192,7 @@ export type GraphDefinition<T> = {
  * @typedef {Object} SharedState
  * @property {Partial<T>} context - The execution context.
  */
-export type SharedState<T> = {
-  context: Partial<T>;
-};
+export type SharedState<T> = T;
 
 /**
  * Defines a graph node within a graph execution structure.
@@ -267,4 +265,14 @@ export type MeilisearchConfig = {
 export type MeilisearchSettings = {
   searchableAttributes?: string[];
   sortableAttributes?: string[];
+};
+
+/* ======================== ACTIONS ======================== */
+
+export type Action = {
+  name: string;
+  parameters: {
+    name: string;
+    value: string;
+  }[];
 };

@@ -34,6 +34,8 @@ export class GraphController<T> {
         autoDetectCycles: true,
       });
 
+      console.log("graph", graph);
+
       // Construct the initial state from action parameters.
       const initialState = {
         context: action.parameters.reduce(
@@ -44,6 +46,8 @@ export class GraphController<T> {
           {}
         ),
       };
+
+      console.log("initialState", initialState);
 
       // Execute the graph starting from the defined entry node.
       await graph.execute(initialState, graphDefinition.entryNode);
