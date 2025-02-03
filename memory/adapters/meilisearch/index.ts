@@ -1,14 +1,7 @@
-import { BaseMemoryService } from "@/interfaces";
-import { BaseMemory } from "@/memory";
 import { BaseMemoryType, CreateMemoryInput, MeilisearchConfig } from "@/types";
 
-export class MeilisearchAdapter extends BaseMemory {
-  constructor(
-    private readonly config: MeilisearchConfig,
-    baseMemoryService: BaseMemoryService
-  ) {
-    super(baseMemoryService);
-  }
+export class MeilisearchAdapter {
+  constructor(private readonly config: MeilisearchConfig) {}
 
   private async makeRequest(path: string, options?: RequestInit) {
     try {
@@ -45,31 +38,23 @@ export class MeilisearchAdapter extends BaseMemory {
       let indexExists = false;
 
       try {
-        // Check if index exists
         await this.makeRequest(`/indexes/${roomId}`);
         indexExists = true;
       } catch (error) {
-        // Only continue if the error is "Not found"
-        if (!(error instanceof Error && error.message.includes("Not found"))) {
-          throw error;
+        if (!indexExists) {
+          const createResponse = await this.makeRequest("/indexes", {
+            method: "POST",
+            body: JSON.stringify({
+              uid: roomId,
+              primaryKey: "id",
+            }),
+          });
+
+          console.log("✅ Index creation response:", createResponse);
         }
       }
 
-      if (!indexExists) {
-        // Create new index
-        await this.makeRequest("/indexes", {
-          method: "POST",
-          body: JSON.stringify({
-            uid: roomId,
-            primaryKey: "id",
-          }),
-        });
-
-        // Wait for index creation
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-
-      // Update settings
+      // Appliquer les settings seulement si l'index existe bien
       await this.makeRequest(`/indexes/${roomId}/settings`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -84,7 +69,7 @@ export class MeilisearchAdapter extends BaseMemory {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
       console.error(
-        `Error initializing storage for index ${roomId}:`,
+        `❌ Error initializing storage for index ${roomId}:`,
         errorMessage
       );
       throw new Error(
@@ -101,6 +86,24 @@ export class MeilisearchAdapter extends BaseMemory {
       method: "POST",
       body: JSON.stringify(documents),
     });
+  }
+  async deleteStorage(roomId: string): Promise<void> {
+    await this.makeRequest(`/indexes/${roomId}`, {
+      method: "DELETE",
+    });
+  }
+
+  // Required BaseMemory implementations
+  async init(roomId: string): Promise<void> {
+    try {
+      // Initialize the default "memories" index
+      await this.initializeStorage(roomId);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error("Failed to initialize default index:", errorMessage);
+      throw new Error(`Failed to initialize default index: ${errorMessage}`);
+    }
   }
 
   async search(
@@ -120,7 +123,6 @@ export class MeilisearchAdapter extends BaseMemory {
       document: {
         id: hit.id,
         data: hit.data,
-        query: hit.query,
         embedding: hit.embedding,
         roomId: hit.roomId,
         createdAt: hit.createdAt,
@@ -129,52 +131,16 @@ export class MeilisearchAdapter extends BaseMemory {
     }));
   }
 
-  async deleteStorage(roomId: string): Promise<void> {
-    await this.makeRequest(`/indexes/${roomId}`, {
-      method: "DELETE",
-    });
-  }
-
-  // Required BaseMemory implementations
-  async init(): Promise<void> {
-    try {
-      // Initialize the default "memories" index
-      await this.initializeStorage("memories");
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      console.error("Failed to initialize default index:", errorMessage);
-      throw new Error(`Failed to initialize default index: ${errorMessage}`);
-    }
-  }
-
   async createMemory(
     input: CreateMemoryInput & { embedding?: number[] }
   ): Promise<BaseMemoryType | undefined> {
     // Initialize storage for this roomId if needed
     await this.initializeStorage(input.roomId);
 
-    // Search for existing memory with same data and query
-    const searchResults = await this.search(input.data, input.roomId, {
-      limit: 1,
-    });
-    const existingMemory = searchResults.find(
-      (result) =>
-        result.document.data === input.data &&
-        result.document.query === input.query &&
-        result.document.roomId === input.roomId
-    );
-
-    // If found, return existing memory
-    if (existingMemory) {
-      return existingMemory.document;
-    }
-
     // If not found, create new memory
     const memory: BaseMemoryType = {
-      id: crypto.randomUUID(),
+      id: input.id || crypto.randomUUID(),
       data: input.data,
-      query: input.query,
       embedding: input.embedding || null,
       roomId: input.roomId,
       createdAt: new Date(),
@@ -196,7 +162,6 @@ export class MeilisearchAdapter extends BaseMemory {
         ? {
             id: result.id,
             data: result.data,
-            query: result.query,
             embedding: result.embedding,
             roomId: result.roomId,
             createdAt: result.createdAt,
@@ -219,7 +184,6 @@ export class MeilisearchAdapter extends BaseMemory {
       .map((result) => ({
         id: result.document.id,
         data: result.document.data,
-        query: result.document.query,
         embedding: result.document.embedding,
         roomId: result.document.roomId,
         createdAt: result.document.createdAt,
@@ -228,10 +192,13 @@ export class MeilisearchAdapter extends BaseMemory {
 
   async getAllMemories(roomId: string): Promise<BaseMemoryType[]> {
     const results = await this.makeRequest(`/indexes/${roomId}/documents`);
-    return results.map((doc: any) => ({
+    if (results.total === 0) {
+      return [];
+    }
+
+    return results.results.map((doc: any) => ({
       id: doc.id,
       data: doc.data,
-      query: doc.query,
       embedding: doc.embedding,
       roomId: doc.roomId,
       createdAt: doc.createdAt,
@@ -269,9 +236,6 @@ export class MeilisearchAdapter extends BaseMemory {
       for (const index of indexes) {
         await this.deleteStorage(index.uid);
       }
-
-      // Reinitialize the default index
-      await this.init();
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
@@ -281,6 +245,7 @@ export class MeilisearchAdapter extends BaseMemory {
 }
 
 interface SearchResult {
-  document: BaseMemoryType;
-  score: number;
+  document?: any;
+  score?: number;
+  results?: any[];
 }

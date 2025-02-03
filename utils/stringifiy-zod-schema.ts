@@ -1,18 +1,18 @@
-import { Node } from "@/types";
 import { z } from "zod";
+import { Node } from "../types";
 
-export const stringifyZodSchema = <T>(nodes: Node<T>[]) => {
+export const stringifyZodSchema = (nodes: Node<any>[]) => {
   return nodes
     .map((node) => {
-      const schemaStr = node.schema
-        ? getSchemaString(node.schema)
+      const schemaStr = node.parameters
+        ? getSchemaString(node.parameters)
         : "No parameters";
-      return `Workflow: ${node.name}\nDescription: ${node.description}\nParameters: ${schemaStr}`;
+      return `Workflow: ${node.name}\nParameters: ${schemaStr}`;
     })
     .join("\n\n");
 };
 
-const getSchemaString = (schema: z.ZodType): string => {
+export const getSchemaString = (schema: z.ZodType): string => {
   if (schema instanceof z.ZodObject) {
     const entries = Object.entries(schema.shape);
     const fields = entries.map(([key, value]) => {

@@ -1,62 +1,67 @@
-import { GraphDefinition } from "@/types";
-import { GraphEngine } from "./engine";
+import { GraphContext } from "@/types";
+import { ZodSchema } from "zod";
+import { Graph } from "./graph";
 
-/**
- * Controller responsible for executing workflows based on graph definitions.
- * @template T The type representing the graph's state.
- */
-export class GraphController<T> {
-  /**
-   * Executes a sequence of actions using the corresponding graph definitions.
-   * @param {any[]} actions - The list of actions to execute.
-   * @param {GraphDefinition<T>[]} graphs - The available graph definitions.
-   * @returns {Promise<any>} The final state of the executed workflow.
-   * @throws {Error} If no actions are provided or if the graph is not found.
-   */
-  async run(actions: any[], graphs: GraphDefinition<T>[]): Promise<any> {
-    if (actions.length === 0) {
-      throw new Error("No actions provided");
+export class GraphController {
+  static async executeSequential<T extends ZodSchema>(
+    graphs: Graph<T>[],
+    startNodes: string[],
+    inputContexts?: Partial<GraphContext<T>>[]
+  ): Promise<Map<string, GraphContext<T>>> {
+    const results = new Map<string, GraphContext<T>>();
+    for (let i = 0; i < graphs.length; i++) {
+      const result = await graphs[i].execute(startNodes[i], inputContexts?.[i]);
+      results.set(`${graphs[i].name}-${i}`, result);
+    }
+    return results;
+  }
+
+  static async executeParallel<T extends ZodSchema>(
+    graphs: Graph<T>[],
+    startNodes: string[],
+    inputContexts?: Partial<GraphContext<T>>[],
+    inputParams?: any[],
+    concurrencyLimit?: number
+  ): Promise<Map<string, GraphContext<T>>> {
+    const results = new Map<string, GraphContext<T>>();
+
+    if (inputContexts) {
+      inputContexts = inputContexts.map((ctx) => ctx || {});
     }
 
-    // Create a mapping of graph names to their definitions for quick lookup.
-    const graphMap = new Map(graphs.map((g) => [g.name, g]));
+    if (inputParams) {
+      inputParams = inputParams.map((params) => params || {});
+    }
 
-    for (const action of actions) {
-      // Retrieve the graph definition based on the action name.
-      const graphDefinition = graphMap.get(action.name);
-      if (!graphDefinition) {
-        throw new Error(`Graph not found: ${action.name}`);
+    if (concurrencyLimit) {
+      for (let i = 0; i < graphs.length; i += concurrencyLimit) {
+        const batchResults = await Promise.all(
+          graphs.slice(i, i + concurrencyLimit).map((graph, index) =>
+            graph.execute(
+              startNodes[i + index],
+              inputContexts?.[i + index] || {},
+              inputParams?.[i + index] || {} // ✅ Passe bien les paramètres
+            )
+          )
+        );
+        batchResults.forEach((result, index) => {
+          results.set(`${graphs[i + index].name}`, result);
+        });
       }
-
-      // Initialize the graph engine with the selected graph definition.
-      const graph = new GraphEngine(graphDefinition, {
-        schema: graphDefinition.schema,
-        autoDetectCycles: true,
-      });
-
-      console.log("graph", graph);
-
-      // Construct the initial state from action parameters.
-      const initialState = action.parameters.reduce(
-        (acc: Record<string, any>, param: { name: string; value: any }) => {
-          acc[param.name] = param.value;
-          return acc;
-        },
-        {}
+    } else {
+      const allResults = await Promise.all(
+        graphs.map((graph, index) =>
+          graph.execute(
+            startNodes[index],
+            inputContexts?.[index] || {},
+            inputParams?.[index] || {}
+          )
+        )
       );
-
-      console.log("initialState", initialState);
-
-      // Execute the graph starting from the defined entry node.
-      await graph.execute(initialState, graphDefinition.entryNode);
-
-      // Retrieve the final state after execution.
-      const result = graph.getState();
-      if (!result) {
-        throw new Error("Workflow execution failed to return a state");
-      }
-
-      return result;
+      allResults.forEach((result, index) => {
+        results.set(`${graphs[index].name}`, result);
+      });
     }
+    return results;
   }
 }

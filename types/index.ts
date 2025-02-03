@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z, ZodSchema } from "zod";
 
 /* ======================== MEMORY ======================== */
 
@@ -11,8 +11,9 @@ import { z } from "zod";
  * @property {number} [ttl] - Time-to-live in seconds (optional).
  */
 export type CreateMemoryInput = {
-  query: string;
+  id?: string;
   data: any;
+  embedding?: number[];
   roomId: string;
   ttl?: number;
 };
@@ -29,8 +30,7 @@ export type CreateMemoryInput = {
  */
 export type BaseMemoryType = {
   id: string;
-  data: string;
-  query: string;
+  data: any;
   embedding: number[] | null;
   roomId: string;
   createdAt: Date;
@@ -172,19 +172,39 @@ export type ScheduledRequest = {
 
 /* ======================== GRAPH ======================== */
 
-/**
- * Defines a graph definition.
- * @typedef {Object} GraphDefinition
- * @property {string} name - The graph name.
- * @property {string} entryNode - The entry node name.
- * @property {Record<string, Node<T>>} nodes - The nodes in the graph.
- * @property {z.ZodSchema<T>} [schema] - Optional schema for input validation.
- */
-export type GraphDefinition<T> = {
+export type GraphContext<T extends ZodSchema> = z.infer<T>;
+
+export type Node<T extends ZodSchema, P extends ZodSchema = ZodSchema> = {
   name: string;
-  entryNode: string;
+  execute?: (context: GraphContext<T>) => Promise<void>;
+  executeWithParams?: (
+    context: GraphContext<T>,
+    params: z.infer<P>
+  ) => Promise<void>; // ✅ Nouvelle méthode
+  next?: string[];
+  condition?: (context: GraphContext<T>) => boolean;
+  onError?: (error: Error) => void;
+  events?: string[];
+  schema?: T;
+  parameters?: P; // ✅ Ajout d'un schéma spécifique aux paramètres du nœud
+  retry?: {
+    maxAttempts: number;
+    delay: number;
+  };
+};
+
+export type GraphConfig<T extends ZodSchema> = {
+  name: string;
+  nodes: Node<T>[];
+  initialContext?: GraphContext<T>;
+  validator?: T;
+  globalErrorHandler?: (error: Error, context: GraphContext<T>) => void;
+};
+
+export type GraphDefinition<T extends ZodSchema> = {
+  name: string;
   nodes: Record<string, Node<T>>;
-  schema?: z.ZodSchema<T>;
+  entryNode: string;
 };
 
 /**
@@ -193,29 +213,6 @@ export type GraphDefinition<T> = {
  * @property {Partial<T>} context - The execution context.
  */
 export type SharedState<T> = T;
-
-/**
- * Defines a graph node within a graph execution structure.
- * @typedef {Object} Node
- * @property {string} name - The node name.
- * @property {string} [description] - Optional description.
- * @property {(params: P, state: SharedState<T>) => Promise<SharedState<T> | void>} execute - Execution function.
- * @property {(state: SharedState<T>) => boolean} [condition] - Optional condition for execution.
- * @property {NodeRelationship[]} [relationships] - Possible node transitions.
- * @property {z.ZodSchema<P>} [schema] - Optional schema for input validation.
- * @property {any} [state] - Internal node state.
- * @property {string[]} [events] - Events triggered by the node.
- */
-export type Node<T, P = any> = {
-  name: string;
-  description?: string;
-  execute: (state: SharedState<T>) => Promise<SharedState<T> | void>;
-  condition?: (state: SharedState<T>) => boolean;
-  relationships?: NodeRelationship[];
-  schema?: z.ZodSchema<P>;
-  state?: any;
-  events?: string[];
-};
 
 /**
  * Defines a node relationship in an execution graph.
