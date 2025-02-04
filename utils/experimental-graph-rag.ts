@@ -1,5 +1,5 @@
 import { MeilisearchAdapter } from "@/memory/adapters/meilisearch";
-import { AIEmbeddingService } from "@/memory/services/embedding";
+import { AIEmbeddingService } from "@/services/embedding";
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
