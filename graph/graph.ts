@@ -1,8 +1,6 @@
 import { GraphConfig, GraphContext, GraphDefinition, Node } from "@/types";
-import { configDotenv } from "dotenv";
 import EventEmitter from "events";
 import { ZodSchema } from "zod";
-configDotenv();
 
 // Classe Graph avec un contexte typé
 export class Graph<T extends ZodSchema> {
@@ -64,7 +62,7 @@ export class Graph<T extends ZodSchema> {
           validatedParams = node.parameters.parse(params);
         }
 
-        // ✅ Exécuter avec ou sans `params`
+        this.eventEmitter.emit("nodeStarted", { name: nodeName, context });
         if (node.execute) {
           await node.execute(context);
         } else if (node.executeWithParams) {
@@ -78,7 +76,7 @@ export class Graph<T extends ZodSchema> {
 
         this.validateContext(context);
 
-        this.eventEmitter.emit("nodeCompleted", { nodeName, context });
+        this.eventEmitter.emit("nodeCompleted", { name: nodeName, context });
 
         if (node.next) {
           await Promise.all(
@@ -177,12 +175,10 @@ export class Graph<T extends ZodSchema> {
     return structuredClone(this.context);
   }
 
-  // Journalisation (logging)
   log(message: string, data?: any): void {
     console.log(`[Graph ${this.name}] ${message}`, data);
   }
 
-  // Modification dynamique du graph
   addNode(node: Node<T>): void {
     this.nodes.set(node.name, node);
     this.setupEventListeners();
