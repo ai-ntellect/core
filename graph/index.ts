@@ -1,8 +1,7 @@
-import { GraphConfig, GraphContext, GraphDefinition, Node } from "@/types";
+import { GraphConfig, GraphContext, GraphDefinition, Node } from "../types";
 import EventEmitter from "events";
 import { ZodSchema } from "zod";
 
-// Classe Graph avec un contexte typé
 export class Graph<T extends ZodSchema> {
   private nodes: Map<string, Node<T>>;
   private context: GraphContext<T>;

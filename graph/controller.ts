@@ -1,6 +1,6 @@
-import { GraphContext } from "@/types";
 import { ZodSchema } from "zod";
-import { Graph } from "./graph";
+import { Graph } from ".";
+import { GraphContext } from "../types";
 
 export class GraphController {
   static async executeSequential<T extends ZodSchema>(

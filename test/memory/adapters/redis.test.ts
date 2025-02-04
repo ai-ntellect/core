@@ -1,6 +1,6 @@
-import { BaseMemoryService } from "@/interfaces";
-import { RedisAdapter } from "@/memory/adapters/redis";
-import { BaseMemoryType } from "@/types";
+import { BaseMemoryService } from "../../../interfaces";
+import { RedisAdapter } from "../../../memory/adapters/redis";
+import { BaseMemoryType } from "../../../types";
 import { expect } from "chai";
 import dotenv from "dotenv";
 import Redis from "ioredis";
@@ -21,7 +21,6 @@ describe("RedisAdapter", () => {
   const testMemory: BaseMemoryType = {
     id: "test-id",
     data: "test data",
-    query: "test query",
     embedding: [0.1, 0.2, 0.3],
     roomId: "test-room",
     createdAt: fixedDate,

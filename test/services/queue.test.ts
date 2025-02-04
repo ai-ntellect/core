@@ -1,5 +1,5 @@
-import { Queue } from "@/services/queue";
-import { ActionSchema, QueueCallbacks, QueueItem } from "@/types";
+import { Queue } from "../../services/queue";
+import { ActionSchema, QueueCallbacks, QueueItem } from "../../types";
 import { expect } from "chai";
 import { z } from "zod";
 

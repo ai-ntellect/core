@@ -1,4 +1,4 @@
-import { QueueItem, QueueItemParameter, QueueResult } from "@/types";
+import { QueueItem, QueueItemParameter, QueueResult } from "../types";
 
 export class QueueItemTransformer {
   static transformActionToQueueItem(action: {

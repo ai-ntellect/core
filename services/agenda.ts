@@ -1,4 +1,4 @@
-import { ScheduledRequest } from "@/types";
+import { ScheduledRequest } from "../types";
 import cron from "node-cron";
 
 export class Agenda {

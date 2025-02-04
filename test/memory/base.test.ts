@@ -1,6 +1,6 @@
-import { BaseMemoryService } from "@/interfaces";
-import { BaseMemory } from "@/memory";
-import { BaseMemoryType, CreateMemoryInput } from "@/types";
+import { BaseMemoryService } from "../../interfaces";
+import { BaseMemory } from "../../memory";
+import { BaseMemoryType, CreateMemoryInput } from "../../types";
 import { expect } from "chai";
 
 /**
@@ -20,7 +20,6 @@ class TestMemory extends BaseMemory {
     const memory: BaseMemoryType = {
       id: crypto.randomUUID(),
       data: input.data,
-      query: input.query,
       embedding: input.embedding || null,
       roomId: input.roomId,
       createdAt: new Date(),
@@ -65,7 +64,6 @@ describe("BaseMemory", () => {
   const testMemory: BaseMemoryType = {
     id: "test-id",
     data: "test data",
-    query: "test query",
     embedding: [0.1, 0.2, 0.3],
     roomId: "test-room",
     createdAt: new Date(),
@@ -112,7 +110,6 @@ describe("BaseMemory", () => {
 
       expect(result).to.exist;
       expect(result?.data).to.equal(input.data);
-      expect(result?.query).to.equal(input.query);
       expect(result?.roomId).to.equal(input.roomId);
       expect(result?.id).to.be.a("string");
     });
@@ -172,7 +169,6 @@ describe("BaseMemory", () => {
       try {
         await memory.createMemory({
           data: "test",
-          query: "test",
           roomId: "test",
         });
         expect.fail("Should have thrown an error");

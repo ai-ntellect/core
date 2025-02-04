@@ -1,4 +1,4 @@
-import { EmbeddingService } from "@/interfaces";
+import { EmbeddingService } from "../interfaces";
 import { cosineSimilarity, embed, EmbeddingModel, embedMany } from "ai";
 
 export class AIEmbeddingService implements EmbeddingService {

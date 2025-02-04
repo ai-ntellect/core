@@ -1,5 +1,5 @@
+export * from "./graph";
 export * from "./graph/controller";
-export * from "./graph/graph";
 export * from "./memory";
 export * from "./memory/adapters/meilisearch";
 export * from "./memory/adapters/redis";

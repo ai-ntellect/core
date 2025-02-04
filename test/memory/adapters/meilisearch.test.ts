@@ -1,6 +1,6 @@
-import { BaseMemoryService } from "@/interfaces";
-import { MeilisearchAdapter } from "@/memory/adapters/meilisearch";
-import { BaseMemoryType } from "@/types";
+import { BaseMemoryService } from "../../../interfaces";
+import { MeilisearchAdapter } from "../../../memory/adapters/meilisearch";
+import { BaseMemoryType } from "../../../types";
 import { expect } from "chai";
 import dotenv from "dotenv";
 
@@ -9,13 +9,11 @@ dotenv.config();
 
 describe("MeilisearchAdapter", () => {
   let meilisearchAdapter: MeilisearchAdapter;
-  let mockBaseMemoryService: BaseMemoryService;
   const TEST_ROOM_ID = "test-room";
 
   const testMemory: BaseMemoryType = {
     id: "test-id",
     data: "test data",
-    query: "test query",
     embedding: [0.1, 0.2, 0.3],
     roomId: "test-room",
     createdAt: new Date(),
@@ -26,15 +24,12 @@ describe("MeilisearchAdapter", () => {
     if (process.env.MEILISEARCH_HOST && process.env.MEILISEARCH_API_KEY) {
       // Real Meilisearch configuration
       // console.log("Real Meilisearch configuration");
-      meilisearchAdapter = new MeilisearchAdapter(
-        {
-          host: process.env.MEILISEARCH_HOST,
-          apiKey: process.env.MEILISEARCH_API_KEY,
-          searchableAttributes: ["content"],
-          sortableAttributes: ["createdAt"],
-        },
-        mockBaseMemoryService
-      );
+      meilisearchAdapter = new MeilisearchAdapter({
+        host: process.env.MEILISEARCH_HOST,
+        apiKey: process.env.MEILISEARCH_API_KEY,
+        searchableAttributes: ["content"],
+        sortableAttributes: ["createdAt"],
+      });
     } else {
       // Mock fetch implementation
       // console.log("Mock Meilisearch configuration");
@@ -87,31 +82,18 @@ describe("MeilisearchAdapter", () => {
         return new Response(JSON.stringify({}));
       };
 
-      mockBaseMemoryService = {
-        initializeConnection: async () => {},
-        createMemory: async () => {},
-        getMemoryById: async () => testMemory,
-        getMemoryByIndex: async () => [testMemory],
-        getAllMemories: async () => [testMemory],
-        clearMemoryById: async () => {},
-        clearAllMemories: async () => {},
-      };
-
-      meilisearchAdapter = new MeilisearchAdapter(
-        {
-          host: "http://localhost:7700",
-          apiKey: "aSampleMasterKey",
-          searchableAttributes: ["content"],
-          sortableAttributes: ["createdAt"],
-        },
-        mockBaseMemoryService
-      );
+      meilisearchAdapter = new MeilisearchAdapter({
+        host: "http://localhost:7700",
+        apiKey: "aSampleMasterKey",
+        searchableAttributes: ["content"],
+        sortableAttributes: ["createdAt"],
+      });
     }
   });
 
   describe("Initialization", () => {
     it("should initialize storage", async () => {
-      await expect(meilisearchAdapter.init()).to.not.throw;
+      await expect(meilisearchAdapter.init("test-room")).to.not.throw;
     });
   });
 
@@ -170,7 +152,7 @@ describe("MeilisearchAdapter", () => {
       }
 
       try {
-        await meilisearchAdapter.init();
+        await meilisearchAdapter.init(TEST_ROOM_ID);
         await meilisearchAdapter.initializeStorage(TEST_ROOM_ID);
       } catch (error) {
         console.error("Failed to initialize:", error);
