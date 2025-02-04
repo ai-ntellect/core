@@ -106,7 +106,6 @@ describe("RedisAdapter", () => {
       await expect(
         redisAdapter.createMemory({
           data: "test data",
-          query: "test query",
           roomId: TEST_ROOM_ID,
           id: "test-id",
           embedding: [0.1, 0.2, 0.3],

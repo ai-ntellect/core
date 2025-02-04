@@ -1,8 +1,7 @@
-import { BaseMemoryService } from "../../../interfaces";
-import { MeilisearchAdapter } from "../../../memory/adapters/meilisearch";
-import { BaseMemoryType } from "../../../types";
 import { expect } from "chai";
 import dotenv from "dotenv";
+import { MeilisearchAdapter } from "../../../memory/adapters/meilisearch";
+import { BaseMemoryType } from "../../../types";
 
 // Load environment variables
 dotenv.config();
@@ -163,7 +162,6 @@ describe("MeilisearchAdapter", () => {
     it("should create memory", async () => {
       const result = await meilisearchAdapter.createMemory({
         data: "test data",
-        query: "test query",
         roomId: TEST_ROOM_ID,
       });
 
@@ -232,21 +230,18 @@ describe("MeilisearchAdapter", () => {
       // Create first memory
       const firstMemory = await meilisearchAdapter.createMemory({
         data: "test data",
-        query: "test query",
         roomId: TEST_ROOM_ID,
       });
 
       // Try to create second memory with same data
       const secondMemory = await meilisearchAdapter.createMemory({
         data: "test data",
-        query: "test query",
         roomId: TEST_ROOM_ID,
       });
 
       expect(secondMemory).to.exist;
       expect(secondMemory?.id).to.equal(firstMemory?.id);
       expect(secondMemory?.data).to.equal(firstMemory?.data);
-      expect(secondMemory?.query).to.equal(firstMemory?.query);
       expect(secondMemory?.roomId).to.equal(firstMemory?.roomId);
     });
 

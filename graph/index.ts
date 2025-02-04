@@ -73,6 +73,7 @@ export class Graph<T extends ZodSchema> {
           await node.executeWithParams(context, validatedParams);
         }
 
+        this.context = structuredClone(context);
         this.validateContext(context);
 
         this.eventEmitter.emit("nodeCompleted", { name: nodeName, context });

@@ -1,11 +1,12 @@
 {
   "name": "@ai.ntellect/core",
-  "version": "0.6.16",
+  "version": "0.6.18",
   "description": "",
   "main": "dist/index.js",
   "scripts": {
     "build": "rm -rf dist && tsc",
     "test": "mocha --require ts-node/register",
+    "test:coverage": "nyc --reporter=text --reporter=html pnpm test",
     "test:watch": "mocha --require ts-node/register 'test/**/*.test.ts' --watch"
   },
   "keywords": [],
@@ -38,6 +39,7 @@
     "dotenv": "^16.4.7",
     "meilisearch": "^0.37.0",
     "mocha": "^10.0.0",
+    "nyc": "^17.1.0",
     "redis": "^4.6.13",
     "ts-node": "^10.9.0",
     "typescript": "^5.7.2"

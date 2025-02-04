@@ -1,6 +1,6 @@
-import { BaseMemoryService } from "@/interfaces";
-import { BaseMemoryType } from "@/types";
 import { createClient } from "redis";
+import { BaseMemoryService } from "../../../interfaces";
+import { BaseMemoryType } from "../../../types";
 
 export class RedisAdapter implements BaseMemoryService {
   private redis;

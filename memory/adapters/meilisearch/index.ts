@@ -1,4 +1,8 @@
-import { BaseMemoryType, CreateMemoryInput, MeilisearchConfig } from "@/types";
+import {
+  BaseMemoryType,
+  CreateMemoryInput,
+  MeilisearchConfig,
+} from "../../../types";
 
 export class MeilisearchAdapter {
   constructor(private readonly config: MeilisearchConfig) {}

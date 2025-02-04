@@ -1,5 +1,5 @@
-import { BaseMemoryService } from "@/interfaces";
-import { BaseMemoryType, CreateMemoryInput } from "@/types";
+import { BaseMemoryService } from "../interfaces";
+import { BaseMemoryType, CreateMemoryInput } from "../types";
 
 export abstract class BaseMemory {
   constructor(protected readonly cacheService: BaseMemoryService) {}

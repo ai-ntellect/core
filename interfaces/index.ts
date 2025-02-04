@@ -1,5 +1,4 @@
-import { BaseMemoryType } from "@/types";
-import { SharedState } from "@/types";
+import { BaseMemoryType, SharedState } from "../types";
 
 /* ======================== PERSISTENCE ======================== */
 
