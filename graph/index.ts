@@ -51,7 +51,6 @@ export class Graph<T extends ZodSchema> {
       try {
         let validatedParams;
 
-        // ✅ Si le nœud a un `parameters`, on valide `params` avant exécution
         if (node.parameters) {
           if (!params) {
             throw new Error(
@@ -125,7 +124,7 @@ export class Graph<T extends ZodSchema> {
       return context;
     } catch (error) {
       this.eventEmitter.emit("graphError", { name: this.name, error });
-      this.globalErrorHandler?.(error as Error, context); // Gestionnaire d'erreurs global
+      this.globalErrorHandler?.(error as Error, context);
       throw error;
     }
   }
@@ -135,9 +134,9 @@ export class Graph<T extends ZodSchema> {
     data?: Partial<GraphContext<T>>
   ): Promise<GraphContext<T>> {
     return new Promise((resolve, reject) => {
-      if (data) Object.assign(this.context, data); // ✅ Met à jour le contexte global
+      if (data) Object.assign(this.context, data);
 
-      this.eventEmitter.emit(eventName, this.context); // Utilise le contexte global
+      this.eventEmitter.emit(eventName, this.context);
 
       const eventNodes = Array.from(this.nodes.values()).filter((node) =>
         node.events?.includes(eventName)

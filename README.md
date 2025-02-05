@@ -1,247 +1,192 @@
-# @ai.ntellect/core
+# **@ai.ntellect/core Documentation**
 
-A powerful framework for building AI-powered applications with graph-based workflows, memory management, and embedding services.
+## **1. Introduction**
 
-## Features
+The **`@ai.ntellect/core`** framework is a powerful tool designed to **model, execute, and manage dynamic interaction flows** using **graph structures**. Unlike traditional **Directed Acyclic Graphs (DAGs)**, this framework supports cycles, enabling nodes to be executed multiple times and allowing for loop-based workflows.
 
-- 🔄 **Graph-based workflow engine**: Build complex, type-safe workflows with retry mechanisms and error handling
-- 🧠 **Memory management**: Store and retrieve AI-related data with multiple storage adapters (Meilisearch, Redis)
-- 🔍 **Embedding services**: Generate and compare text embeddings for semantic search and similarity matching
-- ⏰ **Task scheduling**: Schedule and manage recurring tasks with cron expressions
+### **Key Features**
 
-## Installation
+- Dynamic workflow execution
+- Cyclic and acyclic graph support
+- Strong typing with Zod validation
+- Event-driven architecture
+- Built-in error handling and retries
+- Conditional execution paths
+- Parameter validation
+- State management
 
-```bash
-npm install @ai.ntellect/core
+### **Common Use Cases**
+
+- **AI Agents**: Building conversational AI systems that can maintain context and make decisions
+- **Transaction Processing**: Managing complex financial workflows with validation chains
+- **Task Orchestration**: Coordinating multiple dependent operations
+- **Decision Trees**: Implementing complex business logic with multiple branches
+- **State Machines**: Managing application state transitions
+- **Event Processing**: Handling and responding to system events
+
+## **2. Core Concepts**
+
+### **2.1 Graph Theory Foundation**
+
+A directed graph in our framework is defined as **G = (V, E)** where:
+
+- **V**: Set of nodes (vertices)
+- **E**: Set of directed edges
+
+Each node represents an executable action, and edges represent conditional transitions between actions.
+
+#### Example Graph Structure:
+
+```
+(ValidateInput) → (ProcessData) → (SaveResult)
+       ↓                              ↑
+    (RetryInput) ──────────────────────
 ```
 
-## Core components
+### **2.2 Node Types**
 
-The Graph system is the heart of the framework, enabling dynamic and highly flexible workflows.
-
-### Basic graph structure
+#### **Basic Node**
 
 ```typescript
-import { Graph, GraphContext } from "@ai.ntellect/core";
-import { z } from "zod";
-
-// Context Schema Definition
-const contextSchema = z.object({
-  input: z.string(),
-  result: z.number().optional(),
-  error: z.string().optional(),
-});
-
-// Graph Creation
-const workflow = new Graph("processWorkflow", {
-  name: "workflow",
-  nodes: [
-    {
-      name: "inputValidation",
-      execute: async (context) => {
-        if (context.input.length < 3) {
-          context.error = "Input too short";
-        }
-      },
-      next: ["processing"],
-    },
-    {
-      name: "processing",
-      condition: (context) => !context.error,
-      execute: async (context) => {
-        context.result = context.input.length;
-      },
-      next: ["finalValidation"],
-    },
-    {
-      name: "finalValidation",
-      execute: async (context) => {
-        if (context.result && context.result < 10) {
-          context.error = "Result too small";
-        }
-      },
-    },
-  ],
-  initialContext: {
-    input: "",
-    result: undefined,
-    error: undefined,
-  },
-  validator: contextSchema,
-  globalErrorHandler: (error, context) => {
-    console.error("Global error:", error);
-  },
-});
-```
-
-## Advanced graph features
-
-### 1. Nodes with conditions
-
-Add sophisticated conditions for node execution:
-
-```typescript
-{
-  name: "conditionalNode",
-  // Execute the node only if the condition is met
-  condition: (context) => context.result > 10,
+const basicNode: Node<ContextType> = {
+  name: "processData",
   execute: async (context) => {
-    // Conditional logic
-  }
-}
+    // Process data
+  },
+  next: ["saveResult"],
+};
 ```
 
-### 2. Error handling
+#### **Conditional Node**
 
 ```typescript
-{
-  name: "unreliableOperation",
+const conditionalNode: Node<ContextType> = {
+  name: "validateInput",
+  condition: (context) => context.isValid,
+  execute: async (context) => {
+    // Validation logic
+  },
+  next: ["processData"],
+};
+```
+
+## **3. Advanced Features**
+
+### **3.1 Event-Driven Execution**
+
+Nodes can respond to system events:
+
+```typescript
+const eventNode: Node<ContextType> = {
+  name: "handleUserInput",
+  events: ["userSubmitted"],
+  execute: async (context) => {
+    // Handle user input
+  },
+};
+```
+
+### **3.2 Retry Mechanisms**
+
+Built-in retry support for handling transient failures:
+
+```typescript
+const retryableNode: Node<ContextType> = {
+  name: "apiCall",
   retry: {
-    // Maximum number of attempts
     maxAttempts: 3,
-    // Delay between attempts
-    delay: 1000 // 1 second
+    delay: 1000, // ms
   },
   execute: async (context) => {
-    // Potentially unstable operation
+    // API call logic
   },
-  // Node-specific error handler
-  onError: (error) => {
-    console.warn("Node error:", error);
-  }
-}
+};
 ```
 
-### 3. Dynamic and parallel execution
+## **4. Real-World Examples**
+
+### **4.1 AI Agent Workflow**
 
 ```typescript
-// Execute multiple graphs in parallel
-const results = await GraphController.executeParallel(
-  [graph1, graph2, graph3],
-  ["startNode1", "startNode2", "startNode3"],
-  [context1, context2, context3],
-  undefined, // parameters
-  3 // concurrency limit
-);
-```
-
-### 4. Events
-
-```typescript
-workflow.on("nodeCompleted", (data) => {
-  console.log(`Node ${data.nodeName} completed`);
-});
-
-// Emit custom events
-await workflow.emit("customEvent", {
-  additionalData: "value",
-});
-```
-
-### 5. Dynamic graph modification
-
-```typescript
-// Dynamically add nodes
-workflow.addNode({
-  name: "newNode",
-  execute: async (context) => {
-    // New logic
-  },
-});
-
-// Remove nodes
-workflow.removeNode("obsoleteNode");
-```
-
-### 6. Context validation with Zod
-
-Use Zod for runtime context validation:
-
-```typescript
-const strictContextSchema = z.object({
-  // Define precise rules
-  input: z.string().min(3).max(100),
-  result: z.number().positive(),
-  timestamp: z.date(),
-});
-
-const workflow = new Graph("strictWorkflow", {
-  // The validator will check each context modification
-  validator: strictContextSchema,
-});
-```
-
-## Complete example: Data processing workflow
-
-```typescript
-const dataProcessingWorkflow = new Graph("dataProcessor", {
+const aiAgentGraph = new Graph<AIContextType>("AIAgent", {
   nodes: [
     {
-      name: "dataFetch",
+      name: "analyzeInput",
       execute: async (context) => {
-        context.rawData = await fetchData();
+        context.intent = await analyzeUserIntent(context.input);
       },
-      next: ["dataValidation"],
+      next: ["selectAction"],
     },
     {
-      name: "dataValidation",
-      condition: (context) => context.rawData.length > 0,
+      name: "selectAction",
       execute: async (context) => {
-        context.validatedData = validateData(context.rawData);
+        context.selectedAction = determineNextAction(context.intent);
       },
-      next: ["dataTransformation"],
+      next: ["validateResponse"],
     },
     {
-      name: "dataTransformation",
+      name: "generateResponse",
       execute: async (context) => {
-        context.processedData = transformData(context.validatedData);
+        context.response = await generateAIResponse(context);
       },
-      next: ["dataStorage"],
-    },
-    {
-      name: "dataStorage",
-      execute: async (context) => {
-        await storeData(context.processedData);
-      },
+      next: ["validateResponse"],
     },
   ],
 });
 ```
 
-## Key points
-
-- **Total flexibility**: Create complex workflows with great freedom
-- **Type safety**: Runtime context and parameter validation
-- **Dynamic management**: Modify graphs during execution
-- **Resilience**: Integrated retry and error handling mechanisms
-
-## GraphController: Advanced execution strategies
-
-### Sequential execution
+### **4.2 Transaction Processing**
 
 ```typescript
-const sequentialResults = await GraphController.executeSequential(
-  [graph1, graph2],
-  ["startNode1", "startNode2"],
-  [context1, context2]
-);
+const transactionGraph = new Graph<TransactionContext>("TransactionProcessor", {
+  nodes: [
+    {
+      name: "validateFunds",
+      execute: async (context) => {
+        context.hasSufficientFunds = await checkBalance(context.amount);
+      },
+      next: ["processPayment"],
+    },
+    {
+      name: "processPayment",
+      retry: {
+        maxAttempts: 3,
+        delay: 1000,
+      },
+      condition: (context) => context.hasSufficientFunds,
+      execute: async (context) => {
+        await processPayment(context.transactionData);
+      },
+      next: ["notifyUser"],
+    },
+  ],
+});
 ```
 
-### Parallel execution with concurrency control
+## **5. Event Listeners**
 
 ```typescript
-const parallelResults = await GraphController.executeParallel(
-  multipleGraphs,
-  startNodes,
-  inputContexts,
-  inputParams,
-  3 // Maximum 3 graphs executing simultaneously
-);
+graph.on("nodeStarted", ({ name, context }) => {
+  console.log(`Node ${name} started with context:`, context);
+});
+
+graph.on("nodeCompleted", ({ name, context }) => {
+  console.log(`Node ${name} completed with context:`, context);
+});
+
+graph.on("nodeError", ({ name, error }) => {
+  console.error(`Error in node ${name}:`, error);
+});
 ```
 
-## Performance considerations
+## **6. Future Developments**
 
-- Use `executeParallel` for independent workflows
-- Implement appropriate concurrency limits
-- Monitor context size and complexity
-- Leverage Zod for efficient runtime validation
+Planned features include:
+
+- Advanced memory management for AI agents
+- Graph composition and nesting
+- Real-time monitoring dashboard
+- Performance analytics
+- Distributed execution support
+
+For more information and updates, visit the official documentation or join our community discussions.

@@ -1,29 +1,4 @@
-import { BaseMemoryType, SharedState } from "../types";
-
-/* ======================== PERSISTENCE ======================== */
-
-/**
- * Interface for persisting graph execution state.
- */
-export interface Persistence<T> {
-  saveState(
-    graphName: string,
-    state: SharedState<T>,
-    currentNode: string
-  ): Promise<void>;
-  loadState(
-    graphName: string
-  ): Promise<{ state: SharedState<T>; currentNode: string } | null>;
-}
-
-/* ======================== REAL-TIME NOTIFICATIONS ======================== */
-
-/**
- * Interface for real-time notifications.
- */
-export interface RealTimeNotifier {
-  notify(event: string, data: any): void;
-}
+import { BaseMemoryType } from "../types";
 
 /* ======================== EMBEDDING SERVICE ======================== */
 

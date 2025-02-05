@@ -1,8 +1,8 @@
 import { expect } from "chai";
 import sinon from "sinon";
 import { z } from "zod";
-import { Graph } from "../graph";
-import { GraphContext, GraphDefinition, Node } from "../types";
+import { Graph } from "../../graph";
+import { GraphContext, GraphDefinition, Node } from "../../types";
 
 /**
  * ✅ Define a valid schema using Zod.
