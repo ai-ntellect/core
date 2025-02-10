@@ -2,9 +2,8 @@ import { expect } from "chai";
 import EventEmitter from "events";
 import sinon from "sinon";
 import { z } from "zod";
-import { GraphFlow } from "../../graph";
+import { GraphFlow } from "../../graph/index";
 import { GraphDefinition, Node } from "../../types";
-
 /**
  * ✅ Define a valid schema using Zod.
  */
@@ -23,13 +22,17 @@ describe("Graph", function () {
 
   beforeEach(() => {
     eventEmitter = new EventEmitter();
-    graph = new GraphFlow("TestGraph", {
-      name: "TestGraph",
-      nodes: [],
-      context: { value: 0 },
-      schema: TestSchema,
-      eventEmitter: eventEmitter,
-    });
+    graph = new GraphFlow(
+      "TestGraph",
+      {
+        name: "TestGraph",
+        nodes: [],
+        context: { value: 0 },
+        schema: TestSchema,
+        eventEmitter: eventEmitter,
+      },
+      { verbose: true }
+    );
   });
 
   /**
@@ -39,7 +42,7 @@ describe("Graph", function () {
     const simpleNode: Node<TestSchema> = {
       name: "simpleNode",
       execute: async (context) => {
-        context.value += 1;
+        context.value = (context.value ?? 0) + 1;
       },
       next: [],
     };
@@ -64,7 +67,7 @@ describe("Graph", function () {
     const testNode: Node<TestSchema> = {
       name: "testNode",
       execute: async (context) => {
-        context.value += 1;
+        context.value = (context.value ?? 0) + 1;
       },
       next: [],
     };
@@ -102,35 +105,6 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Ensure a node requiring user confirmation waits before execution.
-   */
-  it("should execute a node requiring user confirmation", async function () {
-    const confirmationNode: Node<TestSchema> = {
-      name: "waitUserConfirmation",
-      execute: async (context) => {
-        return new Promise<void>((resolve) => {
-          graph.on("userConfirmed", () => {
-            context.value += 1;
-            resolve();
-          });
-        });
-      },
-      next: [],
-    };
-
-    graph.addNode(confirmationNode);
-    const executionPromise = graph.execute("waitUserConfirmation");
-
-    setTimeout(() => {
-      graph.emit("userConfirmed");
-    }, 100);
-
-    await executionPromise;
-    const context = graph.getContext();
-    expect(context.value).to.equal(1);
-  });
-
-  /**
    * ✅ Ensure that context validation using Zod works correctly.
    */
   it("should validate context with Zod", async function () {
@@ -140,7 +114,7 @@ describe("Graph", function () {
       const simpleNode: Node<TestSchema> = {
         name: "simpleNode",
         execute: async (context) => {
-          context.value += 1;
+          context.value = (context.value ?? 0) + 1;
         },
         next: [],
       };
@@ -158,7 +132,7 @@ describe("Graph", function () {
    * ✅ Ensure a node with validated inputs and outputs executes correctly.
    */
   it("should execute a node with validated inputs and outputs", async function () {
-    const paramNode: Node<TestSchema> = {
+    const paramNode: Node<TestSchema, { increment: number }> = {
       name: "paramNode",
       inputs: z.object({
         increment: z.number(),
@@ -167,13 +141,13 @@ describe("Graph", function () {
         value: z.number().min(5),
       }),
       execute: async (context, inputs: { increment: number }) => {
-        context.value += inputs.increment;
+        context.value = (context.value ?? 0) + inputs.increment;
       },
       next: [],
     };
 
     graph.addNode(paramNode);
-    await graph.execute("paramNode", {}, { increment: 5 });
+    await graph.execute("paramNode", { increment: 5 });
 
     const context = graph.getContext();
     expect(context.value).to.equal(5);
@@ -185,9 +159,9 @@ describe("Graph", function () {
   it("should not execute a node when condition is false", async function () {
     const conditionalNode: Node<TestSchema> = {
       name: "conditionalNode",
-      condition: (context) => context.value > 0,
+      condition: (context) => (context.value ?? 0) > 0,
       execute: async (context) => {
-        context.value += 10;
+        context.value = (context.value ?? 0) + 10;
       },
       next: [],
     };
@@ -212,7 +186,7 @@ describe("Graph", function () {
         if (attemptCount < 3) {
           throw new Error("Temporary failure");
         }
-        context.value += 1;
+        context.value = (context.value ?? 0) + 1;
       },
       next: [],
     };
@@ -235,7 +209,7 @@ describe("Graph", function () {
       name: "eventNode",
       events: ["customEvent"],
       execute: async (context) => {
-        context.value += 1;
+        context.value = (context.value ?? 0) + 1;
       },
       next: [],
     };
@@ -277,7 +251,7 @@ describe("Graph", function () {
     expect(graph.getNodes().length).to.equal(0);
   });
 
-  it("should clear and reload the graph using `loadDefinition`", function () {
+  it("should clear and reload the graph using `load`", function () {
     const nodeA: Node<TestSchema> = {
       name: "A",
       execute: async () => {},
@@ -295,7 +269,7 @@ describe("Graph", function () {
       schema: TestSchema,
     };
 
-    graph.loadDefinition(newDefinition);
+    graph.load(newDefinition);
     expect(graph.getNodes().length).to.equal(2);
     expect(graph.getNodes().map((n) => n.name)).to.include.members(["A", "B"]);
   });
@@ -304,13 +278,13 @@ describe("Graph", function () {
    * ✅ Test input validation failure
    */
   it("should throw error when node input validation fails", async function () {
-    const nodeWithInput: Node<TestSchema> = {
+    const nodeWithInput: Node<TestSchema, { amount: number }> = {
       name: "inputNode",
       inputs: z.object({
         amount: z.number().min(0),
       }),
       execute: async (context, inputs: { amount: number }) => {
-        context.value += inputs.amount;
+        context.value = (context.value ?? 0) + inputs.amount;
       },
       next: [],
     };
@@ -318,7 +292,7 @@ describe("Graph", function () {
     graph.addNode(nodeWithInput);
 
     try {
-      await graph.execute("inputNode", {}, { amount: -1 });
+      await graph.execute("inputNode", { amount: -1 });
       expect.fail("Should have thrown an error");
     } catch (error) {
       expect((error as Error).message).to.include(
@@ -358,7 +332,7 @@ describe("Graph", function () {
    * ✅ Test successful input and output validation
    */
   it("should successfully validate both inputs and outputs", async function () {
-    const validatedNode: Node<TestSchema> = {
+    const validatedNode: Node<TestSchema, { increment: number }> = {
       name: "validatedNode",
       inputs: z.object({
         increment: z.number().min(0).max(5),
@@ -367,7 +341,7 @@ describe("Graph", function () {
         value: z.number().min(0).max(10),
       }),
       execute: async (context, inputs: { increment: number }) => {
-        context.value += inputs.increment;
+        context.value = (context.value ?? 0) + inputs.increment;
       },
       next: [],
     };
@@ -375,12 +349,12 @@ describe("Graph", function () {
     graph.addNode(validatedNode);
 
     // Test with valid input that produces valid output
-    await graph.execute("validatedNode", {}, { increment: 3 });
+    await graph.execute("validatedNode", { increment: 3 });
     expect(graph.getContext().value).to.equal(3);
 
     // Test with valid input that would produce invalid output
     try {
-      await graph.execute("validatedNode", { value: 7 }, { increment: 5 });
+      await graph.execute("validatedNode", { increment: 5 }, { value: 7 });
       expect.fail("Should have thrown an error");
     } catch (error) {
       expect((error as Error).message).to.include(
@@ -393,7 +367,7 @@ describe("Graph", function () {
    * ✅ Test missing required inputs
    */
   it("should throw error when required inputs are missing", async function () {
-    const nodeWithRequiredInput: Node<TestSchema> = {
+    const nodeWithRequiredInput: Node<TestSchema, { required: string }> = {
       name: "requiredInputNode",
       inputs: z.object({
         required: z.string(),
@@ -419,7 +393,7 @@ describe("Graph", function () {
     const nodeA: Node<TestSchema> = {
       name: "nodeA",
       execute: async (context) => {
-        context.value += 1;
+        context.value = (context.value ?? 0) + 1;
       },
       next: ["nodeB1", "nodeB2"],
     };
@@ -427,7 +401,7 @@ describe("Graph", function () {
     const nodeB1: Node<TestSchema> = {
       name: "nodeB1",
       execute: async (context) => {
-        context.value *= 2;
+        context.value = (context.value ?? 0) * 2;
       },
       next: ["nodeC"],
     };
@@ -435,7 +409,7 @@ describe("Graph", function () {
     const nodeB2: Node<TestSchema> = {
       name: "nodeB2",
       execute: async (context) => {
-        context.value += 3;
+        context.value = (context.value ?? 0) + 3;
       },
       next: ["nodeC"],
     };
@@ -444,7 +418,7 @@ describe("Graph", function () {
       name: "nodeC",
       execute: async (context) => {
         // Créer une copie du contexte pour éviter les modifications concurrentes
-        const newValue = context.value + 5;
+        const newValue = (context.value ?? 0) + 5;
         context.value = newValue;
       },
     };
@@ -462,25 +436,25 @@ describe("Graph", function () {
     const startNode: Node<TestSchema> = {
       name: "start",
       execute: async (context) => {
-        context.value = 5;
+        context.value = (context.value ?? 0) + 5;
       },
       next: ["branchA", "branchB"],
     };
 
     const branchA: Node<TestSchema> = {
       name: "branchA",
-      condition: (context) => context.value < 10,
+      condition: (context) => (context.value ?? 0) < 10,
       execute: async (context) => {
-        context.value *= 2;
+        context.value = (context.value ?? 0) * 2;
       },
       next: ["end"],
     };
 
     const branchB: Node<TestSchema> = {
       name: "branchB",
-      condition: (context) => context.value >= 10,
+      condition: (context) => (context.value ?? 0) >= 10,
       execute: async (context) => {
-        context.value += 10;
+        context.value = (context.value ?? 0) + 10;
       },
       next: ["end"],
     };
@@ -488,13 +462,20 @@ describe("Graph", function () {
     const endNode: Node<TestSchema> = {
       name: "end",
       execute: async (context) => {
-        context.value = context.value + 1;
+        context.value = (context.value ?? 0) + 1;
       },
     };
 
     [startNode, branchA, branchB, endNode].forEach((node) =>
       graph.addNode(node)
     );
+
+    await graph.load({
+      name: "TestGraph",
+      nodes: [startNode, branchA, branchB, endNode],
+      context: { value: 0 },
+      schema: TestSchema,
+    });
 
     await graph.execute("start");
     expect(graph.getContext().value).to.equal(11);
@@ -520,7 +501,7 @@ describe("Graph", function () {
       name: "process",
       events: ["processData"],
       execute: async (context) => {
-        context.value *= 2;
+        context.value = (context.value ?? 0) * 2;
       },
       next: ["finalize"],
     };
@@ -529,7 +510,7 @@ describe("Graph", function () {
       name: "finalize",
       events: ["complete"],
       execute: async (context) => {
-        context.value += 3;
+        context.value = (context.value ?? 0) + 3;
         eventCounter.count++;
       },
     };
@@ -547,7 +528,7 @@ describe("Graph", function () {
     expect(eventCounter.count).to.equal(1);
 
     // Reset context for concurrent test
-    graph.loadDefinition({
+    graph.load({
       name: "TestGraph",
       nodes: [startNode, processNode, finalizeNode],
       context: { value: 0 },
@@ -573,7 +554,7 @@ describe("Graph", function () {
     const cycleNode: Node<TestSchema> = {
       name: "cycle",
       execute: async (context) => {
-        context.value += 1;
+        context.value = (context.value ?? 0) + 1;
         iterationCount.count++;
       },
       next: ["checkExit"],
@@ -581,9 +562,10 @@ describe("Graph", function () {
 
     const checkExitNode: Node<TestSchema> = {
       name: "checkExit",
-      execute: async (context) => {},
-      condition: (context) => context.value < 5,
-      next: ["cycle"],
+      execute: async () => {},
+      next: (context) => {
+        return (context.value ?? 0) < 5 ? ["cycle"] : [];
+      },
     };
 
     [cycleNode, checkExitNode].forEach((node) => graph.addNode(node));

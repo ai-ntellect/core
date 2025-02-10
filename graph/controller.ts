@@ -15,17 +15,17 @@ export class GraphController {
    * @returns Map containing results of each graph execution, keyed by graph name and index
    * @template T - Zod schema type for graph context validation
    */
-  static async executeSequential<T extends ZodSchema>(
-    graphs: GraphFlow<T>[],
+  static async executeSequential<T extends ZodSchema[]>(
+    graphs: { [K in keyof T]: GraphFlow<T[K]> },
     startNodes: string[],
-    inputContexts?: Partial<GraphContext<T>>[]
-  ): Promise<Map<string, GraphContext<T>>> {
-    const results = new Map<string, GraphContext<T>>();
+    inputs: any[]
+  ): Promise<any[]> {
+    const results = new Map<string, GraphContext<T[keyof T]>>();
     for (let i = 0; i < graphs.length; i++) {
-      const result = await graphs[i].execute(startNodes[i], inputContexts?.[i]);
+      const result = await graphs[i].execute(startNodes[i], inputs[i]);
       results.set(`${graphs[i].name}-${i}`, result);
     }
-    return results;
+    return Array.from(results.values());
   }
 
   /**
@@ -38,34 +38,25 @@ export class GraphController {
    * @returns Map containing results of each graph execution, keyed by graph name
    * @template T - Zod schema type for graph context validation
    */
-  static async executeParallel<T extends ZodSchema>(
-    graphs: GraphFlow<T>[],
+  static async executeParallel<T extends ZodSchema[]>(
+    graphs: { [K in keyof T]: GraphFlow<T[K]> },
     startNodes: string[],
-    inputContexts?: Partial<GraphContext<T>>[],
-    inputs?: any[],
-    concurrencyLimit?: number
-  ): Promise<Map<string, GraphContext<T>>> {
-    const results = new Map<string, GraphContext<T>>();
-
-    if (inputContexts) {
-      inputContexts = inputContexts.map((ctx) => ctx || {});
-    }
+    concurrency: number,
+    inputs: any[]
+  ): Promise<any[]> {
+    const results = new Map<string, GraphContext<T[keyof T]>>();
 
     if (inputs) {
       inputs = inputs.map((input) => input || {});
     }
 
-    if (concurrencyLimit) {
-      for (let i = 0; i < graphs.length; i += concurrencyLimit) {
+    if (concurrency) {
+      for (let i = 0; i < graphs.length; i += concurrency) {
         const batchResults = await Promise.all(
           graphs
-            .slice(i, i + concurrencyLimit)
+            .slice(i, i + concurrency)
             .map((graph, index) =>
-              graph.execute(
-                startNodes[i + index],
-                inputContexts?.[i + index] || {},
-                inputs?.[i + index]
-              )
+              graph.execute(startNodes[i + index], inputs?.[i + index])
             )
         );
         batchResults.forEach((result, index) => {
@@ -75,17 +66,13 @@ export class GraphController {
     } else {
       const allResults = await Promise.all(
         graphs.map((graph, index) =>
-          graph.execute(
-            startNodes[index],
-            inputContexts?.[index] || {},
-            inputs?.[index] || {}
-          )
+          graph.execute(startNodes[index], inputs?.[index] || {})
         )
       );
       allResults.forEach((result, index) => {
         results.set(`${graphs[index].name}`, result);
       });
     }
-    return results;
+    return Array.from(results.values());
   }
 }

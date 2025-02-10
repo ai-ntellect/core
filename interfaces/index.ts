@@ -331,6 +331,13 @@ export interface IEventEmitter {
    * @returns {Function[]} Array of listener functions
    */
   rawListeners(event: string): Function[];
+
+  /**
+   * Registers an event listener that will be called only once
+   * @param {string} event - Event name
+   * @param {Function} listener - Event handler
+   */
+  once(event: string, listener: (...args: any[]) => void): void;
 }
 
 /**

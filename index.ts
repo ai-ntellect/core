@@ -11,8 +11,8 @@
  * - Utility functions for action schema generation and header building
  */
 
-export * from "./graph";
 export * from "./graph/controller";
+export * from "./graph/index";
 export * from "./modules/memory";
 export * from "./modules/memory/adapters/meilisearch";
 export * from "./modules/memory/adapters/redis";

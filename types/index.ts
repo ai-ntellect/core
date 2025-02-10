@@ -1,3 +1,4 @@
+import { EventEmitter } from "events";
 import { IEventEmitter } from "interfaces";
 import { ZodSchema } from "zod";
 
@@ -62,7 +63,7 @@ export type ScheduledRequest = {
  * Utility type for extracting schema type from Zod schema
  * @template T - Zod schema type
  */
-export type SchemaType<T> = T extends ZodSchema<infer U> ? Required<U> : never;
+export type SchemaType<T> = T extends ZodSchema<infer U> ? U : never;
 
 /**
  * Type for graph context based on schema
@@ -74,28 +75,39 @@ export type GraphContext<T> = SchemaType<T>;
  * Interface representing a node in the graph
  * @interface
  * @template T - Schema type
+ * @template I - Input schema type
+ * @template O - Output schema type
  */
-export interface Node<T> {
+export interface Node<T extends ZodSchema, I = any> {
   /** Name of the node */
   name: string;
   /** Schema for node inputs */
-  inputs?: ZodSchema;
+  inputs?: I extends void ? never : ZodSchema<I>;
   /** Schema for node outputs */
   outputs?: ZodSchema;
   /** Execute function for the node */
-  execute: (context: GraphContext<T>, inputs?: any) => Promise<void>;
+  execute: (
+    context: GraphContext<T>,
+    inputs: I extends void ? never : I
+  ) => Promise<void>;
   /** Optional condition for node execution */
   condition?: (context: GraphContext<T>) => boolean;
   /** Array of next node names */
-  next?: string[];
+  next?: string[] | ((context: GraphContext<T>) => string[]);
   /** Array of event names */
   events?: string[];
+  /** Wait for event */
+  waitForEvent?: boolean;
   /** Retry configuration */
   retry?: {
     /** Maximum number of retry attempts */
     maxAttempts: number;
     /** Delay between retries in milliseconds */
     delay: number;
+    /** Error handler function */
+    onRetryFailed?: (error: Error, context: GraphContext<T>) => Promise<void>;
+    /** Continue execution on failed retry */
+    continueOnFailed?: boolean;
   };
   /** Error handler function */
   onError?: (error: Error) => void;
@@ -106,11 +118,11 @@ export interface Node<T> {
  * @interface
  * @template T - Schema type
  */
-export interface GraphDefinition<T> {
+export interface GraphDefinition<T extends ZodSchema> {
   /** Name of the graph */
   name: string;
   /** Array of nodes in the graph */
-  nodes: Node<T>[];
+  nodes: Node<T, any>[];
   /** Initial context */
   context: SchemaType<T>;
   /** Schema for validation */
@@ -120,7 +132,9 @@ export interface GraphDefinition<T> {
   /** Entry node name */
   entryNode?: string;
   /** Event emitter instance */
-  eventEmitter?: IEventEmitter;
+  eventEmitter?: IEventEmitter | EventEmitter;
+  /** Array of events */
+  events?: string[];
 }
 
 /* ======================== MEILISEARCH ======================== */

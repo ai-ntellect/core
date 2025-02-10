@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
+import { IEventEmitter } from "interfaces";
 import { ZodSchema } from "zod";
-import { IEventEmitter } from "../interfaces";
 import { GraphContext, GraphDefinition, Node } from "../types";
 
 /**
@@ -17,25 +17,40 @@ import { GraphContext, GraphDefinition, Node } from "../types";
  * @template T - Extends ZodSchema for type validation
  */
 export class GraphFlow<T extends ZodSchema> {
-  private nodes: Map<string, Node<T>>;
+  private nodes: Map<string, Node<T, any>>;
   private context: GraphContext<T>;
   public validator?: T;
   private eventEmitter: IEventEmitter;
   private globalErrorHandler?: (error: Error, context: GraphContext<T>) => void;
+  private graphEvents?: string[];
+  private entryNode?: string;
+  private logs: string[] = [];
+  private verbose: boolean = false;
 
   /**
    * Creates a new instance of GraphFlow
    * @param {string} name - The name of the graph flow
    * @param {GraphDefinition<T>} config - Configuration object containing nodes, schema, context, and error handlers
+   * @param {Object} options - Optional options for the graph flow
    */
-  constructor(public name: string, config: GraphDefinition<T>) {
-    this.nodes = new Map(config.nodes.map((node) => [node.name, node]));
+  constructor(
+    public name: string,
+    config: GraphDefinition<T>,
+    options: { verbose?: boolean } = {}
+  ) {
+    this.nodes = new Map(
+      config.nodes.map((node: Node<T, any>) => [node.name, node])
+    );
     this.validator = config.schema;
     this.context = config.schema.parse(config.context) as GraphContext<T>;
     this.globalErrorHandler = config.onError;
-    this.eventEmitter = config.eventEmitter || new EventEmitter();
+    this.eventEmitter =
+      config.eventEmitter || (new EventEmitter() as IEventEmitter);
+    this.graphEvents = config.events;
+    this.verbose = options.verbose ?? false;
 
     this.setupEventListeners();
+    this.setupGraphEventListeners();
   }
 
   /**
@@ -101,6 +116,30 @@ export class GraphFlow<T extends ZodSchema> {
     }
   }
 
+  private addLog(message: string): void {
+    const logMessage = `[${new Date().toISOString()}] ${message}`;
+    this.logs.push(logMessage);
+    if (this.verbose) {
+      console.log(`[${this.name}] ${message}`);
+    }
+  }
+
+  /**
+   * Enable or disable verbose logging
+   * @param {boolean} enabled - Whether to enable verbose logging
+   */
+  public setVerbose(enabled: boolean): void {
+    this.verbose = enabled;
+  }
+
+  /**
+   * Get current verbose setting
+   * @returns {boolean} Current verbose setting
+   */
+  public isVerbose(): boolean {
+    return this.verbose;
+  }
+
   /**
    * Executes a specific node in the graph
    * @private
@@ -113,96 +152,201 @@ export class GraphFlow<T extends ZodSchema> {
   private async executeNode(
     nodeName: string,
     context: GraphContext<T>,
-    inputs?: any,
+    inputs: any,
     triggeredByEvent: boolean = false
   ): Promise<void> {
     const node = this.nodes.get(nodeName);
-    if (!node) throw new Error(`❌ Node "${nodeName}" not found.`);
+    if (!node) throw new Error(`Node "${nodeName}" not found.`);
 
-    if (node.condition && !node.condition(context)) {
-      return;
-    }
+    this.addLog(`🚀 Starting node "${nodeName}"`);
+    this.eventEmitter.emit("nodeStarted", { name: nodeName });
 
-    let attempts = 0;
-    const maxAttempts = node.retry?.maxAttempts || 1;
-    const delay = node.retry?.delay || 0;
+    try {
+      const localContext = structuredClone(context);
 
-    while (attempts < maxAttempts) {
-      try {
-        let validatedInputs;
-        if (node.inputs) {
-          if (!inputs) {
-            throw new Error(
-              `❌ Inputs required for node "${nodeName}" but received: ${inputs}`
-            );
-          }
-          validatedInputs = node.inputs.parse(inputs);
+      if (node.condition && !node.condition(localContext)) {
+        this.addLog(`⏭️ Skipping node "${nodeName}" - condition not met`);
+        return;
+      }
+
+      // Validate inputs
+      if (node.inputs) {
+        if (!inputs) {
+          this.addLog(`❌ Missing required inputs for node "${nodeName}"`);
+          throw new Error(`Inputs required for node "${nodeName}"`);
         }
+        this.addLog(`📥 Validating inputs for node "${nodeName}"`);
+        inputs = node.inputs.parse(inputs);
+      }
 
-        this.eventEmitter.emit("nodeStarted", { name: nodeName, context });
+      // Handle retry logic
+      if (node.retry && node.retry.maxAttempts > 0) {
+        let attempts = 0;
+        let lastError: Error | null = null;
 
-        // Execute the node
-        await node.execute(context, validatedInputs);
+        while (attempts < node.retry.maxAttempts) {
+          try {
+            this.addLog(`🔄 Attempt ${attempts + 1}/${node.retry.maxAttempts}`);
+            await node.execute(localContext, inputs);
+            lastError = null;
+            break;
+          } catch (error: any) {
+            lastError = error as Error;
+            attempts++;
+            this.addLog(`❌ Attempt ${attempts} failed: ${error.message}`);
 
-        if (node.outputs) {
-          node.outputs.parse(context);
-        }
-
-        this.validateContext(context);
-        this.eventEmitter.emit("nodeCompleted", { name: nodeName, context });
-
-        // IMPORTANT: Si le nœud est déclenché par un événement et a des événements définis,
-        // on arrête ici et on ne suit pas la chaîne next
-        if (triggeredByEvent && node.events && node.events.length > 0) {
-          this.context = structuredClone(context);
-          return;
-        }
-
-        // Gérer les nœuds suivants
-        if (node.next && node.next.length > 0) {
-          const branchContexts: GraphContext<T>[] = [];
-
-          // Exécuter toutes les branches valides
-          for (const nextNodeName of node.next) {
-            const nextNode = this.nodes.get(nextNodeName);
-            if (!nextNode) continue;
-
-            const branchContext = structuredClone(context);
-
-            // Si le nœud a une condition et qu'elle n'est pas remplie, passer au suivant
-            if (nextNode.condition && !nextNode.condition(branchContext)) {
-              continue;
+            if (attempts === node.retry.maxAttempts) {
+              // Si toutes les tentatives ont échoué et qu'il y a un gestionnaire d'échec
+              if (node.retry.onRetryFailed) {
+                this.addLog(
+                  `🔄 Executing retry failure handler for node "${nodeName}"`
+                );
+                try {
+                  await node.retry.onRetryFailed(lastError, localContext);
+                  // Si le gestionnaire d'échec réussit, on continue l'exécution
+                  // SEULEMENT si le gestionnaire a explicitement retourné true
+                  if (node.retry.continueOnFailed) {
+                    this.addLog(
+                      `✅ Retry failure handler succeeded for node "${nodeName}" - continuing execution`
+                    );
+                    break;
+                  } else {
+                    this.addLog(
+                      `⚠️ Retry failure handler executed but node "${nodeName}" will still fail`
+                    );
+                    throw lastError;
+                  }
+                } catch (handlerError: any) {
+                  this.addLog(
+                    `❌ Retry failure handler failed for node "${nodeName}": ${handlerError.message}`
+                  );
+                  throw handlerError;
+                }
+              }
+              // Si pas de gestionnaire d'échec ou si le gestionnaire a échoué
+              throw lastError;
             }
 
-            await this.executeNode(nextNodeName, branchContext);
-            branchContexts.push(branchContext);
-          }
-
-          // Fusionner les résultats des branches dans l'ordre
-          if (branchContexts.length > 0) {
-            const finalContext = branchContexts[branchContexts.length - 1];
-            Object.assign(context, finalContext);
+            if (attempts < node.retry.maxAttempts) {
+              this.addLog(
+                `⏳ Waiting ${node.retry.delay}ms before next attempt`
+              );
+              await new Promise((resolve) =>
+                setTimeout(resolve, node.retry?.delay || 0)
+              );
+            }
           }
         }
-
-        // Mettre à jour le contexte global
-        this.context = structuredClone(context);
-        return;
-      } catch (error) {
-        attempts++;
-        if (attempts >= maxAttempts) {
-          this.eventEmitter.emit("nodeError", { nodeName, error });
-          node.onError?.(error as Error);
-          this.globalErrorHandler?.(error as Error, context);
-          throw error;
-        }
-
-        console.warn(
-          `[Graph ${this.name}] Retry attempt ${attempts} for node ${nodeName}`,
-          { error }
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        await node.execute(localContext, inputs);
       }
+
+      // Validate outputs
+      if (node.outputs) {
+        this.addLog(`📤 Validating outputs for node "${nodeName}"`);
+        node.outputs.parse(localContext);
+      }
+
+      Object.assign(context, localContext);
+
+      this.addLog(
+        `✅ Node "${nodeName}" executed successfully ${JSON.stringify(context)}`
+      );
+      this.eventEmitter.emit("nodeCompleted", { name: nodeName });
+
+      // Handle waitForEvent
+      if (node.waitForEvent && !triggeredByEvent) {
+        this.addLog(
+          `⏳ Node "${nodeName}" waiting for events: ${node.events?.join(", ")}`
+        );
+
+        await new Promise<void>((resolve) => {
+          const eventHandler = () => {
+            this.addLog(`🚀 Event received for node "${nodeName}"`);
+            resolve();
+          };
+
+          node.events?.forEach((event) => {
+            this.eventEmitter.once(event, eventHandler);
+          });
+        });
+
+        const nextNodes =
+          typeof node.next === "function"
+            ? node.next(context)
+            : node.next || [];
+
+        if (nextNodes.length > 0) {
+          this.addLog(`➡️ Executing next nodes: ${nextNodes.join(", ")}`);
+
+          // Créer un contexte unique pour toutes les branches
+          const branchContext = structuredClone(context);
+
+          // Exécuter les branches séquentiellement avec le même contexte
+          for (const nextNodeName of nextNodes) {
+            this.addLog(`🔄 Starting branch for node "${nextNodeName}"`);
+            const nextNode = this.nodes.get(nextNodeName);
+            if (nextNode) {
+              // Utiliser le même contexte pour toutes les branches
+              await this.executeNode(
+                nextNodeName,
+                branchContext,
+                undefined,
+                nextNode.waitForEvent
+              );
+            }
+            this.addLog(`✅ Branch "${nextNodeName}" completed`);
+          }
+
+          // Mettre à jour le contexte global avec le résultat final des branches
+          Object.assign(context, branchContext);
+          this.context = structuredClone(context);
+
+          this.eventEmitter.emit("graphCompleted", {
+            name: this.name,
+            context: this.context,
+          });
+
+          return;
+        }
+      }
+
+      // Execute next nodes
+      const nextNodes =
+        typeof node.next === "function"
+          ? node.next(localContext)
+          : node.next || [];
+
+      if (nextNodes.length > 0) {
+        this.addLog(`➡️ Executing next nodes: ${nextNodes.join(", ")}`);
+
+        // Créer un contexte unique pour toutes les branches
+        const branchContext = structuredClone(context);
+
+        // Exécuter les branches séquentiellement avec le même contexte
+        for (const nextNodeName of nextNodes) {
+          this.addLog(`🔄 Starting branch for node "${nextNodeName}"`);
+          const nextNode = this.nodes.get(nextNodeName);
+          if (nextNode) {
+            // Utiliser le même contexte pour toutes les branches
+            await this.executeNode(
+              nextNodeName,
+              branchContext,
+              undefined,
+              nextNode.waitForEvent
+            );
+          }
+          this.addLog(`✅ Branch "${nextNodeName}" completed`);
+        }
+
+        // Mettre à jour le contexte global avec le résultat final des branches
+        Object.assign(context, branchContext);
+        this.context = structuredClone(context);
+      }
+    } catch (error: any) {
+      this.addLog(`❌ Error in node "${nodeName}": ${error.message}`);
+      this.eventEmitter.emit("nodeError", { name: nodeName, error });
+      throw error;
     }
   }
 
@@ -227,37 +371,32 @@ export class GraphFlow<T extends ZodSchema> {
    */
   async execute(
     startNode: string,
-    inputContext?: Partial<GraphContext<T>>,
-    inputParams?: any
+    inputParams?: any,
+    inputContext?: Partial<GraphContext<T>>
   ): Promise<GraphContext<T>> {
-    // Fresh local context from the global
-    const context = this.createNewContext();
-    if (inputContext) Object.assign(context, inputContext);
+    if (inputParams) {
+      // Merge inputParams into context
+      Object.assign(this.context, inputParams);
+    }
 
-    // Emit "graphStarted"
+    if (inputContext) {
+      Object.assign(this.context, inputContext);
+    }
+
     this.eventEmitter.emit("graphStarted", { name: this.name });
 
     try {
-      // Because we're calling explicitly, it's NOT triggered by an event
-      await this.executeNode(
-        startNode,
-        context,
-        inputParams,
-        /* triggeredByEvent= */ false
-      );
+      await this.executeNode(startNode, this.context, inputParams, false);
 
-      // Emit "graphCompleted"
       this.eventEmitter.emit("graphCompleted", {
         name: this.name,
         context: this.context,
       });
 
-      // Return a snapshot of the final global context
-      return structuredClone(this.context);
+      return this.getContext();
     } catch (error) {
-      // Emit "graphError"
       this.eventEmitter.emit("graphError", { name: this.name, error });
-      this.globalErrorHandler?.(error as Error, context);
+      this.globalErrorHandler?.(error as Error, this.context);
       throw error;
     }
   }
@@ -272,15 +411,29 @@ export class GraphFlow<T extends ZodSchema> {
     eventName: string,
     data?: Partial<GraphContext<T>>
   ): Promise<GraphContext<T>> {
-    // Merge data into a fresh copy of the global context if desired
-    const context = this.createNewContext();
-    if (data) Object.assign(context, data);
+    const workingContext = structuredClone(this.context);
 
-    // Just emit the event; the node-based event listeners in setupEventListeners()
-    // will handle calling "executeNode(...)"
-    this.eventEmitter.emit(eventName, context);
+    if (data) {
+      Object.assign(workingContext, data);
+    }
 
-    // Return the updated global context
+    const eventNodes = Array.from(this.nodes.values()).filter((node) =>
+      node.events?.includes(eventName)
+    );
+
+    // Execute event nodes sequentially with shared context
+    for (const node of eventNodes) {
+      await this.executeNode(node.name, workingContext, undefined, true);
+    }
+
+    // Update global context after all event nodes are executed
+    this.context = structuredClone(workingContext);
+
+    this.eventEmitter.emit("graphCompleted", {
+      name: this.name,
+      context: this.context,
+    });
+
     return this.getContext();
   }
 
@@ -297,7 +450,7 @@ export class GraphFlow<T extends ZodSchema> {
    * Updates the graph definition with new configuration
    * @param {GraphDefinition<T>} definition - New graph definition
    */
-  loadDefinition(definition: GraphDefinition<T>): void {
+  load(definition: GraphDefinition<T>): void {
     // Clear all existing nodes
     this.nodes.clear();
     // Wipe out old node-based event listeners
@@ -321,6 +474,11 @@ export class GraphFlow<T extends ZodSchema> {
     ) as GraphContext<T>;
     this.validator = definition.schema;
 
+    // Store entry node
+    this.entryNode = definition.entryNode;
+    // Store graph events
+    this.graphEvents = definition.events;
+
     // Re-setup only node-based event triggers
     for (const node of this.nodes.values()) {
       if (node.events && node.events.length > 0) {
@@ -336,13 +494,16 @@ export class GraphFlow<T extends ZodSchema> {
         });
       }
     }
+
+    // Re-setup graph event listeners
+    this.setupGraphEventListeners();
   }
 
   /**
-   * Returns the current context
-   * @returns {GraphContext<T>} Current graph context
+   * Gets a copy of the current context
+   * @returns {GraphContext<T>} A deep copy of the current context
    */
-  getContext(): GraphContext<T> {
+  public getContext(): GraphContext<T> {
     return structuredClone(this.context);
   }
 
@@ -360,7 +521,7 @@ export class GraphFlow<T extends ZodSchema> {
    * @param {Node<T>} node - Node to add
    * @throws {Error} If node with same name already exists
    */
-  addNode(node: Node<T>): void {
+  addNode(node: Node<T, any>): void {
     this.nodes.set(node.name, node);
     if (node.events && node.events.length > 0) {
       for (const evt of node.events) {
@@ -411,7 +572,54 @@ export class GraphFlow<T extends ZodSchema> {
    * Returns all nodes in the graph
    * @returns {Node<T>[]} Array of all nodes
    */
-  getNodes(): Node<T>[] {
+  getNodes(): Node<T, any>[] {
     return Array.from(this.nodes.values());
+  }
+
+  private setupGraphEventListeners(): void {
+    if (this.graphEvents && this.graphEvents.length > 0) {
+      this.graphEvents.forEach((event) => {
+        this.eventEmitter.on(event, async (data?: Partial<GraphContext<T>>) => {
+          const freshContext = this.createNewContext();
+          if (data) Object.assign(freshContext, data);
+
+          // Emit "graphStarted"
+          this.eventEmitter.emit("graphStarted", { name: this.name });
+
+          try {
+            // Execute the graph starting from the entry node
+            if (!this.entryNode) {
+              throw new Error("No entry node defined for graph event handling");
+            }
+
+            await this.executeNode(
+              this.entryNode,
+              freshContext,
+              undefined,
+              false
+            );
+
+            // Emit "graphCompleted"
+            this.eventEmitter.emit("graphCompleted", {
+              name: this.name,
+              context: this.context,
+            });
+          } catch (error) {
+            // Emit "graphError"
+            this.eventEmitter.emit("graphError", { name: this.name, error });
+            this.globalErrorHandler?.(error as Error, freshContext);
+            throw error;
+          }
+        });
+      });
+    }
+  }
+
+  getLogs(): string[] {
+    return [...this.logs];
+  }
+
+  clearLogs(): void {
+    this.logs = [];
   }
 }
