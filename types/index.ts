@@ -1,4 +1,5 @@
-import { z, ZodSchema } from "zod";
+import { IEventEmitter } from "interfaces";
+import { ZodSchema } from "zod";
 
 /* ======================== MEMORY ======================== */
 
@@ -10,13 +11,13 @@ import { z, ZodSchema } from "zod";
  * @property {string} roomId - The room identifier.
  * @property {number} [ttl] - Time-to-live in seconds (optional).
  */
-export type CreateMemoryInput = {
+export interface CreateMemoryInput {
   id?: string;
-  data: any;
+  data: string;
   embedding?: number[];
   roomId: string;
   ttl?: number;
-};
+}
 
 /**
  * Represents a stored memory entry.
@@ -28,79 +29,124 @@ export type CreateMemoryInput = {
  * @property {string} roomId - The associated room ID.
  * @property {Date} createdAt - Creation date.
  */
-export type BaseMemoryType = {
+export interface BaseMemoryType {
   id: string;
-  data: any;
-  embedding: number[] | null;
+  data: string;
+  embedding?: number[];
   roomId: string;
   createdAt: Date;
-};
+}
 
 /* ======================== SCHEDULING ======================== */
 
 /**
- * Represents a scheduled request.
+ * Type for scheduled request entries
  * @typedef {Object} ScheduledRequest
- * @property {string} id - Unique identifier for the scheduled request.
- * @property {string} originalRequest - The original request string.
- * @property {string} cronExpression - The cron expression for scheduling.
- * @property {boolean} isRecurring - Whether the request is recurring.
- * @property {Date} createdAt - The creation date.
  */
 export type ScheduledRequest = {
+  /** Unique identifier for the scheduled request */
   id: string;
+  /** The original request string */
   originalRequest: string;
+  /** The cron expression for scheduling */
   cronExpression: string;
+  /** Whether the request is recurring */
   isRecurring: boolean;
+  /** The creation date */
   createdAt: Date;
 };
 
 /* ======================== GRAPH ======================== */
 
-export type GraphContext<T extends ZodSchema> = z.infer<T>;
+/**
+ * Utility type for extracting schema type from Zod schema
+ * @template T - Zod schema type
+ */
+export type SchemaType<T> = T extends ZodSchema<infer U> ? Required<U> : never;
 
-export type Node<T extends ZodSchema, P extends ZodSchema = ZodSchema> = {
+/**
+ * Type for graph context based on schema
+ * @template T - Schema type
+ */
+export type GraphContext<T> = SchemaType<T>;
+
+/**
+ * Interface representing a node in the graph
+ * @interface
+ * @template T - Schema type
+ */
+export interface Node<T> {
+  /** Name of the node */
   name: string;
-  execute?: (context: GraphContext<T>) => Promise<void>;
-  executeWithParams?: (
-    context: GraphContext<T>,
-    params: z.infer<P>
-  ) => Promise<void>; // ✅ Nouvelle méthode
-  next?: string[];
+  /** Schema for node inputs */
+  inputs?: ZodSchema;
+  /** Schema for node outputs */
+  outputs?: ZodSchema;
+  /** Execute function for the node */
+  execute: (context: GraphContext<T>, inputs?: any) => Promise<void>;
+  /** Optional condition for node execution */
   condition?: (context: GraphContext<T>) => boolean;
-  onError?: (error: Error) => void;
+  /** Array of next node names */
+  next?: string[];
+  /** Array of event names */
   events?: string[];
-  schema?: T;
-  parameters?: P; // ✅ Ajout d'un schéma spécifique aux paramètres du nœud
+  /** Retry configuration */
   retry?: {
+    /** Maximum number of retry attempts */
     maxAttempts: number;
+    /** Delay between retries in milliseconds */
     delay: number;
   };
-};
+  /** Error handler function */
+  onError?: (error: Error) => void;
+}
 
-export type GraphConfig<T extends ZodSchema> = {
+/**
+ * Interface for graph definition
+ * @interface
+ * @template T - Schema type
+ */
+export interface GraphDefinition<T> {
+  /** Name of the graph */
   name: string;
+  /** Array of nodes in the graph */
   nodes: Node<T>[];
-  initialContext?: GraphContext<T>;
-  validator?: T;
-  globalErrorHandler?: (error: Error, context: GraphContext<T>) => void;
-};
-
-export type GraphDefinition<T extends ZodSchema> = {
-  name: string;
-  nodes: Record<string, Node<T>>;
-  entryNode: string;
-};
+  /** Initial context */
+  context: SchemaType<T>;
+  /** Schema for validation */
+  schema: T;
+  /** Global error handler */
+  onError?: (error: Error, context: GraphContext<T>) => void;
+  /** Entry node name */
+  entryNode?: string;
+  /** Event emitter instance */
+  eventEmitter?: IEventEmitter;
+}
 
 /* ======================== MEILISEARCH ======================== */
+
+/**
+ * Configuration type for Meilisearch
+ * @typedef {Object} MeilisearchConfig
+ */
 export type MeilisearchConfig = {
+  /** Meilisearch host URL */
   host: string;
+  /** API key for authentication */
   apiKey: string;
+  /** Array of searchable attributes */
   searchableAttributes?: string[];
+  /** Array of sortable attributes */
   sortableAttributes?: string[];
 };
 
+/**
+ * Settings type for Meilisearch
+ * @typedef {Object} MeilisearchSettings
+ */
 export type MeilisearchSettings = {
+  /** Array of searchable attributes */
   searchableAttributes?: string[];
+  /** Array of sortable attributes */
   sortableAttributes?: string[];
 };

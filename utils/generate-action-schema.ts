@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { Node } from "../types";
 
-export const stringifyZodSchema = (nodes: Node<any>[]) => {
+export const generateActionSchema = (nodes: Node<any>[]) => {
   return nodes
     .map((node) => {
-      const schemaStr = node.parameters
-        ? getSchemaString(node.parameters)
+      const schemaStr = node.inputs
+        ? getSchemaString(node.inputs)
         : "No parameters";
       return `Workflow: ${node.name}\nParameters: ${schemaStr}`;
     })

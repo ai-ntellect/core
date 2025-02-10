@@ -1,12 +1,27 @@
-import {
-  BaseMemoryType,
-  CreateMemoryInput,
-  MeilisearchConfig,
-} from "../../../types";
+import { IMemoryAdapter } from "interfaces";
+import { BaseMemoryType, CreateMemoryInput, MeilisearchConfig } from "types";
 
-export class MeilisearchAdapter {
+/**
+ * @module MeilisearchAdapter
+ * @description Adapter implementation for Meilisearch as a memory storage solution.
+ * Provides integration with Meilisearch for storing and retrieving memory entries.
+ * @implements {IMemoryAdapter}
+ */
+export class MeilisearchAdapter implements IMemoryAdapter {
+  /**
+   * Creates an instance of MeilisearchAdapter
+   * @param {MeilisearchConfig} config - Configuration for Meilisearch connection
+   */
   constructor(private readonly config: MeilisearchConfig) {}
 
+  /**
+   * Makes an HTTP request to the Meilisearch API
+   * @private
+   * @param {string} path - API endpoint path
+   * @param {RequestInit} [options] - Fetch request options
+   * @returns {Promise<any>} Response data
+   * @throws {Error} If the request fails
+   */
   private async makeRequest(path: string, options?: RequestInit) {
     try {
       const url = `${this.config.host}${path}`;
@@ -37,7 +52,13 @@ export class MeilisearchAdapter {
     }
   }
 
-  async initializeStorage(roomId: string): Promise<void> {
+  /**
+   * Initializes a storage index for a room
+   * @private
+   * @param {string} roomId - Room identifier to create index for
+   * @returns {Promise<void>}
+   */
+  private async initializeStorage(roomId: string): Promise<void> {
     try {
       let indexExists = false;
 
@@ -82,7 +103,14 @@ export class MeilisearchAdapter {
     }
   }
 
-  async addDocuments(
+  /**
+   * Adds documents to the Meilisearch index
+   * @private
+   * @param {BaseMemoryType[]} documents - Documents to add
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<void>}
+   */
+  private async addDocuments(
     documents: BaseMemoryType[],
     roomId: string
   ): Promise<void> {
@@ -91,13 +119,24 @@ export class MeilisearchAdapter {
       body: JSON.stringify(documents),
     });
   }
-  async deleteStorage(roomId: string): Promise<void> {
+
+  /**
+   * Deletes a storage index for a room
+   * @private
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<void>}
+   */
+  private async deleteStorage(roomId: string): Promise<void> {
     await this.makeRequest(`/indexes/${roomId}`, {
       method: "DELETE",
     });
   }
 
-  // Required BaseMemory implementations
+  /**
+   * Initializes the adapter for a specific room
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<void>}
+   */
   async init(roomId: string): Promise<void> {
     try {
       // Initialize the default "memories" index
@@ -110,7 +149,17 @@ export class MeilisearchAdapter {
     }
   }
 
-  async search(
+  /**
+   * Performs a search in the Meilisearch index
+   * @private
+   * @param {string} query - Search query
+   * @param {string} roomId - Room identifier
+   * @param {Object} [options] - Search options
+   * @param {number} [options.limit] - Maximum number of results
+   * @param {number} [options.threshold] - Minimum score threshold
+   * @returns {Promise<SearchResult[]>} Search results
+   */
+  private async search(
     query: string,
     roomId: string,
     options?: { limit?: number; threshold?: number }
@@ -122,6 +171,10 @@ export class MeilisearchAdapter {
         limit: options?.limit || 10,
       }),
     });
+
+    if (!searchResults.hits) {
+      return [];
+    }
 
     return searchResults.hits.map((hit: any) => ({
       document: {
@@ -135,17 +188,30 @@ export class MeilisearchAdapter {
     }));
   }
 
+  /**
+   * Creates a new memory entry
+   * @param {CreateMemoryInput & { embedding?: number[] }} input - Memory data with optional embedding
+   * @returns {Promise<BaseMemoryType | undefined>} Created memory or undefined
+   */
   async createMemory(
     input: CreateMemoryInput & { embedding?: number[] }
   ): Promise<BaseMemoryType | undefined> {
     // Initialize storage for this roomId if needed
     await this.initializeStorage(input.roomId);
 
+    // Check if the memory already exists
+    const existingMemory = await this.search(input.data, input.roomId, {
+      limit: 1,
+    });
+    if (existingMemory.length > 0) {
+      return existingMemory[0].document;
+    }
+
     // If not found, create new memory
     const memory: BaseMemoryType = {
       id: input.id || crypto.randomUUID(),
       data: input.data,
-      embedding: input.embedding || null,
+      embedding: input.embedding,
       roomId: input.roomId,
       createdAt: new Date(),
     };
@@ -154,6 +220,12 @@ export class MeilisearchAdapter {
     return memory;
   }
 
+  /**
+   * Retrieves a memory by ID and room ID
+   * @param {string} id - Memory identifier
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<BaseMemoryType | null>} Memory entry or null if not found
+   */
   async getMemoryById(
     id: string,
     roomId: string
@@ -176,6 +248,14 @@ export class MeilisearchAdapter {
     }
   }
 
+  /**
+   * Searches for memories based on query and options
+   * @param {string} query - Search query
+   * @param {Object} options - Search options
+   * @param {string} options.roomId - Room identifier
+   * @param {number} [options.limit] - Maximum number of results
+   * @returns {Promise<BaseMemoryType[]>} Array of matching memories
+   */
   async getMemoryByIndex(
     query: string,
     options: { roomId: string; limit?: number }
@@ -194,6 +274,11 @@ export class MeilisearchAdapter {
       }));
   }
 
+  /**
+   * Retrieves all memories for a room
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<BaseMemoryType[]>} Array of all memories
+   */
   async getAllMemories(roomId: string): Promise<BaseMemoryType[]> {
     const results = await this.makeRequest(`/indexes/${roomId}/documents`);
     if (results.total === 0) {
@@ -209,6 +294,12 @@ export class MeilisearchAdapter {
     }));
   }
 
+  /**
+   * Deletes a specific memory
+   * @param {string} id - Memory identifier
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<void>}
+   */
   async clearMemoryById(id: string, roomId: string): Promise<void> {
     try {
       // Ensure the index exists before attempting to delete
@@ -230,6 +321,10 @@ export class MeilisearchAdapter {
     }
   }
 
+  /**
+   * Clears all memories across all rooms
+   * @returns {Promise<void>}
+   */
   async clearAllMemories(): Promise<void> {
     try {
       // Get all indexes
@@ -248,8 +343,15 @@ export class MeilisearchAdapter {
   }
 }
 
+/**
+ * @interface SearchResult
+ * @description Interface for search results from Meilisearch
+ */
 interface SearchResult {
+  /** The matched document */
   document?: any;
+  /** Relevance score of the match */
   score?: number;
+  /** Array of additional results */
   results?: any[];
 }

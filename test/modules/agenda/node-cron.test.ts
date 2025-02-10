@@ -1,7 +1,8 @@
 import { expect } from "chai";
 import sinon from "sinon";
-import { NodeCronAdapter } from "../../modules/agenda/adapters/cron/node-cron";
-import { Agenda } from "../../modules/agenda/agenda";
+import { Agenda } from "../../../modules/agenda";
+import { NodeCronAdapter } from "../../../modules/agenda/adapters/cron/node-cron";
+import { InMemoryAdapter } from "../../../modules/memory/adapters/in-memory";
 
 before(function () {
   this.timeout(10000);
@@ -13,7 +14,8 @@ describe("Agenda Service", () => {
 
   beforeEach(() => {
     const cronService = new NodeCronAdapter();
-    agenda = new Agenda(cronService);
+    const jobStorage = new InMemoryAdapter();
+    agenda = new Agenda(cronService, jobStorage);
   });
 
   afterEach(async () => {
@@ -101,15 +103,17 @@ describe("Agenda Service", () => {
 
       const id = await agenda.scheduleRequest(request);
       scheduledIds.push(id);
-      expect(agenda.getScheduledRequests()).to.have.lengthOf(1);
+      const requests = await agenda.getScheduledRequests();
+      expect(requests).to.have.lengthOf(1);
 
-      const cancelled = agenda.cancelScheduledRequest(id);
+      const cancelled = await agenda.cancelScheduledRequest(id);
       expect(cancelled).to.be.true;
-      expect(agenda.getScheduledRequests()).to.have.lengthOf(0);
+      const remainingRequests = await agenda.getScheduledRequests();
+      expect(remainingRequests).to.have.lengthOf(0);
     });
 
-    it("should return false when cancelling non-existent request", () => {
-      const cancelled = agenda.cancelScheduledRequest("non-existent-id");
+    it("should return false when cancelling non-existent request", async () => {
+      const cancelled = await agenda.cancelScheduledRequest("non-existent-id");
       expect(cancelled).to.be.false;
     });
 
@@ -130,7 +134,7 @@ describe("Agenda Service", () => {
         scheduledIds.push(id);
       }
 
-      const scheduledRequests = agenda.getScheduledRequests();
+      const scheduledRequests = await agenda.getScheduledRequests();
       expect(scheduledRequests).to.have.lengthOf(2);
       expect(scheduledRequests[0].originalRequest).to.equal("request 1");
       expect(scheduledRequests[1].originalRequest).to.equal("request 2");
@@ -154,10 +158,12 @@ describe("Agenda Service", () => {
         await agenda.scheduleRequest(request);
       }
 
-      expect(agenda.getScheduledRequests()).to.have.lengthOf(2);
+      const initialRequests = await agenda.getScheduledRequests();
+      expect(initialRequests).to.have.lengthOf(2);
 
-      agenda.stopAll();
-      expect(agenda.getScheduledRequests()).to.have.lengthOf(0);
+      await agenda.stopAll();
+      const remainingRequests = await agenda.getScheduledRequests();
+      expect(remainingRequests).to.have.lengthOf(0);
     });
   });
 
@@ -264,7 +270,8 @@ describe("Agenda Service", () => {
 let globalAgenda: Agenda;
 before(() => {
   const cronService = new NodeCronAdapter();
-  globalAgenda = new Agenda(cronService);
+  const jobStorage = new InMemoryAdapter();
+  globalAgenda = new Agenda(cronService, jobStorage);
 });
 
 after(async () => {

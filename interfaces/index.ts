@@ -1,11 +1,11 @@
-import { BaseMemoryType } from "../types";
+import { BaseMemoryType, CreateMemoryInput, ScheduledRequest } from "../types";
 
 /* ======================== EMBEDDING SERVICE ======================== */
 
 /**
  * Interface for an embedding service that processes text into vector representations.
  */
-export interface EmbeddingService {
+export interface EmbeddingModule {
   /**
    * Generates an embedding for a single text.
    * @param {string} text - The input text to embed.
@@ -90,4 +90,348 @@ export interface BaseMemoryService {
    * @returns {Promise<void>}
    */
   clearAllMemories(): Promise<void>;
+}
+
+/**
+ * Extended interface for memory service operations
+ * @interface
+ */
+export interface IMemoryService {
+  /**
+   * Initializes the memory service
+   * @returns {Promise<void>}
+   */
+  init(): Promise<void>;
+
+  /**
+   * Creates a new memory entry with optional embedding
+   * @param {CreateMemoryInput & { embedding?: number[] }} input - Memory data with optional embedding
+   * @returns {Promise<BaseMemoryType | undefined>} Created memory or undefined
+   */
+  createMemory(
+    input: CreateMemoryInput & { embedding?: number[] }
+  ): Promise<BaseMemoryType | undefined>;
+
+  /**
+   * Retrieves a memory by ID and room ID
+   * @param {string} id - Memory identifier
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<BaseMemoryType | null>} Memory entry or null if not found
+   */
+  getMemoryById(id: string, roomId: string): Promise<BaseMemoryType | null>;
+
+  /**
+   * Searches for memories based on query and options
+   * @param {string} query - Search query
+   * @param {Object} options - Search options
+   * @returns {Promise<BaseMemoryType[]>} Array of matching memories
+   */
+  getMemoryByIndex(
+    query: string,
+    options: { roomId: string; limit?: number }
+  ): Promise<BaseMemoryType[]>;
+
+  /**
+   * Retrieves all memories for a specific room
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<BaseMemoryType[]>} Array of all memories
+   */
+  getAllMemories(roomId: string): Promise<BaseMemoryType[]>;
+
+  /**
+   * Deletes a specific memory
+   * @param {string} id - Memory identifier
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<void>}
+   */
+  clearMemoryById(id: string, roomId: string): Promise<void>;
+
+  /**
+   * Clears all memories
+   * @returns {Promise<void>}
+   */
+  clearAllMemories(): Promise<void>;
+}
+
+/**
+ * Interface for memory adapter implementations
+ * @interface
+ */
+export interface IMemoryAdapter {
+  /**
+   * Initializes the memory adapter for a specific room
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<void>}
+   */
+  init(roomId?: string): Promise<void>;
+
+  /**
+   * Creates a new memory entry in the adapter
+   * @param {CreateMemoryInput & { embedding?: number[] }} input - Memory data with optional embedding
+   * @returns {Promise<BaseMemoryType | undefined>} Created memory or undefined
+   */
+  createMemory(
+    input: CreateMemoryInput & { embedding?: number[] }
+  ): Promise<BaseMemoryType | undefined>;
+
+  /**
+   * Stores a job in the adapter
+   * @param {string} id - Job identifier
+   * @param {ICronJob} job - Cron job instance
+   * @returns {Promise<void>}
+   */
+  saveJob?(id: string, job: ICronJob): Promise<void>;
+
+  /**
+   * Stores a scheduled request in the adapter
+   * @param {string} id - Request identifier
+   * @param {ScheduledRequest} request - Scheduled request data
+   * @returns {Promise<void>}
+   */
+  saveRequest?(id: string, request: ScheduledRequest): Promise<void>;
+
+  /**
+   * Retrieves a job by ID
+   * @param {string} id - Job identifier
+   * @returns {Promise<ICronJob | undefined>}
+   */
+  getJob?(id: string): Promise<ICronJob | undefined>;
+
+  /**
+   * Retrieves a scheduled request by ID
+   * @param {string} id - Request identifier
+   * @returns {Promise<ScheduledRequest | undefined>}
+   */
+  getRequest?(id: string): Promise<ScheduledRequest | undefined>;
+
+  /**
+   * Deletes a job by ID
+   * @param {string} id - Job identifier
+   * @returns {Promise<void>}
+   */
+  deleteJob?(id: string): Promise<void>;
+
+  /**
+   * Deletes a scheduled request by ID
+   * @param {string} id - Request identifier
+   * @returns {Promise<void>}
+   */
+  deleteRequest?(id: string): Promise<void>;
+
+  /**
+   * Retrieves all scheduled requests
+   * @returns {Promise<ScheduledRequest[]>}
+   */
+  getAllRequests?(): Promise<ScheduledRequest[]>;
+
+  /**
+   * Retrieves a memory by ID and room ID from the adapter
+   * @param {string} id - Memory identifier
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<BaseMemoryType | null>} Memory entry or null if not found
+   */
+  getMemoryById(id: string, roomId: string): Promise<BaseMemoryType | null>;
+
+  /**
+   * Searches for memories in the adapter
+   * @param {string} query - Search query
+   * @param {Object} options - Search options
+   * @returns {Promise<BaseMemoryType[]>} Array of matching memories
+   */
+  getMemoryByIndex(
+    query: string,
+    options: { roomId: string; limit?: number }
+  ): Promise<BaseMemoryType[]>;
+
+  /**
+   * Retrieves all memories for a room from the adapter
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<BaseMemoryType[]>} Array of all memories
+   */
+  getAllMemories(roomId: string): Promise<BaseMemoryType[]>;
+
+  /**
+   * Deletes a specific memory from the adapter
+   * @param {string} id - Memory identifier
+   * @param {string} roomId - Room identifier
+   * @returns {Promise<void>}
+   */
+  clearMemoryById(id: string, roomId: string): Promise<void>;
+
+  /**
+   * Clears all memories from the adapter
+   * @returns {Promise<void>}
+   */
+  clearAllMemories(): Promise<void>;
+
+  /**
+   * Clears all jobs and requests
+   * @returns {Promise<void>}
+   */
+  clear?(): Promise<void>;
+}
+
+/**
+ * Abstract base class for memory implementations
+ * @abstract
+ */
+export abstract class BaseMemory implements IMemoryService {
+  /**
+   * Creates an instance of BaseMemory
+   * @param {IMemoryAdapter} adapter - Memory adapter implementation
+   */
+  constructor(protected readonly adapter: IMemoryAdapter) {}
+
+  abstract init(): Promise<void>;
+  abstract createMemory(
+    input: CreateMemoryInput & { embedding?: number[] }
+  ): Promise<BaseMemoryType | undefined>;
+  abstract getMemoryById(
+    id: string,
+    roomId: string
+  ): Promise<BaseMemoryType | null>;
+  abstract getMemoryByIndex(
+    query: string,
+    options: { roomId: string; limit?: number }
+  ): Promise<BaseMemoryType[]>;
+  abstract getAllMemories(roomId: string): Promise<BaseMemoryType[]>;
+  abstract clearMemoryById(id: string, roomId: string): Promise<void>;
+  abstract clearAllMemories(): Promise<void>;
+}
+
+/**
+ * Interface for event emitter functionality
+ * @interface
+ */
+export interface IEventEmitter {
+  /**
+   * Emits an event with optional arguments
+   * @param {string} event - Event name
+   * @param {...any[]} args - Event arguments
+   * @returns {boolean} Whether the event had listeners
+   */
+  emit(event: string, ...args: any[]): boolean;
+
+  /**
+   * Registers an event listener
+   * @param {string} event - Event name
+   * @param {Function} listener - Event handler
+   */
+  on(event: string, listener: (...args: any[]) => void): void;
+
+  /**
+   * Removes all listeners for an event
+   * @param {string} [event] - Optional event name
+   */
+  removeAllListeners(event?: string): void;
+
+  /**
+   * Returns raw listeners for an event
+   * @param {string} event - Event name
+   * @returns {Function[]} Array of listener functions
+   */
+  rawListeners(event: string): Function[];
+}
+
+/**
+ * Interface for cron service functionality
+ * @interface
+ */
+export interface ICronService {
+  /**
+   * Schedules a job using cron expression
+   * @param {string} expression - Cron expression
+   * @param {Function} callback - Job callback
+   * @returns {ICronJob} Cron job instance
+   */
+  schedule(expression: string, callback: () => void): ICronJob;
+}
+
+/**
+ * Interface for cron job control
+ * @interface
+ */
+export interface ICronJob {
+  /**
+   * Starts the cron job
+   */
+  start(): void;
+
+  /**
+   * Stops the cron job
+   */
+  stop(): void;
+}
+
+/**
+ * Interface for embedding model operations
+ * @interface
+ */
+export interface IEmbeddingModel {
+  /**
+   * Embeds a single text
+   * @param {string} text - Text to embed
+   * @returns {Promise<number[]>} Vector embedding
+   */
+  embed(text: string): Promise<number[]>;
+
+  /**
+   * Embeds multiple texts
+   * @param {string[]} texts - Array of texts to embed
+   * @returns {Promise<number[][]>} Array of vector embeddings
+   */
+  embedMany(texts: string[]): Promise<number[][]>;
+}
+
+/**
+ * Interface for similarity calculations
+ * @interface
+ */
+export interface ISimilarityCalculator {
+  /**
+   * Calculates similarity between two embeddings
+   * @param {number[]} embedding1 - First embedding
+   * @param {number[]} embedding2 - Second embedding
+   * @returns {number} Similarity score
+   */
+  calculate(embedding1: number[], embedding2: number[]): number;
+}
+
+/**
+ * Interface for embedding module operations
+ * @interface
+ */
+export interface IEmbeddingModule {
+  /**
+   * Embeds a single text
+   * @param {string} text - Text to embed
+   * @returns {Promise<number[]>} Vector embedding
+   */
+  embedText(text: string): Promise<number[]>;
+
+  /**
+   * Embeds multiple texts
+   * @param {string[]} texts - Array of texts to embed
+   * @returns {Promise<number[][]>} Array of vector embeddings
+   */
+  embedMany(texts: string[]): Promise<number[][]>;
+
+  /**
+   * Calculates similarity between two embeddings
+   * @param {number[]} embedding1 - First embedding
+   * @param {number[]} embedding2 - Second embedding
+   * @returns {number} Similarity score
+   */
+  calculateSimilarity(embedding1: number[], embedding2: number[]): number;
+}
+
+export interface IJobStorage {
+  saveJob(id: string, job: ICronJob): Promise<void>;
+  saveRequest(id: string, request: ScheduledRequest): Promise<void>;
+  getJob(id: string): Promise<ICronJob | undefined>;
+  getRequest(id: string): Promise<ScheduledRequest | undefined>;
+  deleteJob(id: string): Promise<void>;
+  deleteRequest(id: string): Promise<void>;
+  getAllRequests(): Promise<ScheduledRequest[]>;
+  clear(): Promise<void>;
 }
