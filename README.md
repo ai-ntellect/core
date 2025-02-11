@@ -1,192 +1,155 @@
-# **@ai.ntellect/core Documentation**
+# @ai.ntellect/core
 
-## **1. Introduction**
+@ai.ntellect/core is a modular and event-driven framework designed to orchestrate and execute intelligent workflows using execution graphs. It enables automation of complex tasks, seamless integration with external services, and the creation of AI-driven agents in a flexible and scalable way.
 
-The **`@ai.ntellect/core`** framework is a powerful tool designed to **model, execute, and manage dynamic interaction flows** using **graph structures**. Unlike traditional **Directed Acyclic Graphs (DAGs)**, this framework supports cycles, enabling nodes to be executed multiple times and allowing for loop-based workflows.
+## Key features
 
-### **Key Features**
+- **GraphFlow** – A graph-based execution engine for automating business processes.
+- **Event-Driven** – Nodes can react to real-time events and trigger actions dynamically.
+- **Modular** – Plug-and-play modules and adapters for memory, scheduling, and external APIs.
+- **Extensible** – Custom nodes, adapters, and interactions with third-party services.
+- **Scalable** – Manage multiple graphs in parallel with GraphController.
 
-- Dynamic workflow execution
-- Cyclic and acyclic graph support
-- Strong typing with Zod validation
-- Event-driven architecture
-- Built-in error handling and retries
-- Conditional execution paths
-- Parameter validation
-- State management
+## Installation
 
-### **Common Use Cases**
+### Prerequisites
 
-- **AI Agents**: Building conversational AI systems that can maintain context and make decisions
-- **Transaction Processing**: Managing complex financial workflows with validation chains
-- **Task Orchestration**: Coordinating multiple dependent operations
-- **Decision Trees**: Implementing complex business logic with multiple branches
-- **State Machines**: Managing application state transitions
-- **Event Processing**: Handling and responding to system events
+- Node.js (LTS version recommended)
+- TypeScript
+- Zod (for data validation)
 
-## **2. Core Concepts**
+Verify your installation:
 
-### **2.1 Graph Theory Foundation**
-
-A directed graph in our framework is defined as **G = (V, E)** where:
-
-- **V**: Set of nodes (vertices)
-- **E**: Set of directed edges
-
-Each node represents an executable action, and edges represent conditional transitions between actions.
-
-#### Example Graph Structure:
-
-```
-(ValidateInput) → (ProcessData) → (SaveResult)
-       ↓                              ↑
-    (RetryInput) ──────────────────────
+```sh
+node -v
+npm -v
 ```
 
-### **2.2 Node Types**
+If Node.js is not installed, download it from [nodejs.org](https://nodejs.org/).
 
-#### **Basic Node**
+### Installing the framework
 
-```typescript
-const basicNode: Node<ContextType> = {
-  name: "processData",
-  execute: async (context) => {
-    // Process data
-  },
-  next: ["saveResult"],
-};
+Create a new Node.js project:
+
+```sh
+mkdir ai-ntellect-demo
+cd ai-ntellect-demo
+npm init -y
 ```
 
-#### **Conditional Node**
+Install TypeScript and Node.js types:
 
-```typescript
-const conditionalNode: Node<ContextType> = {
-  name: "validateInput",
-  condition: (context) => context.isValid,
-  execute: async (context) => {
-    // Validation logic
-  },
-  next: ["processData"],
-};
+```sh
+npm install --save-dev typescript @types/node
+npx tsc --init
 ```
 
-## **3. Advanced Features**
+Install @ai.ntellect/core and its dependencies:
 
-### **3.1 Event-Driven Execution**
-
-Nodes can respond to system events:
-
-```typescript
-const eventNode: Node<ContextType> = {
-  name: "handleUserInput",
-  events: ["userSubmitted"],
-  execute: async (context) => {
-    // Handle user input
-  },
-};
+```sh
+npm install @ai.ntellect/core zod
 ```
 
-### **3.2 Retry Mechanisms**
+## Verifying the Installation
 
-Built-in retry support for handling transient failures:
+Create a new file `index.ts`:
 
-```typescript
-const retryableNode: Node<ContextType> = {
-  name: "apiCall",
-  retry: {
-    maxAttempts: 3,
-    delay: 1000, // ms
-  },
-  execute: async (context) => {
-    // API call logic
-  },
-};
+```sh
+touch index.ts
 ```
 
-## **4. Real-World Examples**
+Add the following code to test a simple graph execution:
 
-### **4.1 AI Agent Workflow**
+```ts
+import { GraphFlow } from "@ai.ntellect/core";
+import { z } from "zod";
 
-```typescript
-const aiAgentGraph = new Graph<AIContextType>("AIAgent", {
+const ContextSchema = z.object({
+  message: z.string(),
+});
+
+type ContextSchema = typeof ContextSchema;
+
+const myGraph = new GraphFlow<ContextSchema>("TestGraph", {
+  name: "TestGraph",
+  context: { message: "Installation successful!" },
+  schema: ContextSchema,
   nodes: [
     {
-      name: "analyzeInput",
+      name: "printMessage",
       execute: async (context) => {
-        context.intent = await analyzeUserIntent(context.input);
+        console.log(context.message);
       },
-      next: ["selectAction"],
-    },
-    {
-      name: "selectAction",
-      execute: async (context) => {
-        context.selectedAction = determineNextAction(context.intent);
-      },
-      next: ["validateResponse"],
-    },
-    {
-      name: "generateResponse",
-      execute: async (context) => {
-        context.response = await generateAIResponse(context);
-      },
-      next: ["validateResponse"],
+      next: [],
     },
   ],
 });
+
+(async () => {
+  await myGraph.execute("printMessage");
+})();
 ```
 
-### **4.2 Transaction Processing**
+Run the test:
 
-```typescript
-const transactionGraph = new Graph<TransactionContext>("TransactionProcessor", {
-  nodes: [
-    {
-      name: "validateFunds",
-      execute: async (context) => {
-        context.hasSufficientFunds = await checkBalance(context.amount);
-      },
-      next: ["processPayment"],
-    },
-    {
-      name: "processPayment",
-      retry: {
-        maxAttempts: 3,
-        delay: 1000,
-      },
-      condition: (context) => context.hasSufficientFunds,
-      execute: async (context) => {
-        await processPayment(context.transactionData);
-      },
-      next: ["notifyUser"],
-    },
-  ],
-});
+```sh
+npx ts-node index.ts
 ```
 
-## **5. Event Listeners**
+Expected output:
 
-```typescript
-graph.on("nodeStarted", ({ name, context }) => {
-  console.log(`Node ${name} started with context:`, context);
-});
-
-graph.on("nodeCompleted", ({ name, context }) => {
-  console.log(`Node ${name} completed with context:`, context);
-});
-
-graph.on("nodeError", ({ name, error }) => {
-  console.error(`Error in node ${name}:`, error);
-});
+```
+Installation successful!
 ```
 
-## **6. Future Developments**
+## Core concepts
 
-Planned features include:
+### GraphFlow
 
-- Advanced memory management for AI agents
-- Graph composition and nesting
-- Real-time monitoring dashboard
-- Performance analytics
-- Distributed execution support
+GraphFlow is the core execution engine that automates workflows through graph-based logic. Each node in the graph can:
 
-For more information and updates, visit the official documentation or join our community discussions.
+- Execute a specific action.
+- Wait for an event before proceeding.
+- Depend on conditional logic.
+- Modify a shared execution context.
+
+### GraphController
+
+GraphController orchestrates multiple GraphFlows, enabling:
+
+- Sequential or parallel execution of multiple graphs.
+- Inter-graph communication for complex workflows.
+- Advanced event-based automation.
+
+### Modules and Adapters
+
+The framework provides modular extensions:
+
+- **Memory Module** – Stores and retrieves contextual information.
+- **Scheduler (Agenda)** – Manages task scheduling and timed executions.
+- **Adapters** – Integrate with databases, APIs, and external services.
+
+## Tutorials
+
+Step-by-step guides are available for:
+
+- Creating a simple graph
+- Adding conditions and handling errors
+- Waiting for events and executing multiple graphs
+- Building an AI-powered agent with @ai.ntellect/core
+
+Check out the complete documentation at [GitBook](https://ai-ntellect.gitbook.io/core).
+
+## Contributing
+
+Contributions are welcome. To suggest an improvement or report an issue:
+
+- Join our [Discord community](https://discord.gg/kEc5gWXJ)
+- Explore the [GitBook documentation](https://ai-ntellect.gitbook.io/core)
+- Open an issue on GitHub
+
+## Useful links
+
+- Documentation: [GitBook](https://ai-ntellect.gitbook.io/core)
+- Community: [Discord](https://discord.gg/kEc5gWXJ)
+- GitHub Repository: [@ai.ntellect/core](https://github.com/ai-ntellect/core)

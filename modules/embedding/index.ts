@@ -2,15 +2,15 @@ import { cosineSimilarity } from "ai";
 import { IEmbeddingModel, IEmbeddingModule } from "../../interfaces";
 
 /**
- * @module Embedding
+ * @module EmbeddingManager
  * @description A module for generating and managing text embeddings.
  * Provides functionality for converting text into vector representations
  * and calculating similarities between embeddings.
  * @implements {IEmbeddingModule}
  */
-export class Embedding implements IEmbeddingModule {
+export class EmbeddingManager implements IEmbeddingModule {
   /**
-   * Creates an instance of Embedding
+   * Creates an instance of EmbeddingManager
    * @param {IEmbeddingModel} embeddingModel - The embedding model implementation to use
    */
   constructor(private readonly embeddingModel: IEmbeddingModel) {}

@@ -1,13 +1,14 @@
 import { z } from "zod";
-import { Node } from "../types";
+import { GraphFlow } from "../graph/index";
 
-export const generateActionSchema = (nodes: Node<any>[]) => {
-  return nodes
-    .map((node) => {
-      const schemaStr = node.inputs
-        ? getSchemaString(node.inputs)
+export const generateActionSchema = (graphs: GraphFlow<any>[]) => {
+  return graphs
+    .map((graph) => {
+      const rootNode = Array.from(graph.nodes.values())[0];
+      const schemaStr = rootNode.inputs
+        ? getSchemaString(rootNode.inputs)
         : "No parameters";
-      return `Workflow: ${node.name}\nParameters: ${schemaStr}`;
+      return `Workflow: ${graph.name}\nParameters: ${schemaStr}`;
     })
     .join("\n\n");
 };

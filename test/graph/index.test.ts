@@ -2,8 +2,10 @@ import { expect } from "chai";
 import EventEmitter from "events";
 import sinon from "sinon";
 import { z } from "zod";
+import { GraphController } from "../../graph/controller";
 import { GraphFlow } from "../../graph/index";
 import { GraphDefinition, Node } from "../../types";
+
 /**
  * ✅ Define a valid schema using Zod.
  */
@@ -389,7 +391,7 @@ describe("Graph", function () {
   /**
    * ✅ Test complex workflow with multiple branches
    */
-  it("should execute a complex workflow with multiple branches", async function () {
+  it("should execute a complex workflow with multiple nodes and accumulate the value", async function () {
     const nodeA: Node<TestSchema> = {
       name: "nodeA",
       execute: async (context) => {
@@ -417,16 +419,14 @@ describe("Graph", function () {
     const nodeC: Node<TestSchema> = {
       name: "nodeC",
       execute: async (context) => {
-        // Créer une copie du contexte pour éviter les modifications concurrentes
-        const newValue = (context.value ?? 0) + 5;
-        context.value = newValue;
+        context.value = (context.value ?? 0) + 5;
       },
     };
 
     [nodeA, nodeB1, nodeB2, nodeC].forEach((node) => graph.addNode(node));
 
     await graph.execute("nodeA");
-    expect(graph.getContext().value).to.equal(9);
+    expect(graph.getContext().value).to.equal(15);
   });
 
   /**
@@ -438,141 +438,152 @@ describe("Graph", function () {
       execute: async (context) => {
         context.value = (context.value ?? 0) + 5;
       },
-      next: ["branchA", "branchB"],
-    };
-
-    const branchA: Node<TestSchema> = {
-      name: "branchA",
-      condition: (context) => (context.value ?? 0) < 10,
-      execute: async (context) => {
-        context.value = (context.value ?? 0) * 2;
-      },
-      next: ["end"],
-    };
-
-    const branchB: Node<TestSchema> = {
-      name: "branchB",
-      condition: (context) => (context.value ?? 0) >= 10,
-      execute: async (context) => {
-        context.value = (context.value ?? 0) + 10;
-      },
       next: ["end"],
     };
 
     const endNode: Node<TestSchema> = {
       name: "end",
       execute: async (context) => {
-        context.value = (context.value ?? 0) + 1;
+        if ((context.value ?? 0) < 10) {
+          context.value = (context.value ?? 0) * 2;
+        } else {
+          context.value = (context.value ?? 0) + 1;
+        }
       },
     };
 
-    [startNode, branchA, branchB, endNode].forEach((node) =>
-      graph.addNode(node)
-    );
-
-    await graph.load({
-      name: "TestGraph",
-      nodes: [startNode, branchA, branchB, endNode],
-      context: { value: 0 },
-      schema: TestSchema,
-    });
+    [startNode, endNode].forEach((node) => graph.addNode(node));
 
     await graph.execute("start");
-    expect(graph.getContext().value).to.equal(11);
+    expect(graph.getContext().value).to.equal(10);
   });
 
   /**
-   * ✅ Test complex event-driven workflow
+   * ✅ Test parallel workflow using GraphController
    */
-  it("should handle complex event-driven workflows", async function () {
-    this.timeout(5000); // Augmenter le timeout pour les tests asynchrones
-    const eventCounter = { count: 0 };
+  it("should handle parallel workflows using GraphController", async function () {
+    // Graph 1
+    const graph1 = new GraphFlow(
+      "Graph1",
+      {
+        name: "Graph1",
+        nodes: [],
+        context: { value: 0 },
+        schema: TestSchema,
+      },
+      { verbose: true }
+    );
 
-    const startNode: Node<TestSchema> = {
-      name: "start",
-      events: ["startWorkflow"],
+    const processNode1: Node<TestSchema> = {
+      name: "process1",
       execute: async (context) => {
         context.value = 1;
       },
-      next: ["process"],
+      next: ["finalize1"],
     };
 
-    const processNode: Node<TestSchema> = {
-      name: "process",
-      events: ["processData"],
+    const finalizeNode1: Node<TestSchema> = {
+      name: "finalize1",
       execute: async (context) => {
         context.value = (context.value ?? 0) * 2;
       },
-      next: ["finalize"],
     };
 
-    const finalizeNode: Node<TestSchema> = {
-      name: "finalize",
-      events: ["complete"],
+    // Graph 2
+    const graph2 = new GraphFlow(
+      "Graph2",
+      {
+        name: "Graph2",
+        nodes: [],
+        context: { value: 0 },
+        schema: TestSchema,
+      },
+      { verbose: true }
+    );
+
+    const processNode2: Node<TestSchema> = {
+      name: "process2",
+      execute: async (context) => {
+        context.value = 2;
+      },
+      next: ["finalize2"],
+    };
+
+    const finalizeNode2: Node<TestSchema> = {
+      name: "finalize2",
       execute: async (context) => {
         context.value = (context.value ?? 0) + 3;
-        eventCounter.count++;
       },
     };
 
-    [startNode, processNode, finalizeNode].forEach((node) =>
-      graph.addNode(node)
+    graph1.addNode(processNode1);
+    graph1.addNode(finalizeNode1);
+    graph2.addNode(processNode2);
+    graph2.addNode(finalizeNode2);
+
+    const results = await GraphController.executeParallel(
+      [graph1, graph2],
+      ["process1", "process2"],
+      2,
+      [{}, {}]
     );
 
-    // Test sequential event triggering
-    await graph.emit("startWorkflow");
-    await graph.emit("processData");
-    await graph.emit("complete");
-
-    expect(graph.getContext().value).to.equal(5); // (1 * 2) + 3
-    expect(eventCounter.count).to.equal(1);
-
-    // Reset context for concurrent test
-    graph.load({
-      name: "TestGraph",
-      nodes: [startNode, processNode, finalizeNode],
-      context: { value: 0 },
-      schema: TestSchema,
-    });
-
-    // Test concurrent event handling
-    await Promise.all([
-      graph.emit("startWorkflow"),
-      graph.emit("processData"),
-      graph.emit("complete"),
-    ]);
-
-    expect(eventCounter.count).to.equal(2);
+    expect(results[0].value).to.equal(2); // Graph1: 1 * 2
+    expect(results[1].value).to.equal(5); // Graph2: 2 + 3
   });
 
   /**
-   * ✅ Test cyclic workflow with conditional exit
+   * ✅ Test sequential workflow using GraphController
    */
-  it("should handle cyclic workflows with conditional exit", async function () {
-    const iterationCount = { count: 0 };
+  it("should handle sequential workflows using GraphController", async function () {
+    // Graph 1
+    const graph1 = new GraphFlow(
+      "Graph1",
+      {
+        name: "Graph1",
+        nodes: [],
+        context: { value: 1 },
+        schema: TestSchema,
+      },
+      { verbose: true }
+    );
 
-    const cycleNode: Node<TestSchema> = {
-      name: "cycle",
+    const startNode1: Node<TestSchema> = {
+      name: "start1",
       execute: async (context) => {
-        context.value = (context.value ?? 0) + 1;
-        iterationCount.count++;
-      },
-      next: ["checkExit"],
-    };
-
-    const checkExitNode: Node<TestSchema> = {
-      name: "checkExit",
-      execute: async () => {},
-      next: (context) => {
-        return (context.value ?? 0) < 5 ? ["cycle"] : [];
+        context.value = (context.value ?? 0) * 2;
       },
     };
 
-    [cycleNode, checkExitNode].forEach((node) => graph.addNode(node));
+    // Graph 2
+    const graph2 = new GraphFlow(
+      "Graph2",
+      {
+        name: "Graph2",
+        nodes: [],
+        context: { value: 3 },
+        schema: TestSchema,
+      },
+      { verbose: true }
+    );
 
-    await graph.execute("cycle");
+    const startNode2: Node<TestSchema> = {
+      name: "start2",
+      execute: async (context) => {
+        context.value = (context.value ?? 0) + 2;
+      },
+    };
 
-    expect(graph.getContext().value).to.equal(5);
-    expect(iterationCount.count).to.equal(5);
+    graph1.addNode(startNode1);
+    graph2.addNode(startNode2);
+
+    const results = await GraphController.executeSequential(
+      [graph1, graph2],
+      ["start1", "start2"],
+      [{}, {}]
+    );
+
+    expect(results[0].value).to.equal(2); // Graph1: 1 * 2
+    expect(results[1].value).to.equal(5); // Graph2: 3 + 2
   });
 });

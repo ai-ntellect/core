@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
-import { IEventEmitter } from "interfaces";
 import { ZodSchema } from "zod";
 import { GraphContext, GraphDefinition, Node } from "../types";
+import { IEventEmitter } from "../interfaces";
 
 /**
  * @module GraphFlow
@@ -17,7 +17,6 @@ import { GraphContext, GraphDefinition, Node } from "../types";
  * @template T - Extends ZodSchema for type validation
  */
 export class GraphFlow<T extends ZodSchema> {
-  private nodes: Map<string, Node<T, any>>;
   private context: GraphContext<T>;
   public validator?: T;
   private eventEmitter: IEventEmitter;
@@ -26,6 +25,7 @@ export class GraphFlow<T extends ZodSchema> {
   private entryNode?: string;
   private logs: string[] = [];
   private verbose: boolean = false;
+  public nodes: Map<string, Node<T, any>>;
 
   /**
    * Creates a new instance of GraphFlow
@@ -279,28 +279,20 @@ export class GraphFlow<T extends ZodSchema> {
         if (nextNodes.length > 0) {
           this.addLog(`➡️ Executing next nodes: ${nextNodes.join(", ")}`);
 
-          // Créer un contexte unique pour toutes les branches
-          const branchContext = structuredClone(context);
-
-          // Exécuter les branches séquentiellement avec le même contexte
+          // Execute next nodes
           for (const nextNodeName of nextNodes) {
             this.addLog(`🔄 Starting branch for node "${nextNodeName}"`);
             const nextNode = this.nodes.get(nextNodeName);
             if (nextNode) {
-              // Utiliser le même contexte pour toutes les branches
               await this.executeNode(
                 nextNodeName,
-                branchContext,
+                context,
                 undefined,
                 nextNode.waitForEvent
               );
             }
             this.addLog(`✅ Branch "${nextNodeName}" completed`);
           }
-
-          // Mettre à jour le contexte global avec le résultat final des branches
-          Object.assign(context, branchContext);
-          this.context = structuredClone(context);
 
           this.eventEmitter.emit("graphCompleted", {
             name: this.name,
@@ -320,29 +312,24 @@ export class GraphFlow<T extends ZodSchema> {
       if (nextNodes.length > 0) {
         this.addLog(`➡️ Executing next nodes: ${nextNodes.join(", ")}`);
 
-        // Créer un contexte unique pour toutes les branches
-        const branchContext = structuredClone(context);
-
-        // Exécuter les branches séquentiellement avec le même contexte
+        // Execute next nodes
         for (const nextNodeName of nextNodes) {
           this.addLog(`🔄 Starting branch for node "${nextNodeName}"`);
           const nextNode = this.nodes.get(nextNodeName);
           if (nextNode) {
-            // Utiliser le même contexte pour toutes les branches
             await this.executeNode(
               nextNodeName,
-              branchContext,
+              context,
               undefined,
               nextNode.waitForEvent
             );
           }
           this.addLog(`✅ Branch "${nextNodeName}" completed`);
         }
-
-        // Mettre à jour le contexte global avec le résultat final des branches
-        Object.assign(context, branchContext);
-        this.context = structuredClone(context);
       }
+
+      // Mettre à jour le contexte global
+      Object.assign(this.context, context);
     } catch (error: any) {
       this.addLog(`❌ Error in node "${nodeName}": ${error.message}`);
       this.eventEmitter.emit("nodeError", { name: nodeName, error });
@@ -411,7 +398,7 @@ export class GraphFlow<T extends ZodSchema> {
     eventName: string,
     data?: Partial<GraphContext<T>>
   ): Promise<GraphContext<T>> {
-    const workingContext = structuredClone(this.context);
+    const workingContext = this.createNewContext();
 
     if (data) {
       Object.assign(workingContext, data);
@@ -421,18 +408,13 @@ export class GraphFlow<T extends ZodSchema> {
       node.events?.includes(eventName)
     );
 
-    // Execute event nodes sequentially with shared context
+    // Exécuter les nœuds d'événements séquentiellement
     for (const node of eventNodes) {
       await this.executeNode(node.name, workingContext, undefined, true);
     }
 
-    // Update global context after all event nodes are executed
-    this.context = structuredClone(workingContext);
-
-    this.eventEmitter.emit("graphCompleted", {
-      name: this.name,
-      context: this.context,
-    });
+    // Mettre à jour le contexte global
+    this.context = workingContext;
 
     return this.getContext();
   }
