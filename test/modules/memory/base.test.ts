@@ -201,14 +201,14 @@ describe("Memory", () => {
   describe("Edge Cases", () => {
     it("should handle undefined embedding", async () => {
       const input = {
-        data: "test data",
-        query: "test query",
+        id: "test-id",
         roomId: "test-room",
+        data: "test data",
         embedding: undefined,
       };
 
       const result = await memory.createMemory(input);
-      expect(result?.embedding).to.be.null;
+      expect(result?.embedding).to.be.undefined;
     });
 
     it("should handle empty query results", async () => {

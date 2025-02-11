@@ -7,7 +7,9 @@
     "strict": true,
     "skipLibCheck": true,
     "baseUrl": ".",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "types": ["node", "mocha"]
   },
-  "exclude": ["node_modules", "examples", "test", "app"]
+  "include": ["src/**/*", "graph/**/*", "types/**/*", "interfaces/**/*"],
+  "exclude": ["node_modules", "dist", "test", "examples"]
 }

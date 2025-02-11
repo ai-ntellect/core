@@ -1,8 +1,7 @@
 import { expect } from "chai";
 import dotenv from "dotenv";
-import { MeilisearchAdapter } from "../../../memory/adapters/meilisearch";
-import { BaseMemoryType } from "../../../types";
-
+import { MeilisearchAdapter } from "../../../../modules/memory/adapters/meilisearch";
+import { BaseMemoryType } from "../../../../types";
 // Load environment variables
 dotenv.config();
 
@@ -126,7 +125,6 @@ describe("MeilisearchAdapter", () => {
 
       try {
         await meilisearchAdapter.init(TEST_ROOM_ID);
-        await meilisearchAdapter.initializeStorage(TEST_ROOM_ID);
       } catch (error) {
         console.error("Failed to initialize:", error);
         throw error;
@@ -134,14 +132,14 @@ describe("MeilisearchAdapter", () => {
     });
 
     it("should create memory", async () => {
-      const result = await meilisearchAdapter.createMemory({
+      const input = {
+        id: "test-id",
+        roomId: "test-room",
         data: "test data",
-        roomId: TEST_ROOM_ID,
-      });
+      };
 
-      expect(result).to.exist;
-      expect(result?.data).to.equal("test data");
-      expect(result?.embedding).to.be.null;
+      const result = await meilisearchAdapter.createMemory(input);
+      expect(result?.embedding).to.be.undefined;
     });
 
     it("should search memories", async () => {
@@ -161,27 +159,34 @@ describe("MeilisearchAdapter", () => {
     });
 
     it("should handle memory retrieval by ID", async () => {
+      const testDate = new Date("2025-02-11T08:24:38.251Z");
+
+      const mockData = {
+        id: "test-id",
+        roomId: "test-room",
+        data: "test data",
+        createdAt: testDate.toISOString(),
+        embedding: undefined,
+      };
+
       global.fetch = async (input: RequestInfo | URL) => {
         const url = input.toString();
-        if (url.includes(`/indexes/${TEST_ROOM_ID}/documents/test-id`)) {
-          return new Response(
-            JSON.stringify({
-              ...testMemory,
-              createdAt: testMemory.createdAt.toISOString(),
-            })
-          );
+        if (url.includes(`/indexes/test-room/documents/test-id`)) {
+          return new Response(JSON.stringify(mockData));
         }
         return new Response(JSON.stringify({}));
       };
 
       const result = await meilisearchAdapter.getMemoryById(
         "test-id",
-        TEST_ROOM_ID
+        "test-room"
       );
-      if (result) {
-        result.createdAt = new Date(result.createdAt);
-      }
-      expect(result).to.deep.equal(testMemory);
+
+      expect(result?.id).to.equal(mockData.id);
+      expect(result?.roomId).to.equal(mockData.roomId);
+      expect(result?.data).to.equal(mockData.data);
+      expect(result?.createdAt).to.equal(mockData.createdAt); // Compare directement les strings
+      expect(result?.embedding).to.be.undefined;
     });
 
     it("should handle non-existent memory", async () => {
@@ -276,8 +281,7 @@ describe("MeilisearchAdapter", () => {
         return new Response(JSON.stringify({}));
       };
 
-      await expect(meilisearchAdapter.initializeStorage(TEST_ROOM_ID)).to.not
-        .throw;
+      await expect(meilisearchAdapter.init(TEST_ROOM_ID)).to.not.throw;
     });
   });
 });

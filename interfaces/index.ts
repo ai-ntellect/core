@@ -151,6 +151,15 @@ export interface IMemoryService {
    * @returns {Promise<void>}
    */
   clearAllMemories(): Promise<void>;
+
+  saveJob(id: string, job: any): Promise<void>;
+  saveRequest(id: string, request: any): Promise<void>;
+  getJob(id: string): Promise<any>;
+  getRequest(id: string): Promise<any>;
+  deleteJob(id: string): Promise<void>;
+  deleteRequest(id: string): Promise<void>;
+  getAllRequests(): Promise<any[]>;
+  clear(): Promise<void>;
 }
 
 /**
@@ -297,6 +306,38 @@ export abstract class BaseMemory implements IMemoryService {
   abstract getAllMemories(roomId: string): Promise<BaseMemoryType[]>;
   abstract clearMemoryById(id: string, roomId: string): Promise<void>;
   abstract clearAllMemories(): Promise<void>;
+
+  async saveJob(id: string, job: any): Promise<void> {
+    await this.adapter.saveJob?.(id, job);
+  }
+
+  async saveRequest(id: string, request: any): Promise<void> {
+    await this.adapter.saveRequest?.(id, request);
+  }
+
+  async getJob(id: string): Promise<any> {
+    return this.adapter.getJob?.(id);
+  }
+
+  async getRequest(id: string): Promise<any> {
+    return this.adapter.getRequest?.(id);
+  }
+
+  async deleteJob(id: string): Promise<void> {
+    await this.adapter.deleteJob?.(id);
+  }
+
+  async deleteRequest(id: string): Promise<void> {
+    await this.adapter.deleteRequest?.(id);
+  }
+
+  async getAllRequests(): Promise<any[]> {
+    return this.adapter.getAllRequests?.() || [];
+  }
+
+  async clear(): Promise<void> {
+    await this.adapter.clear?.();
+  }
 }
 
 /**
@@ -338,6 +379,13 @@ export interface IEventEmitter {
    * @param {Function} listener - Event handler
    */
   once(event: string, listener: (...args: any[]) => void): void;
+
+  /**
+   * Removes a specific listener for an event
+   * @param {string} event - Event name
+   * @param {Function} listener - Event handler
+   */
+  removeListener(event: string, listener: (...args: any[]) => void): void;
 }
 
 /**

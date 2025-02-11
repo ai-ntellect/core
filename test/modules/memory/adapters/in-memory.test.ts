@@ -1,6 +1,6 @@
 import { expect } from "chai";
-import { InMemoryAdapter } from "../../../memory/adapters/in-memory";
-import { BaseMemoryType } from "../../../types";
+import { InMemoryAdapter } from "../../../../modules/memory/adapters/in-memory";
+import { BaseMemoryType } from "../../../../types";
 
 describe("InMemoryAdapter", () => {
   let inMemoryAdapter: InMemoryAdapter;

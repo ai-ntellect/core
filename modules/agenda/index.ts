@@ -1,4 +1,4 @@
-import { ICronService, IMemoryAdapter } from "../../interfaces";
+import { ICronService, IMemoryService } from "../../interfaces";
 import { ScheduledRequest } from "../../types";
 
 /**
@@ -11,24 +11,11 @@ export class Agenda {
   /**
    * Creates an instance of Agenda
    * @param {ICronService} cronService - The cron service implementation
-   * @param {IMemoryAdapter} storage - The storage service for jobs and requests
+   * @param {IMemoryService} storage - The storage service for jobs and requests
    */
   constructor(
     private readonly cronService: ICronService,
-    private readonly storage: IMemoryAdapter &
-      Required<
-        Pick<
-          IMemoryAdapter,
-          | "saveJob"
-          | "saveRequest"
-          | "getJob"
-          | "getRequest"
-          | "deleteJob"
-          | "deleteRequest"
-          | "getAllRequests"
-          | "clear"
-        >
-      >
+    private readonly storage: IMemoryService
   ) {}
 
   /**

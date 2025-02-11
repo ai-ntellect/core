@@ -94,10 +94,18 @@ export interface Node<T extends ZodSchema, I = any> {
   condition?: (context: GraphContext<T>) => boolean;
   /** Array of next node names */
   next?: string[] | ((context: GraphContext<T>) => string[]);
-  /** Array of event names */
+  /** Array of event names that trigger this node */
   events?: string[];
-  /** Wait for event */
+  /** Wait for a single event before continuing */
   waitForEvent?: boolean;
+  /** Wait for multiple events configuration */
+  waitForEvents?: WaitForEvents;
+  /** Event correlation configuration */
+  correlateEvents?: {
+    events: string[];
+    correlation: (events: GraphEvent<T>[]) => boolean;
+    timeout?: number;
+  };
   /** Retry configuration */
   retry?: {
     /** Maximum number of retry attempts */
@@ -164,3 +172,16 @@ export type MeilisearchSettings = {
   /** Array of sortable attributes */
   sortableAttributes?: string[];
 };
+
+export interface GraphEvent<T extends ZodSchema> {
+  type: string;
+  payload?: any;
+  timestamp: number;
+}
+
+export interface WaitForEvents {
+  events: string[];
+  timeout?: number;
+  strategy: "all" | "any" | "race";
+  onSuccess?: <T extends ZodSchema>(context: GraphContext<T>) => Promise<void>;
+}

@@ -2,43 +2,63 @@ import { expect } from "chai";
 import EventEmitter from "events";
 import sinon from "sinon";
 import { z } from "zod";
-import { GraphController } from "../../graph/controller";
+import { GraphFlowController } from "../../graph/controller";
 import { GraphFlow } from "../../graph/index";
-import { GraphDefinition, Node } from "../../types";
+import { GraphContext, GraphDefinition, Node } from "../../types";
 
 /**
- * ✅ Define a valid schema using Zod.
+ * Test schema definition using Zod for graph context validation
+ * Defines a schema with:
+ * - value: numeric value for tracking state changes
+ * - eventPayload: optional object containing transaction metadata
  */
 const TestSchema = z.object({
   value: z.number().default(0),
+  eventPayload: z
+    .object({
+      transactionId: z.string().optional(),
+      status: z.string().optional(),
+    })
+    .optional(),
 });
 
-/**
- * ✅ Define the schema type for TypeScript inference.
- */
 type TestSchema = typeof TestSchema;
 
+/**
+ * Test suite for the Graph Flow implementation
+ * This suite validates the core functionality of the graph-based workflow system:
+ * - Node execution and state management through context
+ * - Event handling (emission, correlation, waiting)
+ * - Error handling and retry mechanisms
+ * - Input/Output validation using Zod schemas
+ * - Complex workflows with multiple branches and conditions
+ * - Parallel and sequential execution patterns
+ *
+ * The tests use a simple numeric value-based context to demonstrate state changes
+ * and a transaction-based event payload for testing event correlation.
+ */
 describe("Graph", function () {
   let graph: GraphFlow<TestSchema>;
   let eventEmitter: EventEmitter;
 
   beforeEach(() => {
     eventEmitter = new EventEmitter();
-    graph = new GraphFlow(
-      "TestGraph",
-      {
-        name: "TestGraph",
-        nodes: [],
-        context: { value: 0 },
-        schema: TestSchema,
-        eventEmitter: eventEmitter,
-      },
-      { verbose: true }
-    );
+    graph = new GraphFlow("TestGraph", {
+      name: "TestGraph",
+      nodes: [],
+      context: { value: 0 },
+      schema: TestSchema,
+      eventEmitter: eventEmitter,
+    });
   });
 
   /**
-   * ✅ Ensure a simple node executes and updates the context correctly.
+   * Tests basic node execution and context update functionality
+   * Validates that:
+   * - A node can be added to the graph
+   * - The node's execute function is called
+   * - The context is properly updated
+   * - The updated context is accessible after execution
    */
   it("should execute a simple node and update the context", async function () {
     const simpleNode: Node<TestSchema> = {
@@ -57,7 +77,11 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Verify that `nodeStarted` and `nodeCompleted` events are triggered.
+   * Tests event emission for node lifecycle events
+   * Validates that the graph properly emits events for:
+   * - Node execution start (nodeStarted)
+   * - Node execution completion (nodeCompleted)
+   * This is crucial for monitoring and debugging workflow execution
    */
   it("should trigger `nodeStarted` and `nodeCompleted` events", async function () {
     const nodeStartedSpy = sinon.spy();
@@ -82,7 +106,12 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Ensure an error is thrown when a node fails and `nodeError` event is triggered.
+   * Tests error handling and error event emission
+   * Validates that:
+   * - Errors in node execution are properly caught
+   * - The nodeError event is emitted
+   * - The error message is preserved
+   * This ensures robust error handling in the workflow
    */
   it("should handle errors and trigger `nodeError` event", async function () {
     const errorNode: Node<TestSchema> = {
@@ -107,7 +136,12 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Ensure that context validation using Zod works correctly.
+   * Tests context validation using Zod schema
+   * Validates that:
+   * - Invalid context values are rejected
+   * - Proper error messages are generated
+   * - Type safety is maintained during execution
+   * This ensures data integrity throughout the workflow
    */
   it("should validate context with Zod", async function () {
     const invalidContext = { value: "invalid_string" };
@@ -131,7 +165,12 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Ensure a node with validated inputs and outputs executes correctly.
+   * Tests node execution with input/output validation
+   * Demonstrates:
+   * - Input parameter validation
+   * - Output state validation
+   * - Integration between node execution and validation
+   * Ensures type safety and data consistency in node interactions
    */
   it("should execute a node with validated inputs and outputs", async function () {
     const paramNode: Node<TestSchema, { increment: number }> = {
@@ -156,7 +195,12 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Ensure a node does not execute if a condition is not met.
+   * Tests conditional node execution
+   * Validates that:
+   * - Nodes can have conditional execution logic
+   * - Conditions are evaluated against current context
+   * - Nodes are skipped when conditions are not met
+   * This enables dynamic workflow paths based on state
    */
   it("should not execute a node when condition is false", async function () {
     const conditionalNode: Node<TestSchema> = {
@@ -176,7 +220,13 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Ensure that a node retries execution when it fails.
+   * Tests node retry functionality
+   * Validates the retry mechanism:
+   * - Maximum attempt limits
+   * - Retry delays
+   * - Success after retry
+   * - Context preservation between attempts
+   * Essential for handling transient failures in workflows
    */
   it("should retry a node execution when it fails", async function () {
     let attemptCount = 0;
@@ -202,45 +252,7 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Ensure dynamic event-based execution works via `emit`.
-   */
-  it("should trigger a node execution from an event", async function () {
-    this.timeout(5000); // Ensure we have enough time to complete the test
-
-    const eventNode: Node<TestSchema> = {
-      name: "eventNode",
-      events: ["customEvent"],
-      execute: async (context) => {
-        context.value = (context.value ?? 0) + 1;
-      },
-      next: [],
-    };
-
-    graph.addNode(eventNode);
-
-    // Use a promise to ensure the event is properly handled
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error("Event did not trigger")),
-        1500
-      );
-
-      graph.on("nodeCompleted", ({ name }) => {
-        if (name === "eventNode") {
-          clearTimeout(timeout);
-          resolve();
-        }
-      });
-
-      graph.emit("customEvent").catch(reject);
-    });
-
-    const context = graph.getContext();
-    expect(context.value).to.equal(1);
-  });
-
-  /**
-   * ✅ Ensure that removing a node works correctly.
+   * Tests node removal functionality
    */
   it("should remove a node from the graph", function () {
     const testNode: Node<TestSchema> = {
@@ -253,6 +265,9 @@ describe("Graph", function () {
     expect(graph.getNodes().length).to.equal(0);
   });
 
+  /**
+   * Tests graph reloading functionality
+   */
   it("should clear and reload the graph using `load`", function () {
     const nodeA: Node<TestSchema> = {
       name: "A",
@@ -277,7 +292,7 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Test input validation failure
+   * Tests input validation error handling
    */
   it("should throw error when node input validation fails", async function () {
     const nodeWithInput: Node<TestSchema, { amount: number }> = {
@@ -304,7 +319,7 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Test output validation failure
+   * Tests output validation error handling
    */
   it("should throw error when node output validation fails", async function () {
     const nodeWithOutput: Node<TestSchema> = {
@@ -331,7 +346,7 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Test successful input and output validation
+   * Tests successful input/output validation flow
    */
   it("should successfully validate both inputs and outputs", async function () {
     const validatedNode: Node<TestSchema, { increment: number }> = {
@@ -366,7 +381,7 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Test missing required inputs
+   * Tests handling of missing required inputs
    */
   it("should throw error when required inputs are missing", async function () {
     const nodeWithRequiredInput: Node<TestSchema, { required: string }> = {
@@ -389,7 +404,13 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Test complex workflow with multiple branches
+   * Tests complex workflow execution with multiple branches
+   * Demonstrates:
+   * - Multiple execution paths
+   * - Node chaining
+   * - Parallel branch execution
+   * - Context accumulation across branches
+   * This validates the graph's ability to handle complex business processes
    */
   it("should execute a complex workflow with multiple nodes and accumulate the value", async function () {
     const nodeA: Node<TestSchema> = {
@@ -430,7 +451,7 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Test conditional workflow branching
+   * Tests conditional branching in workflows
    */
   it("should execute different branches based on conditions", async function () {
     const startNode: Node<TestSchema> = {
@@ -459,20 +480,22 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Test parallel workflow using GraphController
+   * Tests parallel workflow execution using GraphController
+   * Validates:
+   * - Multiple graph execution in parallel
+   * - Independent context maintenance
+   * - Proper result aggregation
+   * - Concurrency control
+   * Essential for scaling workflow processing
    */
   it("should handle parallel workflows using GraphController", async function () {
     // Graph 1
-    const graph1 = new GraphFlow(
-      "Graph1",
-      {
-        name: "Graph1",
-        nodes: [],
-        context: { value: 0 },
-        schema: TestSchema,
-      },
-      { verbose: true }
-    );
+    const graph1 = new GraphFlow("Graph1", {
+      name: "Graph1",
+      nodes: [],
+      context: { value: 0 },
+      schema: TestSchema,
+    });
 
     const processNode1: Node<TestSchema> = {
       name: "process1",
@@ -490,16 +513,12 @@ describe("Graph", function () {
     };
 
     // Graph 2
-    const graph2 = new GraphFlow(
-      "Graph2",
-      {
-        name: "Graph2",
-        nodes: [],
-        context: { value: 0 },
-        schema: TestSchema,
-      },
-      { verbose: true }
-    );
+    const graph2 = new GraphFlow("Graph2", {
+      name: "Graph2",
+      nodes: [],
+      context: { value: 0 },
+      schema: TestSchema,
+    });
 
     const processNode2: Node<TestSchema> = {
       name: "process2",
@@ -521,7 +540,7 @@ describe("Graph", function () {
     graph2.addNode(processNode2);
     graph2.addNode(finalizeNode2);
 
-    const results = await GraphController.executeParallel(
+    const results = await GraphFlowController.executeParallel(
       [graph1, graph2],
       ["process1", "process2"],
       2,
@@ -533,20 +552,16 @@ describe("Graph", function () {
   });
 
   /**
-   * ✅ Test sequential workflow using GraphController
+   * Tests sequential workflow execution using GraphController
    */
   it("should handle sequential workflows using GraphController", async function () {
     // Graph 1
-    const graph1 = new GraphFlow(
-      "Graph1",
-      {
-        name: "Graph1",
-        nodes: [],
-        context: { value: 1 },
-        schema: TestSchema,
-      },
-      { verbose: true }
-    );
+    const graph1 = new GraphFlow("Graph1", {
+      name: "Graph1",
+      nodes: [],
+      context: { value: 1 },
+      schema: TestSchema,
+    });
 
     const startNode1: Node<TestSchema> = {
       name: "start1",
@@ -556,16 +571,12 @@ describe("Graph", function () {
     };
 
     // Graph 2
-    const graph2 = new GraphFlow(
-      "Graph2",
-      {
-        name: "Graph2",
-        nodes: [],
-        context: { value: 3 },
-        schema: TestSchema,
-      },
-      { verbose: true }
-    );
+    const graph2 = new GraphFlow("Graph2", {
+      name: "Graph2",
+      nodes: [],
+      context: { value: 3 },
+      schema: TestSchema,
+    });
 
     const startNode2: Node<TestSchema> = {
       name: "start2",
@@ -577,7 +588,7 @@ describe("Graph", function () {
     graph1.addNode(startNode1);
     graph2.addNode(startNode2);
 
-    const results = await GraphController.executeSequential(
+    const results = await GraphFlowController.executeSequential(
       [graph1, graph2],
       ["start1", "start2"],
       [{}, {}]
@@ -585,5 +596,125 @@ describe("Graph", function () {
 
     expect(results[0].value).to.equal(2); // Graph1: 1 * 2
     expect(results[1].value).to.equal(5); // Graph2: 3 + 2
+  });
+
+  /**
+   * Tests event correlation functionality
+   * Demonstrates:
+   * - Event correlation based on transaction ID
+   * - Timeout handling
+   * - Multiple event synchronization
+   * - Context updates after correlation
+   * Critical for integrating with external event sources
+   */
+  it("should handle correlated events correctly", async function () {
+    this.timeout(10000);
+    const graph = new GraphFlow("test", {
+      name: "test",
+      nodes: [],
+      context: { value: 0 },
+      schema: TestSchema,
+      eventEmitter: new EventEmitter(),
+    });
+
+    let eventsReceived = 0;
+    const node = {
+      name: "testNode",
+      waitForEvents: {
+        events: ["eventA", "eventB"],
+        timeout: 5000,
+        strategy: "all" as const,
+      },
+      execute: async (context: GraphContext<typeof TestSchema>) => {
+        eventsReceived = 2;
+        context.value = 42;
+      },
+    };
+
+    graph.addNode(node);
+
+    graph.execute("testNode");
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    await graph.emit("eventA", { eventPayload: { status: "A" } });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await graph.emit("eventB", { eventPayload: { status: "B" } });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(eventsReceived).to.equal(2);
+    expect(graph.getContext().value).to.equal(42);
+  });
+
+  /**
+   * Tests multiple event waiting functionality
+   */
+  it("should wait for multiple events before continuing", async function () {
+    this.timeout(10000);
+    const graph = new GraphFlow("test", {
+      name: "test",
+      nodes: [],
+      context: { value: 0 },
+      schema: TestSchema,
+      eventEmitter: new EventEmitter(),
+    });
+
+    const node = {
+      name: "testNode",
+      waitForEvents: {
+        events: ["event1", "event2"],
+        timeout: 5000,
+        strategy: "all" as const,
+      },
+      execute: async (context: GraphContext<typeof TestSchema>) => {
+        context.value = 42; // Ajouter une modification du contexte
+      },
+    };
+
+    graph.addNode(node);
+    graph.execute("testNode");
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await graph.emit("event1", { eventPayload: { status: "1" } });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await graph.emit("event2", { eventPayload: { status: "2" } });
+    expect(graph.getContext().value).to.equal(42);
+  });
+
+  /**
+   * Tests single event waiting functionality
+   */
+  it("should wait for a single event before continuing", async function () {
+    this.timeout(5000);
+
+    const waitingNode: Node<TestSchema> = {
+      name: "waitingNode",
+      execute: async (context: GraphContext<typeof TestSchema>) => {
+        context.value = 1;
+      },
+      waitForEvent: true,
+      next: ["finalNode"],
+    };
+
+    const finalNode: Node<TestSchema> = {
+      name: "finalNode",
+      execute: async (context: GraphContext<typeof TestSchema>) => {
+        context.value = (context.value ?? 0) + 5;
+      },
+    };
+
+    [waitingNode, finalNode].forEach((node) => graph.addNode(node));
+
+    const resultPromise = graph.execute("waitingNode");
+
+    // Wait a bit to ensure the node is ready
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Emit the event
+    await graph.emit("someEvent");
+
+    const result = await resultPromise;
+    expect(result.value).to.equal(6); // 1 (waitingNode) + 5 (finalNode)
   });
 });

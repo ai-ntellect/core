@@ -1,7 +1,8 @@
 import { expect } from "chai";
 import sinon from "sinon";
 import { Agenda } from "../../../modules/agenda";
-import { NodeCronAdapter } from "../../../modules/agenda/adapters/cron/node-cron";
+import { NodeCronAdapter } from "../../../modules/agenda/adapters/node-cron";
+import { Memory } from "../../../modules/memory";
 import { InMemoryAdapter } from "../../../modules/memory/adapters/in-memory";
 
 before(function () {
@@ -14,8 +15,9 @@ describe("Agenda Service", () => {
 
   beforeEach(() => {
     const cronService = new NodeCronAdapter();
-    const jobStorage = new InMemoryAdapter();
-    agenda = new Agenda(cronService, jobStorage);
+    const inMemory = new InMemoryAdapter();
+    const memory = new Memory(inMemory);
+    agenda = new Agenda(cronService, memory);
   });
 
   afterEach(async () => {
@@ -42,9 +44,9 @@ describe("Agenda Service", () => {
       scheduledIds.push(id); // Track the ID
 
       expect(id).to.be.a("string");
-      expect(agenda.getScheduledRequests()).to.have.lengthOf(1);
+      expect(await agenda.getScheduledRequests()).to.have.lengthOf(1);
 
-      const scheduledRequest = agenda.getScheduledRequests()[0];
+      const scheduledRequest = (await agenda.getScheduledRequests())[0];
       expect(scheduledRequest.originalRequest).to.equal(
         request.originalRequest
       );
@@ -103,13 +105,11 @@ describe("Agenda Service", () => {
 
       const id = await agenda.scheduleRequest(request);
       scheduledIds.push(id);
-      const requests = await agenda.getScheduledRequests();
-      expect(requests).to.have.lengthOf(1);
+      expect(await agenda.getScheduledRequests()).to.have.lengthOf(1);
 
       const cancelled = await agenda.cancelScheduledRequest(id);
       expect(cancelled).to.be.true;
-      const remainingRequests = await agenda.getScheduledRequests();
-      expect(remainingRequests).to.have.lengthOf(0);
+      expect(await agenda.getScheduledRequests()).to.have.lengthOf(0);
     });
 
     it("should return false when cancelling non-existent request", async () => {
@@ -139,6 +139,28 @@ describe("Agenda Service", () => {
       expect(scheduledRequests[0].originalRequest).to.equal("request 1");
       expect(scheduledRequests[1].originalRequest).to.equal("request 2");
     });
+
+    it("should stop all scheduled requests", async () => {
+      const requests = [
+        {
+          originalRequest: "request 1",
+          cronExpression: "*/1 * * * *",
+        },
+        {
+          originalRequest: "request 2",
+          cronExpression: "*/5 * * * *",
+        },
+      ];
+
+      for (const request of requests) {
+        await agenda.scheduleRequest(request);
+      }
+
+      expect(await agenda.getScheduledRequests()).to.have.lengthOf(2);
+
+      await agenda.stopAll();
+      expect(await agenda.getScheduledRequests()).to.have.lengthOf(0);
+    });
   });
 
   describe("Global Management", () => {
@@ -158,12 +180,10 @@ describe("Agenda Service", () => {
         await agenda.scheduleRequest(request);
       }
 
-      const initialRequests = await agenda.getScheduledRequests();
-      expect(initialRequests).to.have.lengthOf(2);
+      expect(await agenda.getScheduledRequests()).to.have.lengthOf(2);
 
       await agenda.stopAll();
-      const remainingRequests = await agenda.getScheduledRequests();
-      expect(remainingRequests).to.have.lengthOf(0);
+      expect(await agenda.getScheduledRequests()).to.have.lengthOf(0);
     });
   });
 
@@ -223,7 +243,7 @@ describe("Agenda Service", () => {
       }
 
       expect(onExecutedSpy.calledOnce).to.be.true;
-      expect(agenda.getScheduledRequests()).to.have.lengthOf(0);
+      expect(await agenda.getScheduledRequests()).to.have.lengthOf(0);
     });
 
     it("should log execution status", async function () {
@@ -270,8 +290,9 @@ describe("Agenda Service", () => {
 let globalAgenda: Agenda;
 before(() => {
   const cronService = new NodeCronAdapter();
-  const jobStorage = new InMemoryAdapter();
-  globalAgenda = new Agenda(cronService, jobStorage);
+  const inMemoryAdapter = new InMemoryAdapter();
+  const memory = new Memory(inMemoryAdapter);
+  globalAgenda = new Agenda(cronService, memory);
 });
 
 after(async () => {
