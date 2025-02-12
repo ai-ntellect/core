@@ -2,14 +2,25 @@
   "compilerOptions": {
     "target": "es2016",
     "module": "commonjs",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,
     "baseUrl": ".",
     "outDir": "./dist",
-    "types": ["node", "mocha"]
+    "types": ["node", "mocha"],
+    "resolveJsonModule": true
   },
-  "include": ["src/**/*", "graph/**/*", "types/**/*", "interfaces/**/*"],
+  "include": [
+    "index.ts",
+    "modules/**/*",
+    "graph/**/*",
+    "types/**/*",
+    "interfaces/**/*",
+    "utils/**/*"
+  ],
   "exclude": ["node_modules", "dist", "test", "examples"]
 }
