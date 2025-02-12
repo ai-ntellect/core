@@ -5,8 +5,8 @@ export const generateActionSchema = (graphs: GraphFlow<any>[]) => {
   return graphs
     .map((graph) => {
       const rootNode = Array.from(graph.nodes.values())[0];
-      const schemaStr = rootNode.inputs
-        ? getSchemaString(rootNode.inputs)
+      const schemaStr = rootNode.params
+        ? getSchemaString(rootNode.params)
         : "No parameters";
       return `Workflow: ${graph.name}\nParameters: ${schemaStr}`;
     })
