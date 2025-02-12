@@ -56,7 +56,6 @@ export class GraphObserver<T extends ZodSchema> {
     } = {}
   ): GraphObservable<T> {
     const baseObservable = new Observable<any>((subscriber) => {
-      // Combine les événements avec l'état actuel
       const subscription = combineLatest([
         this.eventSubject.pipe(
           filter((event) => event.type === "nodeStateChanged"),

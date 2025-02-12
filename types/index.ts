@@ -86,12 +86,9 @@ export interface Node<T extends ZodSchema, I = any> {
   /** Schema for node outputs */
   outputs?: ZodSchema;
   /** Execute function for the node */
-  execute: (
-    context: GraphContext<T>,
-    inputs: I extends void ? never : I
-  ) => Promise<void>;
+  execute: (context: GraphContext<T>, params?: I) => Promise<void>;
   /** Optional condition for node execution */
-  condition?: (context: GraphContext<T>) => boolean;
+  condition?: (context: GraphContext<T>, params?: I) => boolean;
   /** Array of next node names */
   next?: string[] | ((context: GraphContext<T>) => string[]);
   /** Array of event names that trigger this node */

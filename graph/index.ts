@@ -5,7 +5,7 @@ import { GraphObservable, IEventEmitter } from "../interfaces";
 import { GraphContext, GraphDefinition, GraphEvent, Node } from "../types";
 import { GraphEventManager } from "./event-manager";
 import { GraphLogger } from "./logger";
-import { GraphNode } from "./node";
+import { GraphNode, NodeParams } from "./node";
 import { GraphObserver } from "./observer";
 
 /**
@@ -75,7 +75,7 @@ export class GraphFlow<T extends ZodSchema> {
       config.onError
     );
     this.nodeExecutor = new GraphNode(
-      this.nodes,
+      this.nodes as Map<string, import("./node").Node<T, any>>,
       this.logger,
       this.eventManager,
       this.eventSubject,
@@ -216,30 +216,34 @@ export class GraphFlow<T extends ZodSchema> {
   /**
    * Executes the graph flow starting from a specific node
    * @param {string} startNode - Name of the node to start execution from
-   * @param {Partial<GraphContext<T>>} inputContext - Optional partial context to merge with current context
-   * @param {any} inputParams - Optional input parameters for the start node
+   * @param {any} inputs - Optional input parameters for the start node
+   * @param {Partial<GraphContext<T>>} context - Optional context to merge
+   * @param {NodeParams} params - Optional node parameters
    * @returns {Promise<GraphContext<T>>} Final context after execution
    */
   public async execute(
     startNode: string,
-    inputParams?: any,
-    inputContext?: Partial<GraphContext<T>>
+    params?: NodeParams,
+    context?: Partial<GraphContext<T>>
   ): Promise<GraphContext<T>> {
-    if (inputParams) {
-      Object.assign(this.context, inputParams);
-    }
-
-    if (inputContext) {
-      Object.assign(this.context, inputContext);
+    if (context) {
+      Object.assign(this.context, context);
     }
 
     this.eventEmitter.emit("graphStarted", { name: this.name });
 
     try {
+      const node = this.nodes.get(startNode);
+      if (!node) throw new Error(`Node "${startNode}" not found`);
+
+      if (node.inputs && !params) {
+        throw new Error(`Inputs required for node "${startNode}"`);
+      }
+
       await this.nodeExecutor.executeNode(
         startNode,
         this.context,
-        inputParams,
+        params,
         false
       );
 

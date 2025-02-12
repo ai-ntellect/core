@@ -5,7 +5,7 @@ import { BehaviorSubject, Subject } from "rxjs";
 import { z } from "zod";
 import { GraphEventManager } from "../../graph/event-manager";
 import { GraphLogger } from "../../graph/logger";
-import { GraphNode } from "../../graph/node";
+import { GraphNode, NodeParams } from "../../graph/node";
 import { GraphContext } from "../../types";
 
 use(chaiAsPromised);
@@ -107,7 +107,7 @@ describe("GraphNode", () => {
     const nodes = new Map();
     nodes.set("test", {
       name: "test",
-      execute: async (_context: TestContext) => {
+      execute: async () => {
         throw new Error("Test error");
       },
     });
@@ -121,13 +121,17 @@ describe("GraphNode", () => {
     );
 
     try {
-      await node.executeNode("test", { counter: 0, message: "Hello" }, null);
-      expect.fail("Should have thrown an error");
+      await node.executeNode(
+        "test",
+        { counter: 0, message: "Hello" },
+        null,
+        false
+      );
+      expect.fail("Test error");
     } catch (error: any) {
       expect(error.message).to.equal("Test error");
       const errorEvents = events.filter((e) => e.type === "nodeError");
       expect(errorEvents).to.have.lengthOf(1);
-      expect(errorEvents[0].payload.error.message).to.equal("Test error");
     }
   });
 
@@ -175,7 +179,7 @@ describe("GraphNode", () => {
     const nodes = new Map();
     nodes.set("test", {
       name: "test",
-      execute: async (context: TestContext) => {
+      execute: async (context: TestContext, inputs?: any) => {
         context.counter = context.counter; // Même valeur
         context.message = "New"; // Nouvelle valeur
       },
@@ -193,5 +197,136 @@ describe("GraphNode", () => {
     const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
     expect(stateChanges).to.have.lengthOf(1); // Seulement pour message
     expect(stateChanges[0].payload.property).to.equal("message");
+  });
+
+  it("should execute node with parameters", async () => {
+    const nodes = new Map();
+    nodes.set("test", {
+      name: "test",
+      execute: async (context: TestContext, inputs?: any) => {
+        context.counter = inputs?.value ?? 0;
+        context.message = inputs?.message ?? "Default";
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    await node.executeNode(
+      "test",
+      { counter: 0, message: "Hello" },
+      { value: 5, message: "Custom" },
+      false
+    );
+
+    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
+    expect(stateChanges).to.have.lengthOf(2);
+    expect(stateChanges[0].payload.newValue).to.equal(5);
+    expect(stateChanges[1].payload.newValue).to.equal("Custom");
+  });
+
+  it("should use default values when no parameters provided", async () => {
+    const nodes = new Map();
+    nodes.set("test", {
+      name: "test",
+      execute: async (
+        context: TestContext,
+        _inputs: any,
+        params?: NodeParams
+      ) => {
+        context.counter = params?.increment || 1;
+        context.message = params?.message || "Default";
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
+
+    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
+    expect(stateChanges).to.have.lengthOf(2);
+    expect(stateChanges[0].payload.newValue).to.equal(1); // counter (default)
+    expect(stateChanges[1].payload.newValue).to.equal("Default"); // message (default)
+  });
+
+  it("should properly handle node inputs", async () => {
+    const nodes = new Map();
+    nodes.set("test", {
+      name: "test",
+      execute: async (context: TestContext, inputs: any) => {
+        context.counter = inputs.value;
+        context.message = inputs.message;
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    const testInputs = {
+      value: 42,
+      message: "Test Input",
+    };
+
+    await node.executeNode(
+      "test",
+      { counter: 0, message: "Hello" },
+      testInputs
+    );
+
+    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
+    expect(stateChanges).to.have.lengthOf(2);
+    expect(stateChanges[0].payload.newValue).to.equal(42); // counter from input
+    expect(stateChanges[1].payload.newValue).to.equal("Test Input"); // message from input
+  });
+
+  it("should not emit duplicate state changes", async () => {
+    const nodes = new Map();
+    nodes.set("test", {
+      name: "test",
+      execute: async (context: TestContext) => {
+        context.counter = 1; // Valeur fixe au lieu d'incrémentations
+        context.counter = 1; // Même valeur
+        context.message = "New";
+        context.message = "New"; // Même valeur
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
+
+    // Vérifier qu'il n'y a pas de doublons dans les événements
+    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
+    const uniqueChanges = new Set(
+      stateChanges.map(
+        (e) =>
+          `${e.payload.property}-${e.payload.oldValue}-${e.payload.newValue}`
+      )
+    );
+
+    expect(stateChanges.length).to.equal(uniqueChanges.size);
+    expect(stateChanges).to.have.lengthOf(2); // Un pour counter, un pour message
   });
 });

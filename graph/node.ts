@@ -1,14 +1,50 @@
 import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
-import { GraphContext, GraphEvent, Node } from "../types";
+import { GraphContext, GraphEvent } from "../types";
 import { GraphEventManager } from "./event-manager";
-import { GraphLogger } from "./logger";
 
 /**
  * Represents a node in the graph that can execute operations and manage state
  * @template T - The Zod schema type for validation
  */
+export interface NodeParams<T = any> {
+  [key: string]: T;
+}
+
+export interface Node<T extends ZodSchema, I = any> {
+  condition?: (context: GraphContext<T>, params?: NodeParams) => boolean;
+  execute: (
+    context: GraphContext<T>,
+    inputs: I,
+    params?: NodeParams
+  ) => Promise<void>;
+  next?: string[] | ((context: GraphContext<T>) => string[]);
+  inputs?: ZodSchema;
+  outputs?: ZodSchema;
+  retry?: {
+    maxAttempts: number;
+    delay?: number;
+    onRetryFailed?: (error: Error, context: GraphContext<T>) => Promise<void>;
+    continueOnFailed?: boolean;
+  };
+  correlateEvents?: {
+    events: string[];
+    timeout?: number;
+    correlation: (events: GraphEvent<T>[]) => boolean;
+  };
+  waitForEvents?: {
+    events: string[];
+    timeout: number;
+  };
+}
+
+export interface GraphLogger {
+  addLog: (message: string, data?: any) => void;
+}
+
 export class GraphNode<T extends ZodSchema> {
+  private lastStateEvent: GraphEvent<T> | null = null;
+
   /**
    * Creates a new GraphNode instance
    * @param nodes - Map of all nodes in the graph
@@ -32,15 +68,22 @@ export class GraphNode<T extends ZodSchema> {
    * @private
    */
   private emitEvent(type: string, payload: any) {
-    this.logger.addLog(`📢 Event: ${type}`);
+    if (type === "nodeStateChanged") {
+      if (
+        this.lastStateEvent?.type === type &&
+        this.lastStateEvent.payload.property === payload.property &&
+        this.lastStateEvent.payload.newValue === payload.newValue &&
+        this.lastStateEvent.payload.nodeName === payload.nodeName
+      ) {
+        return;
+      }
+    }
+
     const event = {
       type,
       payload: {
         ...payload,
-        name:
-          type === "nodeStateChanged"
-            ? payload.name || payload.nodeName
-            : payload.name,
+        name: type === "nodeStateChanged" ? payload.nodeName : payload.name,
         context: { ...payload.context },
       },
       timestamp: Date.now(),
@@ -49,8 +92,8 @@ export class GraphNode<T extends ZodSchema> {
     this.eventSubject.next(event);
     this.eventManager.emitEvent(type, event);
 
-    // Update state subject only for state changes
     if (type === "nodeStateChanged") {
+      this.lastStateEvent = event;
       this.stateSubject.next({ ...payload.context });
     }
   }
@@ -63,7 +106,7 @@ export class GraphNode<T extends ZodSchema> {
    * @param triggeredByEvent - Whether the execution was triggered by an event
    * @throws Error if the node is not found or execution fails
    */
-  async executeNode(
+  public async executeNode(
     nodeName: string,
     context: GraphContext<T>,
     inputs: any,
@@ -72,61 +115,51 @@ export class GraphNode<T extends ZodSchema> {
     const node = this.nodes.get(nodeName);
     if (!node) throw new Error(`Node "${nodeName}" not found.`);
 
-    this.logger.addLog(`🚀 Starting node "${nodeName}`);
-    this.emitEvent("nodeStarted", { name: nodeName, context });
+    // Créer une copie du contexte pour ce nœud
+    const nodeContext = { ...context };
+    this.emitEvent("nodeStarted", { name: nodeName, context: nodeContext });
 
     try {
-      // Vérifier la condition avant d'exécuter
-      if (node.condition && !node.condition(context)) {
-        this.logger.addLog(
-          `⏭️ Skipping node "${nodeName}" - condition not met`
-        );
-        return;
-      }
-
-      const contextProxy = new Proxy(context, {
+      const contextProxy = new Proxy(nodeContext, {
         set: (target, prop, value) => {
           const oldValue = target[prop];
           if (oldValue === value) return true;
 
           target[prop] = value;
+          // Mettre à jour le contexte global
+          context[prop as keyof typeof context] = value;
+
           this.emitEvent("nodeStateChanged", {
             nodeName,
             property: prop.toString(),
             oldValue,
             newValue: value,
-            context: target,
+            context: { ...target },
           });
-
           return true;
         },
-        get: (target, prop) => target[prop],
       });
 
-      // Exécuter le nœud
-      await node.execute(contextProxy, inputs);
+      if (node.condition && !node.condition(contextProxy, inputs)) {
+        return;
+      }
 
-      // Gérer la suite uniquement si pas déclenché par un événement
-      if (!triggeredByEvent) {
+      await this.executeWithRetry(node, contextProxy, inputs, nodeName);
+      this.emitEvent("nodeCompleted", { name: nodeName, context: nodeContext });
+
+      if (!triggeredByEvent && node.next) {
         const nextNodes =
-          typeof node.next === "function"
-            ? node.next(contextProxy)
-            : node.next || [];
-
+          typeof node.next === "function" ? node.next(contextProxy) : node.next;
         for (const nextNodeName of nextNodes) {
           await this.executeNode(nextNodeName, context, undefined, false);
         }
       }
-
-      this.logger.addLog(`✅ Node "${nodeName}" executed successfully`);
-      this.emitEvent("nodeCompleted", { name: nodeName, context });
     } catch (error) {
-      this.logger.addLog(
-        `❌ Error in node "${nodeName}": ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      this.emitEvent("nodeError", { name: nodeName, error, context });
+      this.emitEvent("nodeError", {
+        name: nodeName,
+        error,
+        context: nodeContext,
+      });
       throw error;
     }
   }
@@ -218,30 +251,44 @@ export class GraphNode<T extends ZodSchema> {
     nodeName: string
   ): Promise<void> {
     let attempts = 0;
-    let lastError: Error | null = null;
+    let lastError: Error = new Error("Unknown error");
 
-    while (attempts < node.retry!.maxAttempts) {
+    while (attempts < (node.retry?.maxAttempts || 1)) {
       try {
-        this.logger.addLog(
-          `🔄 Attempt ${attempts + 1}/${node.retry!.maxAttempts}`
-        );
+        // Validation des inputs
+        if (node.inputs) {
+          try {
+            node.inputs.parse(inputs);
+          } catch (error: any) {
+            const message = error.errors?.[0]?.message || error.message;
+            throw new Error(`Input validation failed: ${message}`);
+          }
+        }
+
+        // Exécution du node
         await node.execute(contextProxy, inputs);
+
+        // Validation des outputs
+        if (node.outputs) {
+          try {
+            node.outputs.parse(contextProxy);
+          } catch (error: any) {
+            const message = error.errors?.[0]?.message || error.message;
+            throw new Error(`Output validation failed: ${message}`);
+          }
+        }
         return;
       } catch (error: any) {
-        lastError = error instanceof Error ? error : new Error(error.message);
+        lastError =
+          error instanceof Error
+            ? error
+            : new Error(error?.message || "Unknown error");
         attempts++;
-        this.logger.addLog(
-          `❌ Attempt ${attempts} failed: ${lastError.message}`
-        );
 
-        if (attempts === node.retry!.maxAttempts) {
-          if (node.retry!.onRetryFailed && lastError) {
-            await this.handleRetryFailure(
-              node,
-              lastError,
-              contextProxy,
-              nodeName
-            );
+        if (attempts === (node.retry?.maxAttempts || 1)) {
+          if (node.retry?.onRetryFailed) {
+            await node.retry.onRetryFailed(lastError, contextProxy);
+            if (node.retry.continueOnFailed) return;
           }
           throw lastError;
         }
@@ -250,44 +297,6 @@ export class GraphNode<T extends ZodSchema> {
           setTimeout(resolve, node.retry?.delay || 0)
         );
       }
-    }
-  }
-
-  /**
-   * Handles the failure of retry attempts
-   * @param node - The node that failed
-   * @param error - The error that caused the failure
-   * @param context - The current graph context
-   * @param nodeName - The name of the node
-   * @private
-   */
-  private async handleRetryFailure(
-    node: Node<T, any>,
-    error: Error,
-    context: GraphContext<T>,
-    nodeName: string
-  ): Promise<void> {
-    this.logger.addLog(
-      `🔄 Executing retry failure handler for node "${nodeName}"`
-    );
-    try {
-      if (node.retry?.onRetryFailed) {
-        await node.retry.onRetryFailed(error, context);
-        if (node.retry.continueOnFailed) {
-          this.logger.addLog(
-            `✅ Retry failure handler succeeded - continuing execution`
-          );
-          return;
-        }
-        this.logger.addLog(
-          `⚠️ Retry failure handler executed but node will still fail`
-        );
-      }
-    } catch (handlerError: any) {
-      this.logger.addLog(
-        `❌ Retry failure handler failed: ${handlerError.message}`
-      );
-      throw handlerError;
     }
   }
 

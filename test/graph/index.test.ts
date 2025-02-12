@@ -181,7 +181,8 @@ describe("GraphFlow", function () {
       outputs: z.object({
         value: z.number().min(5),
       }),
-      execute: async (context, inputs: { increment: number }) => {
+      execute: async (context, inputs?: { increment: number }) => {
+        if (!inputs) throw new Error("Inputs required");
         context.value = (context.value ?? 0) + inputs.increment;
       },
       next: [],
@@ -230,30 +231,31 @@ describe("GraphFlow", function () {
    */
   it("should retry a node execution when it fails", async () => {
     let attempts = 0;
-    const nodes = new Map();
-    nodes.set("test", {
-      name: "test",
-      execute: async () => {
+    const retryNode: Node<TestSchema> = {
+      name: "retryNode",
+      execute: async (context) => {
         attempts++;
         if (attempts < 3) {
           throw new Error("Temporary failure");
         }
+        context.value = 42;
       },
       retry: {
         maxAttempts: 3,
         delay: 100,
       },
-    });
+    };
 
     const graph = new GraphFlow("test", {
       name: "test",
       schema: TestSchema,
       context: { value: 0 },
-      nodes: Array.from(nodes.values()),
+      nodes: [retryNode],
     });
 
-    await graph.execute("test");
+    await graph.execute("retryNode");
     expect(attempts).to.equal(3);
+    expect(graph.getContext().value).to.equal(42);
   });
 
   /**
@@ -300,21 +302,22 @@ describe("GraphFlow", function () {
    * Tests input validation error handling
    */
   it("should throw error when node input validation fails", async () => {
-    const InputSchema = z.object({
-      value: z.number().min(0),
-    });
+    const node: Node<TestSchema> = {
+      name: "test",
+      inputs: z.object({
+        value: z.number().min(0),
+      }),
+      execute: async (context, inputs) => {
+        if (!inputs) throw new Error("Inputs required");
+        context.value = inputs.value;
+      },
+    };
 
     const graph = new GraphFlow("test", {
       name: "test",
       schema: TestSchema,
       context: { value: 0 },
-      nodes: [
-        {
-          name: "test",
-          inputs: InputSchema,
-          execute: async () => {},
-        },
-      ],
+      nodes: [node],
     });
 
     try {
@@ -356,6 +359,13 @@ describe("GraphFlow", function () {
    * Tests successful input/output validation flow
    */
   it("should successfully validate both inputs and outputs", async function () {
+    const graph = new GraphFlow("test", {
+      name: "test",
+      schema: TestSchema,
+      context: { value: 0 },
+      nodes: [],
+    });
+
     const validatedNode: Node<TestSchema, { increment: number }> = {
       name: "validatedNode",
       inputs: z.object({
@@ -364,7 +374,8 @@ describe("GraphFlow", function () {
       outputs: z.object({
         value: z.number().min(0).max(10),
       }),
-      execute: async (context, inputs: { increment: number }) => {
+      execute: async (context, inputs?: { increment: number }) => {
+        if (!inputs) throw new Error("Inputs required");
         context.value = (context.value ?? 0) + inputs.increment;
       },
       next: [],
