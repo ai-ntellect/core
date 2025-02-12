@@ -4,7 +4,19 @@ import { GraphContext, GraphEvent, Node } from "../types";
 import { GraphEventManager } from "./event-manager";
 import { GraphLogger } from "./logger";
 
-export class GraphNodeExecutor<T extends ZodSchema> {
+/**
+ * Represents a node in the graph that can execute operations and manage state
+ * @template T - The Zod schema type for validation
+ */
+export class GraphNode<T extends ZodSchema> {
+  /**
+   * Creates a new GraphNode instance
+   * @param nodes - Map of all nodes in the graph
+   * @param logger - Logger instance for tracking node operations
+   * @param eventManager - Manager for handling graph events
+   * @param eventSubject - Subject for emitting events
+   * @param stateSubject - Subject for managing graph state
+   */
   constructor(
     private nodes: Map<string, Node<T, any>>,
     private logger: GraphLogger,
@@ -14,7 +26,10 @@ export class GraphNodeExecutor<T extends ZodSchema> {
   ) {}
 
   /**
-   * Simplified event emission
+   * Emits an event with the specified type and payload
+   * @param type - The type of event to emit
+   * @param payload - The data associated with the event
+   * @private
    */
   private emitEvent(type: string, payload: any) {
     this.logger.addLog(`📢 Event: ${type}`);
@@ -40,6 +55,14 @@ export class GraphNodeExecutor<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Executes a node with the given name and context
+   * @param nodeName - The name of the node to execute
+   * @param context - The current graph context
+   * @param inputs - Input data for the node
+   * @param triggeredByEvent - Whether the execution was triggered by an event
+   * @throws Error if the node is not found or execution fails
+   */
   async executeNode(
     nodeName: string,
     context: GraphContext<T>,
@@ -146,6 +169,14 @@ export class GraphNodeExecutor<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Validates the inputs for a node using its schema
+   * @param node - The node whose inputs need validation
+   * @param inputs - The input data to validate
+   * @param nodeName - The name of the node (for error messages)
+   * @throws Error if validation fails
+   * @private
+   */
   private async validateInputs(
     node: Node<T, any>,
     inputs: any,
@@ -164,6 +195,14 @@ export class GraphNodeExecutor<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Validates the outputs of a node against its schema
+   * @param node - The node whose outputs need validation
+   * @param context - The current graph context
+   * @param nodeName - The name of the node (for error messages)
+   * @throws Error if validation fails
+   * @private
+   */
   private async validateOutputs(
     node: Node<T, any>,
     context: GraphContext<T>,
@@ -180,6 +219,13 @@ export class GraphNodeExecutor<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Handles event-related operations for a node
+   * @param node - The node whose events need handling
+   * @param nodeName - The name of the node
+   * @param context - The current graph context
+   * @private
+   */
   private async handleEvents(
     node: Node<T, any>,
     nodeName: string,
@@ -194,6 +240,15 @@ export class GraphNodeExecutor<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Executes a node with retry logic
+   * @param node - The node to execute
+   * @param contextProxy - The proxied graph context
+   * @param inputs - Input data for the node
+   * @param nodeName - The name of the node
+   * @throws Error if all retry attempts fail
+   * @private
+   */
   private async executeWithRetry(
     node: Node<T, any>,
     contextProxy: GraphContext<T>,
@@ -236,6 +291,14 @@ export class GraphNodeExecutor<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Handles the failure of retry attempts
+   * @param node - The node that failed
+   * @param error - The error that caused the failure
+   * @param context - The current graph context
+   * @param nodeName - The name of the node
+   * @private
+   */
   private async handleRetryFailure(
     node: Node<T, any>,
     error: Error,
@@ -266,6 +329,13 @@ export class GraphNodeExecutor<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Handles correlated events for a node
+   * @param node - The node with correlated events
+   * @param nodeName - The name of the node
+   * @throws Error if correlation fails or timeout occurs
+   * @private
+   */
   private async handleCorrelatedEvents(
     node: Node<T, any>,
     nodeName: string
@@ -305,6 +375,13 @@ export class GraphNodeExecutor<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Handles waiting for events
+   * @param node - The node waiting for events
+   * @param nodeName - The name of the node
+   * @throws Error if timeout occurs
+   * @private
+   */
   private async handleWaitForEvents(
     node: Node<T, any>,
     nodeName: string

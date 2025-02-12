@@ -1,4 +1,12 @@
-import { BaseMemoryType, CreateMemoryInput, ScheduledRequest } from "../types";
+import { Observable } from "rxjs";
+import { ZodSchema } from "zod";
+import {
+  BaseMemoryType,
+  CreateMemoryInput,
+  GraphContext,
+  GraphEvent,
+  ScheduledRequest,
+} from "../types";
 
 /* ======================== EMBEDDING SERVICE ======================== */
 
@@ -489,4 +497,49 @@ export interface IJobStorage {
   deleteRequest(id: string): Promise<void>;
   getAllRequests(): Promise<ScheduledRequest[]>;
   clear(): Promise<void>;
+}
+
+/**
+ * Interface defining the extended functionality of a graph observable
+ * @template T - The Zod schema type that defines the structure of the graph data
+ */
+export interface GraphObservable<T extends ZodSchema> extends Observable<any> {
+  /**
+   * Observes the entire graph state
+   */
+  state(): Observable<GraphContext<T>>;
+
+  /**
+   * Observes a specific node's state
+   * @param nodeName - The name of the node to observe
+   */
+  node(nodeName: string): Observable<any>;
+
+  /**
+   * Observes multiple nodes' states
+   * @param nodeNames - Array of node names to observe
+   */
+  nodes(nodeNames: string[]): Observable<any>;
+
+  /**
+   * Observes specific properties of the graph context
+   * @param prop - Property or array of properties to observe
+   */
+  property(prop: string | string[]): Observable<any>;
+
+  /**
+   * Observes specific events in the graph
+   * @param eventName - The name of the event to observe
+   */
+  event(eventName: string): Observable<GraphEvent<T>>;
+
+  /**
+   * Waits for a specific condition to be met
+   * @param observable - The observable to watch
+   * @param predicate - Function that determines when the condition is met
+   */
+  until(
+    observable: Observable<any>,
+    predicate: (state: any) => boolean
+  ): Promise<any>;
 }

@@ -8,7 +8,8 @@
     "test": "mocha -r ./node_modules/ts-node/register",
     "test:all": "mocha -r ./node_modules/ts-node/register 'test/**/*.test.ts'",
     "test:coverage": "nyc --reporter=text --reporter=html pnpm test",
-    "test:watch": "mocha --require ./node_modules/ts-node/register 'test/**/*.test.ts' --watch --watch-files ./**/*.ts,test/**/*.ts"
+    "test:watch": "mocha --require ./node_modules/ts-node/register 'test/**/*.test.ts' --watch --watch-files ./**/*.ts,test/**/*.ts",
+    "test:watch:graph": "mocha --require ./node_modules/ts-node/register 'test/graph/**/*.test.ts' --watch --watch-files ./graph/**/*.ts test/**/*.ts"
   },
   "keywords": [],
   "author": "Lorcann Rauzduel",
@@ -43,6 +44,7 @@
   },
   "homepage": "https://github.com/ai-ntellect/core#readme",
   "bin": {
-    "wallet-assistant": "./dist/examples/index.js"
+    "wallet-assistant": "./dist/examples/index.js",
+    "workflow": "./dist/cli.js"
   }
 }

@@ -1,11 +1,11 @@
 import { EventEmitter } from "events";
-import { BehaviorSubject, Observable, Subject } from "rxjs";
+import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
-import { IEventEmitter } from "../interfaces";
+import { GraphObservable, IEventEmitter } from "../interfaces";
 import { GraphContext, GraphDefinition, GraphEvent, Node } from "../types";
 import { GraphEventManager } from "./event-manager";
 import { GraphLogger } from "./logger";
-import { GraphNodeExecutor } from "./node-executor";
+import { GraphNode } from "./node";
 import { GraphObserver } from "./observer";
 
 /**
@@ -28,7 +28,6 @@ export class GraphFlow<T extends ZodSchema> {
   private globalErrorHandler?: (error: Error, context: GraphContext<T>) => void;
   private graphEvents?: string[];
   private entryNode?: string;
-  private logs: string[] = [];
   private verbose: boolean = false;
   public nodes: Map<string, Node<T, any>>;
 
@@ -36,10 +35,10 @@ export class GraphFlow<T extends ZodSchema> {
   private stateSubject: BehaviorSubject<GraphContext<T>>;
   private destroySubject: Subject<void> = new Subject();
 
-  private observer: GraphObserver<T>;
+  public observer: GraphObserver<T>;
   private logger: GraphLogger;
   private eventManager: GraphEventManager<T>;
-  private nodeExecutor: GraphNodeExecutor<T>;
+  private nodeExecutor: GraphNode<T>;
 
   /**
    * Creates a new instance of GraphFlow
@@ -75,7 +74,7 @@ export class GraphFlow<T extends ZodSchema> {
       config.entryNode,
       config.onError
     );
-    this.nodeExecutor = new GraphNodeExecutor(
+    this.nodeExecutor = new GraphNode(
       this.nodes,
       this.logger,
       this.eventManager,
@@ -183,8 +182,19 @@ export class GraphFlow<T extends ZodSchema> {
   /**
    * Get the observer instance for monitoring graph state and events
    */
-  public observe() {
-    return this.observer;
+  public observe(
+    options: {
+      debounce?: number;
+      delay?: number;
+      stream?: boolean;
+      properties?: (keyof GraphContext<T> extends string
+        ? keyof GraphContext<T>
+        : never)[];
+      onStreamLetter?: (data: { letter: string; property: string }) => void;
+      onStreamComplete?: () => void;
+    } = {}
+  ): GraphObservable<T> {
+    return this.observer.state(options) as GraphObservable<T>;
   }
 
   /**

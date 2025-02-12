@@ -1,4 +1,11 @@
-import { BehaviorSubject, Observable, Subject, combineLatest } from "rxjs";
+import { GraphObservable } from "interfaces";
+import {
+  BehaviorSubject,
+  Observable,
+  Subject,
+  combineLatest,
+  firstValueFrom,
+} from "rxjs";
 import {
   distinctUntilChanged,
   filter,
@@ -28,24 +35,102 @@ export class GraphObserver<T extends ZodSchema> {
 
   /**
    * Observes the entire graph state changes
+   * @param options Configuration options for the observation
+   * @param options.debounce Debounce time in milliseconds
+   * @param options.delay Delay between emissions in milliseconds
+   * @param options.stream If true, streams the specified properties letter by letter
+   * @param options.properties List of properties to stream
+   * @param options.onStreamLetter Callback for each letter emitted during streaming
+   * @param options.onStreamComplete Callback when streaming is complete
    * @returns An Observable that emits the complete graph context whenever it changes
    */
-  state(): Observable<GraphContext<T>> {
-    return this.eventSubject.pipe(
-      filter(
-        (event) =>
-          event.type === "nodeStateChanged" ||
-          event.type === "nodeStarted" ||
-          event.type === "nodeCompleted"
-      ),
-      map((event) => event.payload.context),
-      startWith(this.stateSubject.getValue()),
-      distinctUntilChanged(
-        (prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)
-      ),
-      takeUntil(this.destroySubject),
-      share()
-    );
+  state(
+    options: {
+      debounce?: number;
+      delay?: number;
+      stream?: boolean;
+      properties?: (keyof GraphContext<T>)[];
+      onStreamLetter?: (data: { letter: string; property: string }) => void;
+      onStreamComplete?: () => void;
+    } = {}
+  ): GraphObservable<T> {
+    const baseObservable = new Observable<any>((subscriber) => {
+      const subscription = this.eventSubject
+        .pipe(
+          filter(
+            (event) =>
+              event.type === "nodeStateChanged" ||
+              event.type === "nodeStarted" ||
+              event.type === "nodeCompleted"
+          ),
+          map((event) => event.payload.context),
+          startWith(this.stateSubject.getValue()),
+          distinctUntilChanged(
+            (prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)
+          )
+        )
+        .subscribe(subscriber);
+
+      // Stream the specified properties if specified
+      if (options.stream && options.properties) {
+        const context = this.stateSubject.getValue();
+        options.properties.forEach((property) => {
+          const message = context[property];
+          if (message) {
+            this.streamMessage(
+              message.toString(),
+              500,
+              property as string
+            ).subscribe({
+              next: (data) => options.onStreamLetter?.(data),
+              complete: () => options.onStreamComplete?.(),
+            });
+          }
+        });
+      }
+
+      return () => subscription.unsubscribe();
+    });
+
+    // Extend the observable with our custom methods
+    return Object.assign(baseObservable, {
+      state: () => this.stateSubject.asObservable(),
+      node: (nodeName: string) =>
+        this.stateSubject.pipe(map((state) => ({ ...state, nodeName }))),
+      nodes: (nodeNames: string[]) =>
+        this.eventSubject.pipe(
+          filter(
+            (event) =>
+              event.type === "nodeStateChanged" &&
+              nodeNames.includes(event.payload?.name ?? "")
+          ),
+          map((event) => event.payload.context),
+          distinctUntilChanged(
+            (prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)
+          ),
+          takeUntil(this.destroySubject),
+          share()
+        ),
+      property: (props: string | string[]) =>
+        this.stateSubject.pipe(
+          map((state) => {
+            const properties = Array.isArray(props) ? props : [props];
+            return properties.reduce(
+              (acc, prop) => ({
+                ...acc,
+                [prop]: state[prop],
+              }),
+              {}
+            );
+          })
+        ),
+      event: (eventName: string) =>
+        this.eventSubject.pipe(filter((event) => event.type === eventName)),
+      until: (
+        observable: Observable<any>,
+        predicate: (state: any) => boolean
+      ) => firstValueFrom(observable.pipe(filter(predicate), take(1))),
+    }) as GraphObservable<T>;
   }
 
   /**
@@ -207,7 +292,10 @@ export class GraphObserver<T extends ZodSchema> {
     });
   }
 
-  // Méthode pour observer les changements d'état
+  /**
+   * Observes the current state of the graph
+   * @returns Observable that emits the current graph context
+   */
   observeState(): Observable<GraphContext<T>> {
     return this.stateSubject.asObservable().pipe(
       takeUntil(this.destroySubject),
@@ -217,7 +305,11 @@ export class GraphObserver<T extends ZodSchema> {
     );
   }
 
-  // Méthode pour observer les événements
+  /**
+   * Observes specific event types in the graph
+   * @param eventType - The type of event to observe
+   * @returns Observable that emits events of the specified type
+   */
   observeEvents(eventType: string): Observable<GraphEvent<T>> {
     return this.eventSubject.asObservable().pipe(
       takeUntil(this.destroySubject),
@@ -225,7 +317,11 @@ export class GraphObserver<T extends ZodSchema> {
     );
   }
 
-  // Méthode pour observer les changements d'état d'un nœud spécifique
+  /**
+   * Observes state changes for a specific node
+   * @param nodeName - The name of the node to observe
+   * @returns Observable that emits the graph context when the specified node changes
+   */
   observeNodeState(nodeName: string): Observable<GraphContext<T>> {
     return this.eventSubject.asObservable().pipe(
       takeUntil(this.destroySubject),
@@ -234,6 +330,32 @@ export class GraphObserver<T extends ZodSchema> {
           event.type === "nodeStateChanged" && event.payload?.name === nodeName
       ),
       map(() => this.stateSubject.value)
+    );
+  }
+
+  /**
+   * Streams a message letter by letter with a specified delay
+   * @param message - The message to stream
+   * @param delayMs - The delay in milliseconds between each letter
+   * @param property - The property name being streamed
+   * @returns An Observable that emits each letter of the message along with its property
+   */
+  streamMessage(
+    message: string,
+    delayMs: number,
+    property: string
+  ): Observable<{ letter: string; property: string }> {
+    return new Observable<{ letter: string; property: string }>(
+      (subscriber) => {
+        for (let i = 0; i < message.length; i++) {
+          setTimeout(() => {
+            subscriber.next({ letter: message[i], property });
+            if (i === message.length - 1) {
+              subscriber.complete();
+            }
+          }, i * delayMs);
+        }
+      }
     );
   }
 }

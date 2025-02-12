@@ -1,8 +1,14 @@
-import { IEventEmitter } from "interfaces";
 import { Observable, Subject, filter } from "rxjs";
-import { GraphContext, GraphEvent, Node } from "types";
 import { ZodSchema } from "zod";
-import { GraphNodeExecutor } from "./node-executor";
+import { IEventEmitter } from "../interfaces";
+import { GraphContext, GraphEvent, Node } from "../types";
+import { GraphNode } from "./node";
+
+/**
+ * Manages event handling and routing for a graph
+ * Coordinates event emission, listening, and execution of event-driven nodes
+ * @template T - The Zod schema type for validation
+ */
 export class GraphEventManager<T extends ZodSchema> {
   private eventSubject: Subject<GraphEvent<T>> = new Subject();
   private nodeStreams: Map<string, Observable<GraphEvent<T>>> = new Map();
@@ -12,6 +18,17 @@ export class GraphEventManager<T extends ZodSchema> {
   private entryNode?: string;
   private globalErrorHandler?: (error: Error, context: GraphContext<T>) => void;
 
+  /**
+   * Creates a new GraphEventManager instance
+   * @param eventEmitter - The event emitter implementation to use
+   * @param nodes - Map of all nodes in the graph
+   * @param name - Name of the graph
+   * @param context - Initial graph context
+   * @param graphEvents - List of events the graph should listen to
+   * @param entryNode - Name of the entry node for graph events
+   * @param globalErrorHandler - Global error handling function
+   * @param nodeExecutor - GraphNode instance for executing nodes
+   */
   constructor(
     private eventEmitter: IEventEmitter,
     private nodes: Map<string, Node<T, any>>,
@@ -20,7 +37,7 @@ export class GraphEventManager<T extends ZodSchema> {
     graphEvents?: string[],
     entryNode?: string,
     globalErrorHandler?: (error: Error, context: GraphContext<T>) => void,
-    private nodeExecutor?: GraphNodeExecutor<T>
+    private nodeExecutor?: GraphNode<T>
   ) {
     this.name = name;
     this.context = context;
@@ -30,6 +47,9 @@ export class GraphEventManager<T extends ZodSchema> {
     this.setupEventStreams();
   }
 
+  /**
+   * Sets up event streams for all nodes that listen to events
+   */
   public setupEventStreams(): void {
     for (const [nodeName, node] of this.nodes.entries()) {
       if (node.events && node.events.length > 0) {
@@ -41,6 +61,12 @@ export class GraphEventManager<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Emits an event with optional payload and context
+   * @param type - The type of event to emit
+   * @param payload - Optional payload data
+   * @param context - Optional graph context
+   */
   public emitEvent<P = any>(
     type: string,
     payload?: P,
@@ -51,6 +77,10 @@ export class GraphEventManager<T extends ZodSchema> {
     this.eventEmitter.emit(type, event);
   }
 
+  /**
+   * Sets up event listeners for all nodes in the graph
+   * Handles cleanup and re-registration of event listeners
+   */
   setupEventListeners(): void {
     // First remove only the existing node-based listeners that we might have created previously
     // We do NOT remove, for example, "nodeStarted" or "nodeCompleted" listeners that test code added.
@@ -100,6 +130,10 @@ export class GraphEventManager<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Sets up listeners for graph-level events
+   * Handles graph start, completion, and error events
+   */
   setupGraphEventListeners(): void {
     if (this.graphEvents && this.graphEvents.length > 0) {
       this.graphEvents.forEach((event) => {
@@ -139,6 +173,13 @@ export class GraphEventManager<T extends ZodSchema> {
     }
   }
 
+  /**
+   * Waits for a set of events to occur within a timeout period
+   * @param events - Array of event names to wait for
+   * @param timeout - Maximum time to wait in milliseconds
+   * @returns Promise that resolves with array of received events
+   * @throws Error if timeout occurs before all events are received
+   */
   async waitForEvents(
     events: string[],
     timeout: number = 30000
@@ -191,18 +232,43 @@ export class GraphEventManager<T extends ZodSchema> {
     });
   }
 
+  /**
+   * Registers an event handler
+   * @param eventName - Name of the event to listen for
+   * @param handler - Function to handle the event
+   */
   on(eventName: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.on(eventName, handler);
   }
 
+  /**
+   * Emits an event through the event emitter
+   * @param eventName - Name of the event to emit
+   * @param data - Optional data to include with the event
+   */
   emit(eventName: string, data?: any): void {
     this.eventEmitter.emit(eventName, data);
   }
 
+  /**
+   * Creates a new context object by cloning the current context
+   * @returns A new graph context instance
+   * @private
+   */
   private createNewContext(): GraphContext<T> {
     return structuredClone(this.context);
   }
 
+  /**
+   * Executes a node with the given parameters
+   * @param nodeName - Name of the node to execute
+   * @param context - Graph context for execution
+   * @param inputs - Input data for the node
+   * @param triggeredByEvent - Whether execution was triggered by an event
+   * @returns Promise that resolves when execution is complete
+   * @throws Error if nodeExecutor is not initialized
+   * @private
+   */
   private async executeNode(
     nodeName: string,
     context: GraphContext<T>,
@@ -219,6 +285,4 @@ export class GraphEventManager<T extends ZodSchema> {
       triggeredByEvent
     );
   }
-
-  // ... autres méthodes liées aux événements
 }
