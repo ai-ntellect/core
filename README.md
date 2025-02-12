@@ -34,50 +34,35 @@ npm install @ai.ntellect/core zod
 ## Example
 
 ```typescript
-import { z } from "zod";
 import { GraphFlow } from "@ai.ntellect/core";
+import { z } from "zod";
 
-// Define context schema
+// Definition of the context schema
 const ContextSchema = z.object({
   message: z.string(),
-  counter: z.number(),
 });
 
-// Create graph instance
-const graph = new GraphFlow<typeof ContextSchema>("MyGraph", {
-  name: "MyGraph",
+type ContextSchema = typeof ContextSchema;
+
+// Definition of the graph
+const myGraph = new GraphFlow<ContextSchema>("TestGraph", {
+  name: "TestGraph",
+  context: { message: "Installation success" },
   schema: ContextSchema,
-  context: { message: "Hello", counter: 0 },
   nodes: [
     {
-      name: "incrementCounter",
+      name: "printMessage",
       execute: async (context) => {
-        context.counter++;
+        console.log(context.message);
       },
-      next: ["checkThreshold"],
-    },
-    {
-      name: "checkThreshold",
-      condition: (context) => context.counter < 5,
-      execute: async (context) => {
-        if (context.counter >= 5) {
-          context.message = "Threshold reached!";
-        }
-      },
-      next: ["incrementCounter"],
-      retry: {
-        maxAttempts: 3,
-        delay: 1000,
-      },
+      next: [],
     },
   ],
 });
 
-// Observe state changes
+// Execution of the graph
 (async () => {
-  // Execute the graph
-  graph.execute("incrementCounter");
-  graph.observe().state().subscribe(console.log);
+  await myGraph.execute("printMessage");
 })();
 ```
 
