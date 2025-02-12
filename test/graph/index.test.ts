@@ -2,7 +2,7 @@ import { expect } from "chai";
 import EventEmitter from "events";
 import sinon from "sinon";
 import { z } from "zod";
-import { GraphFlowController } from "../../graph/controller";
+import { GraphController } from "../../graph/controller";
 import { GraphFlow } from "../../graph/index";
 import { GraphContext, GraphDefinition, Node } from "../../types";
 
@@ -547,7 +547,7 @@ describe("GraphFlow", function () {
     graph2.addNode(processNode2);
     graph2.addNode(finalizeNode2);
 
-    const results = await GraphFlowController.executeParallel(
+    const results = await GraphController.executeParallel(
       [graph1, graph2],
       ["process1", "process2"],
       2,
@@ -595,7 +595,7 @@ describe("GraphFlow", function () {
     graph1.addNode(startNode1);
     graph2.addNode(startNode2);
 
-    const results = await GraphFlowController.executeSequential(
+    const results = await GraphController.executeSequential(
       [graph1, graph2],
       ["start1", "start2"],
       [{}, {}]

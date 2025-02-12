@@ -6,7 +6,7 @@ import { GraphFlow } from "./index";
  * Controller class for managing the execution of graph flows
  * Handles both sequential and parallel execution of multiple graphs
  */
-export class GraphFlowController {
+export class GraphController {
   /**
    * Executes multiple graphs sequentially
    * @param graphs - Array of GraphFlow instances to execute
