@@ -1,3 +1,4 @@
+import { IEventEmitter } from "interfaces";
 import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
 import { GraphContext, GraphEvent, Node } from "../types";
@@ -17,6 +18,7 @@ export interface GraphLogger {
 
 export class GraphNode<T extends ZodSchema> {
   private lastStateEvent: GraphEvent<T> | null = null;
+  private eventEmitter: IEventEmitter;
 
   /**
    * Creates a new GraphNode instance
@@ -32,7 +34,9 @@ export class GraphNode<T extends ZodSchema> {
     private eventManager: GraphEventManager<T>,
     private eventSubject: Subject<GraphEvent<T>>,
     private stateSubject: BehaviorSubject<GraphContext<T>>
-  ) {}
+  ) {
+    this.eventEmitter = eventManager["eventEmitter"];
+  }
 
   /**
    * Emits an event with the specified type and payload
@@ -88,19 +92,36 @@ export class GraphNode<T extends ZodSchema> {
     const node = this.nodes.get(nodeName);
     if (!node) throw new Error(`Node "${nodeName}" not found.`);
 
-    // Créer une copie du contexte pour ce nœud
     const nodeContext = { ...context };
     this.emitEvent("nodeStarted", { name: nodeName, context: nodeContext });
 
     try {
+      if (node.correlateEvents) {
+        await this.eventManager.waitForCorrelatedEvents(
+          node.correlateEvents.events,
+          node.correlateEvents.timeout || 30000,
+          (events) => {
+            return node.correlateEvents!.correlation(events);
+          }
+        );
+      }
+
+      // Ensuite, attendre les événements si waitForEvents est défini
+      if (node.waitForEvents) {
+        await this.eventManager.waitForEvents(
+          node.waitForEvents.events,
+          node.waitForEvents.timeout
+        );
+      }
+
       const contextProxy = new Proxy(nodeContext, {
-        set: (target, prop, value) => {
-          const oldValue = target[prop];
+        set: (target: any, prop: string | symbol, value: any) => {
+          const oldValue = target[prop.toString()];
           if (oldValue === value) return true;
 
-          target[prop] = value;
+          target[prop.toString()] = value;
           // Mettre à jour le contexte global
-          context[prop as keyof typeof context] = value;
+          context[prop.toString() as keyof typeof context] = value;
 
           this.emitEvent("nodeStateChanged", {
             nodeName,
@@ -207,12 +228,13 @@ export class GraphNode<T extends ZodSchema> {
 
     while (attempts < (node.retry?.maxAttempts || 1)) {
       try {
-        // Valider les params uniquement si un schéma est défini
         if (node.params) {
           await this.validateParams(node, params, nodeName);
         }
 
-        await node.execute(contextProxy, params);
+        await node.execute(contextProxy, params, {
+          eventEmitter: this.eventEmitter,
+        });
         return;
       } catch (error: any) {
         lastError =

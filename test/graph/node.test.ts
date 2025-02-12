@@ -507,4 +507,149 @@ describe("GraphNode", () => {
     expect(stateChanges).to.have.lengthOf(2);
     expect(stateChanges[1].payload.newValue).to.equal(2);
   });
+
+  it("should wait for events before executing node", async () => {
+    const nodes = new Map();
+    nodes.set("waitForEventsNode", {
+      name: "waitForEventsNode",
+      waitForEvents: {
+        events: ["event1", "event2"],
+        timeout: 1000,
+        strategy: "all",
+      },
+      execute: async (context: TestContext) => {
+        context.message = "Events received";
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    // Lancer l'exécution du nœud
+    const execution = node.executeNode(
+      "waitForEventsNode",
+      { counter: 0, message: "Hello" },
+      null
+    );
+
+    // Simuler les événements après un court délai
+    setTimeout(() => {
+      eventEmitter.emit("event1", { data: "test1" });
+      eventEmitter.emit("event2", { data: "test2" });
+    }, 100);
+
+    await execution;
+
+    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
+    expect(stateChanges).to.have.lengthOf(1);
+    expect(stateChanges[0].payload.newValue).to.equal("Events received");
+  });
+
+  it("should timeout if events are not received", async () => {
+    const nodes = new Map();
+    nodes.set("timeoutNode", {
+      name: "timeoutNode",
+      waitForEvents: {
+        events: ["event1", "event2"],
+        timeout: 100,
+        strategy: "all",
+      },
+      execute: async (context: TestContext) => {
+        context.message = "Should not execute";
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    await expect(
+      node.executeNode("timeoutNode", { counter: 0, message: "Hello" }, null)
+    ).to.be.rejectedWith("Timeout waiting for events");
+  });
+
+  it("should handle partial event reception", async () => {
+    const nodes = new Map();
+    nodes.set("partialEventsNode", {
+      name: "partialEventsNode",
+      waitForEvents: {
+        events: ["event1", "event2"],
+        timeout: 1000,
+        strategy: "all",
+      },
+      execute: async (context: TestContext) => {
+        context.message = "All events received";
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    const execution = node.executeNode(
+      "partialEventsNode",
+      { counter: 0, message: "Hello" },
+      null
+    );
+
+    // N'émettre qu'un seul événement
+    setTimeout(() => {
+      eventEmitter.emit("event1", { data: "test1" });
+    }, 100);
+
+    await expect(execution).to.be.rejectedWith("Timeout waiting for events");
+  });
+
+  it("should handle correlated events", (done) => {
+    const nodes = new Map();
+    nodes.set("correlatedEventsNode", {
+      name: "correlatedEventsNode",
+      correlateEvents: {
+        events: ["payment", "stock"],
+        timeout: 1000,
+        correlation: (events: Array<{ type: string; payload?: any }>) => {
+          const paymentEvent = events.find((e) => e.type === "payment");
+          const stockEvent = events.find((e) => e.type === "stock");
+          return paymentEvent?.payload?.id === stockEvent?.payload?.id;
+        },
+      },
+      execute: (context: TestContext) => {
+        context.message = "Correlated events received";
+        done();
+        return Promise.resolve();
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    node.executeNode(
+      "correlatedEventsNode",
+      { counter: 0, message: "Hello" },
+      null
+    );
+
+    setTimeout(() => {
+      eventEmitter.emit("payment", { id: "123", status: "completed" });
+      eventEmitter.emit("stock", { id: "123", status: "available" });
+    }, 100);
+  });
 });

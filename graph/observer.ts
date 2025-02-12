@@ -21,6 +21,15 @@ import { GraphObservable } from "../interfaces";
 import { GraphContext, GraphEvent } from "../types";
 import { GraphFlow } from "./index";
 
+interface ObserverOptions {
+  debounce?: number;
+  delay?: number;
+  stream?: boolean;
+  properties?: (string | number)[]; // Accepte uniquement string ou number comme clés
+  onStreamLetter?: (data: { letter: string; property: string }) => void;
+  onStreamComplete?: () => void;
+}
+
 /**
  * GraphObserver class provides reactive observation capabilities for a GraphFlow instance
  * It allows monitoring state changes, node updates, and specific events in the graph
@@ -45,16 +54,7 @@ export class GraphObserver<T extends ZodSchema> {
    * @param options.onStreamComplete Callback when streaming is complete
    * @returns An Observable that emits the complete graph context whenever it changes
    */
-  state(
-    options: {
-      debounce?: number;
-      delay?: number;
-      stream?: boolean;
-      properties?: (keyof GraphContext<T>)[];
-      onStreamLetter?: (data: { letter: string; property: string }) => void;
-      onStreamComplete?: () => void;
-    } = {}
-  ): GraphObservable<T> {
+  state(options: ObserverOptions = {}): GraphObservable<T> {
     const baseObservable = new Observable<any>((subscriber) => {
       const subscription = combineLatest([
         this.eventSubject.pipe(

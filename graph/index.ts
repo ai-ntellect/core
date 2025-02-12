@@ -187,9 +187,7 @@ export class GraphFlow<T extends ZodSchema> {
       debounce?: number;
       delay?: number;
       stream?: boolean;
-      properties?: (keyof GraphContext<T> extends string
-        ? keyof GraphContext<T>
-        : never)[];
+      properties?: (string | number)[];
       onStreamLetter?: (data: { letter: string; property: string }) => void;
       onStreamComplete?: () => void;
     } = {}

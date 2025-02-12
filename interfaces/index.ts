@@ -6,6 +6,7 @@ import {
   GraphContext,
   GraphEvent,
   ScheduledRequest,
+  SchemaType,
 } from "../types";
 
 /* ======================== EMBEDDING SERVICE ======================== */
@@ -525,7 +526,9 @@ export interface GraphObservable<T extends ZodSchema> extends Observable<any> {
    * Observes specific properties of the graph context
    * @param prop - Property or array of properties to observe
    */
-  property(prop: string | string[]): Observable<any>;
+  property(
+    prop: keyof SchemaType<T> | Array<keyof SchemaType<T>>
+  ): Observable<any>;
 
   /**
    * Observes specific events in the graph

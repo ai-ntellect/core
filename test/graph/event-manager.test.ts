@@ -69,4 +69,50 @@ describe("GraphEventManager", () => {
     eventManager.setupEventListeners();
     expect(eventEmitter.listenerCount("customEvent")).to.equal(1);
   });
+
+  it("should handle timeout for correlated events", async () => {
+    const timeout = 100;
+
+    try {
+      // N'émettre qu'un seul événement pour provoquer le timeout
+      eventManager.emitEvent("event1", { data: "test1" });
+
+      await eventManager.waitForCorrelatedEvents(
+        ["event1", "event2"],
+        timeout,
+        () => false // La fonction de corrélation retourne toujours false pour forcer le timeout
+      );
+      throw new Error("Should have timed out");
+    } catch (error: any) {
+      expect(error.message).to.include("Timeout waiting for correlated events");
+    }
+  });
+
+  it("should wait for multiple events before continuing", async () => {
+    let receivedEvents = 0;
+    let resolvePromise: (value: unknown) => void;
+    const eventPromise = new Promise((resolve) => {
+      resolvePromise = resolve;
+    });
+
+    // Configurer les écouteurs d'événements AVANT d'émettre
+    eventEmitter.on("event1", () => {
+      receivedEvents++;
+      if (receivedEvents === 2) resolvePromise(true);
+    });
+    eventEmitter.on("event2", () => {
+      receivedEvents++;
+      if (receivedEvents === 2) resolvePromise(true);
+    });
+
+    // Émettre les événements AVANT de démarrer l'attente
+    eventManager.emitEvent("event1", { data: "test1" });
+    eventManager.emitEvent("event2", { data: "test2" });
+
+    // Démarrer l'attente
+    const waitPromise = eventManager.waitForEvents(["event1", "event2"], 1000);
+
+    await Promise.race([waitPromise, eventPromise]);
+    expect(receivedEvents).to.equal(2);
+  });
 });

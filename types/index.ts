@@ -69,7 +69,9 @@ export type SchemaType<T> = T extends ZodSchema<infer U> ? U : never;
  * Type for graph context based on schema
  * @template T - Schema type
  */
-export type GraphContext<T> = SchemaType<T>;
+export type GraphContext<T extends ZodSchema> = {
+  [key: string]: any;
+};
 
 /**
  * Interface representing a node in the graph
@@ -78,17 +80,21 @@ export type GraphContext<T> = SchemaType<T>;
  * @template I - Input schema type
  * @template O - Output schema type
  */
-export interface Node<T extends ZodSchema, I = any> {
+export interface Node<T extends ZodSchema, P = any> {
   /** Name of the node */
   name: string;
   /** Description of the node */
   description?: string;
   /** Schema for node inputs */
-  params?: I extends void ? never : ZodSchema<I>;
+  params?: P extends void ? never : ZodSchema<P>;
   /** Execute function for the node */
-  execute: (context: GraphContext<T>, params?: I) => Promise<void>;
+  execute: (
+    context: GraphContext<T>,
+    params?: P,
+    tools?: { eventEmitter: IEventEmitter }
+  ) => Promise<void>;
   /** Optional condition for node execution */
-  condition?: (context: GraphContext<T>, params?: I) => boolean;
+  condition?: (context: GraphContext<T>, params?: P) => boolean;
   /** Array of next node names */
   next?: string[] | ((context: GraphContext<T>) => string[]);
   /** Array of event names that trigger this node */
@@ -100,8 +106,8 @@ export interface Node<T extends ZodSchema, I = any> {
   /** Event correlation configuration */
   correlateEvents?: {
     events: string[];
-    correlation: (events: GraphEvent<T>[]) => boolean;
-    timeout?: number;
+    timeout: number;
+    correlation: (events: any[]) => boolean;
   };
   /** Retry configuration */
   retry?: {

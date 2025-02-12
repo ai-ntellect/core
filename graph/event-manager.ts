@@ -207,16 +207,10 @@ export class GraphEventManager<T extends ZodSchema> {
 
       events.forEach((event) => {
         const handler = (eventData: any) => {
-          console.log(`Received event: ${event}`, eventData);
           if (!isResolved) {
             receivedEvents.set(event, eventData);
-            console.log(
-              "Current received events:",
-              Array.from(receivedEvents.keys())
-            );
 
             if (events.every((e) => receivedEvents.has(e))) {
-              console.log("All events received, resolving");
               isResolved = true;
               clearTimeout(timeoutId);
               cleanup();
@@ -285,11 +279,85 @@ export class GraphEventManager<T extends ZodSchema> {
     if (!this.nodeExecutor) {
       throw new Error("NodeExecutor not initialized");
     }
+
+    const node = this.nodes.get(nodeName);
+    if (!node) {
+      throw new Error(`Node "${nodeName}" not found`);
+    }
+
+    // Attendre les événements si waitForEvents est configuré
+    if (node.waitForEvents) {
+      try {
+        await this.waitForEvents(
+          node.waitForEvents.events,
+          node.waitForEvents.timeout
+        );
+      } catch (error) {
+        throw new Error(
+          `Timeout waiting for events in node "${nodeName}": ${
+            (error as Error).message
+          }`
+        );
+      }
+    }
+
     return this.nodeExecutor.executeNode(
       nodeName,
       context,
       inputs,
       triggeredByEvent
     );
+  }
+
+  async waitForCorrelatedEvents(
+    eventTypes: string[],
+    timeoutMs: number,
+    correlationFn: (events: GraphEvent<T>[]) => boolean
+  ): Promise<GraphEvent<T>[]> {
+    return new Promise((resolve, reject) => {
+      const receivedEvents = new Map<string, GraphEvent<T>>();
+      let isResolved = false;
+
+      const timeoutId = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          eventTypes.forEach((type) => {
+            this.eventEmitter.removeAllListeners(type);
+          });
+          reject(
+            new Error(
+              `Timeout waiting for correlated events: ${eventTypes.join(", ")}`
+            )
+          );
+        }
+      }, timeoutMs);
+
+      const checkCorrelation = () => {
+        if (eventTypes.every((type) => receivedEvents.has(type))) {
+          const events = Array.from(receivedEvents.values());
+          if (correlationFn(events)) {
+            if (!isResolved) {
+              isResolved = true;
+              clearTimeout(timeoutId);
+              eventTypes.forEach((type) => {
+                this.eventEmitter.removeAllListeners(type);
+              });
+              resolve(events);
+            }
+          }
+        }
+      };
+
+      eventTypes.forEach((eventType) => {
+        this.eventEmitter.on(eventType, (eventData: any) => {
+          receivedEvents.set(eventType, {
+            type: eventType,
+            payload: eventData,
+            timestamp: Date.now(),
+          });
+          checkCorrelation();
+        });
+      });
+    });
   }
 }
