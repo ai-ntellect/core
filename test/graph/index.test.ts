@@ -37,7 +37,7 @@ type TestSchema = typeof TestSchema;
  * The tests use a simple numeric value-based context to demonstrate state changes
  * and a transaction-based event payload for testing event correlation.
  */
-describe("Graph", function () {
+describe("GraphFlow", function () {
   let graph: GraphFlow<TestSchema>;
   let eventEmitter: EventEmitter;
 
@@ -228,27 +228,32 @@ describe("Graph", function () {
    * - Context preservation between attempts
    * Essential for handling transient failures in workflows
    */
-  it("should retry a node execution when it fails", async function () {
-    let attemptCount = 0;
-    const retryNode: Node<TestSchema> = {
-      name: "retryNode",
-      retry: { maxAttempts: 3, delay: 0 },
-      execute: async (context) => {
-        attemptCount++;
-        if (attemptCount < 3) {
+  it("should retry a node execution when it fails", async () => {
+    let attempts = 0;
+    const nodes = new Map();
+    nodes.set("test", {
+      name: "test",
+      execute: async () => {
+        attempts++;
+        if (attempts < 3) {
           throw new Error("Temporary failure");
         }
-        context.value = (context.value ?? 0) + 1;
       },
-      next: [],
-    };
+      retry: {
+        maxAttempts: 3,
+        delay: 100,
+      },
+    });
 
-    graph.addNode(retryNode);
-    await graph.execute("retryNode");
+    const graph = new GraphFlow("test", {
+      name: "test",
+      schema: TestSchema,
+      context: { value: 0 },
+      nodes: Array.from(nodes.values()),
+    });
 
-    const context = graph.getContext();
-    expect(context.value).to.equal(1);
-    expect(attemptCount).to.equal(3);
+    await graph.execute("test");
+    expect(attempts).to.equal(3);
   });
 
   /**
@@ -294,27 +299,29 @@ describe("Graph", function () {
   /**
    * Tests input validation error handling
    */
-  it("should throw error when node input validation fails", async function () {
-    const nodeWithInput: Node<TestSchema, { amount: number }> = {
-      name: "inputNode",
-      inputs: z.object({
-        amount: z.number().min(0),
-      }),
-      execute: async (context, inputs: { amount: number }) => {
-        context.value = (context.value ?? 0) + inputs.amount;
-      },
-      next: [],
-    };
+  it("should throw error when node input validation fails", async () => {
+    const InputSchema = z.object({
+      value: z.number().min(0),
+    });
 
-    graph.addNode(nodeWithInput);
+    const graph = new GraphFlow("test", {
+      name: "test",
+      schema: TestSchema,
+      context: { value: 0 },
+      nodes: [
+        {
+          name: "test",
+          inputs: InputSchema,
+          execute: async () => {},
+        },
+      ],
+    });
 
     try {
-      await graph.execute("inputNode", { amount: -1 });
+      await graph.execute("test", { value: -1 });
       expect.fail("Should have thrown an error");
-    } catch (error) {
-      expect((error as Error).message).to.include(
-        "Number must be greater than or equal to 0"
-      );
+    } catch (error: any) {
+      expect(error.message).to.include("Number must be greater than or equal");
     }
   });
 

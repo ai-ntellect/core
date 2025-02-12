@@ -72,52 +72,41 @@ export class GraphNode<T extends ZodSchema> {
     const node = this.nodes.get(nodeName);
     if (!node) throw new Error(`Node "${nodeName}" not found.`);
 
-    this.logger.addLog(`🚀 Starting node "${nodeName}"`);
-    this.emitEvent("nodeStarted", { name: nodeName, context: { ...context } });
+    this.logger.addLog(`🚀 Starting node "${nodeName}`);
+    this.emitEvent("nodeStarted", { name: nodeName, context });
 
     try {
-      const contextProxy = new Proxy(context, {
-        set: (target, prop, value) => {
-          const oldValue = target[prop];
-          target[prop] = value;
-
-          this.emitEvent("nodeStateChanged", {
-            nodeName,
-            name: nodeName,
-            property: prop.toString(),
-            oldValue,
-            newValue: value,
-            context: { ...target },
-          });
-
-          return true;
-        },
-        get: (target, prop) => {
-          return target[prop];
-        },
-      });
-
-      if (node.condition && !node.condition(contextProxy)) {
+      // Vérifier la condition avant d'exécuter
+      if (node.condition && !node.condition(context)) {
         this.logger.addLog(
           `⏭️ Skipping node "${nodeName}" - condition not met`
         );
         return;
       }
 
-      if (node.inputs) {
-        await this.validateInputs(node, inputs, nodeName);
-      }
+      const contextProxy = new Proxy(context, {
+        set: (target, prop, value) => {
+          const oldValue = target[prop];
+          if (oldValue === value) return true;
 
-      if (node.retry && node.retry.maxAttempts > 0) {
-        await this.executeWithRetry(node, contextProxy, inputs, nodeName);
-      } else {
-        await node.execute(contextProxy, inputs);
-      }
+          target[prop] = value;
+          this.emitEvent("nodeStateChanged", {
+            nodeName,
+            property: prop.toString(),
+            oldValue,
+            newValue: value,
+            context: target,
+          });
 
-      if (node.outputs) {
-        await this.validateOutputs(node, contextProxy, nodeName);
-      }
+          return true;
+        },
+        get: (target, prop) => target[prop],
+      });
 
+      // Exécuter le nœud
+      await node.execute(contextProxy, inputs);
+
+      // Gérer la suite uniquement si pas déclenché par un événement
       if (!triggeredByEvent) {
         const nextNodes =
           typeof node.next === "function"
@@ -125,47 +114,20 @@ export class GraphNode<T extends ZodSchema> {
             : node.next || [];
 
         for (const nextNodeName of nextNodes) {
-          const nextNode = this.nodes.get(nextNodeName);
-          if (
-            nextNode &&
-            (!nextNode.condition || nextNode.condition(contextProxy))
-          ) {
-            await this.executeNode(
-              nextNodeName,
-              contextProxy,
-              undefined,
-              false
-            );
-          }
+          await this.executeNode(nextNodeName, context, undefined, false);
         }
       }
 
-      if (!triggeredByEvent) {
-        await this.handleEvents(node, nodeName, contextProxy);
-      }
-
       this.logger.addLog(`✅ Node "${nodeName}" executed successfully`);
-      this.emitEvent("nodeCompleted", {
-        name: nodeName,
-        context: { ...contextProxy },
-      });
-    } catch (error: any) {
-      const errorToThrow =
-        error instanceof Error
-          ? error
-          : new Error(error.message || "Unknown error");
-
+      this.emitEvent("nodeCompleted", { name: nodeName, context });
+    } catch (error) {
       this.logger.addLog(
-        `❌ Error in node "${nodeName}": ${errorToThrow.message}`
+        `❌ Error in node "${nodeName}": ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
-
-      this.emitEvent("nodeError", {
-        name: nodeName,
-        error: errorToThrow,
-        context,
-      });
-
-      throw errorToThrow;
+      this.emitEvent("nodeError", { name: nodeName, error, context });
+      throw error;
     }
   }
 

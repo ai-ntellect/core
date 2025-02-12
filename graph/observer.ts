@@ -6,6 +6,7 @@ import {
   firstValueFrom,
 } from "rxjs";
 import {
+  debounceTime,
   distinctUntilChanged,
   filter,
   map,
@@ -55,16 +56,23 @@ export class GraphObserver<T extends ZodSchema> {
     } = {}
   ): GraphObservable<T> {
     const baseObservable = new Observable<any>((subscriber) => {
-      const subscription = this.eventSubject
-        .pipe(
-          filter(
-            (event) =>
-              event.type === "nodeStateChanged" ||
-              event.type === "nodeStarted" ||
-              event.type === "nodeCompleted"
-          ),
+      // Combine les événements avec l'état actuel
+      const subscription = combineLatest([
+        this.eventSubject.pipe(
+          filter((event) => event.type === "nodeStateChanged"),
           map((event) => event.payload.context),
-          startWith(this.stateSubject.getValue()),
+          distinctUntilChanged(
+            (prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)
+          ),
+          debounceTime(options.debounce || 100)
+        ),
+        this.stateSubject,
+      ])
+        .pipe(
+          map(([eventContext, stateContext]) => ({
+            ...stateContext,
+            ...eventContext,
+          })),
           distinctUntilChanged(
             (prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)
           )

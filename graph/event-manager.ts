@@ -72,9 +72,16 @@ export class GraphEventManager<T extends ZodSchema> {
     payload?: P,
     context?: GraphContext<T>
   ): void {
-    const event: GraphEvent<T> = { type, payload, timestamp: Date.now() };
+    // Éviter la double imbrication des événements
+    const event = {
+      type,
+      payload,
+      timestamp: Date.now(),
+    };
+
+    // Émettre l'événement une seule fois
     this.eventSubject.next(event);
-    this.eventEmitter.emit(type, event);
+    this.eventEmitter.emit(type, payload);
   }
 
   /**
