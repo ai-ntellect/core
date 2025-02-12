@@ -1,6 +1,6 @@
-import { IMemoryAdapter } from "interfaces";
 import { createClient } from "redis";
-import { BaseMemoryType, CreateMemoryInput } from "types";
+import { IMemoryAdapter } from "../../../../interfaces";
+import { BaseMemoryType, CreateMemoryInput } from "../../../../types";
 
 /**
  * @module RedisAdapter

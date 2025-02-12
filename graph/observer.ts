@@ -1,4 +1,3 @@
-import { GraphObservable } from "interfaces";
 import {
   BehaviorSubject,
   Observable,
@@ -17,6 +16,7 @@ import {
   timeout,
 } from "rxjs/operators";
 import { ZodSchema } from "zod";
+import { GraphObservable } from "../interfaces";
 import { GraphContext, GraphEvent } from "../types";
 import { GraphFlow } from "./index";
 

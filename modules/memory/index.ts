@@ -1,5 +1,5 @@
-import { BaseMemoryType, CreateMemoryInput } from "types";
 import { BaseMemory, IMemoryAdapter } from "../../interfaces";
+import { BaseMemoryType, CreateMemoryInput } from "../../types";
 
 /**
  * @module Memory

@@ -1,5 +1,9 @@
-import { IMemoryAdapter } from "interfaces";
-import { BaseMemoryType, CreateMemoryInput, MeilisearchConfig } from "types";
+import { IMemoryAdapter } from "../../../../interfaces";
+import {
+  BaseMemoryType,
+  CreateMemoryInput,
+  MeilisearchConfig,
+} from "../../../../types";
 
 /**
  * @module MeilisearchAdapter

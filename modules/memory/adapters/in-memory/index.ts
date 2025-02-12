@@ -1,5 +1,9 @@
-import { ICronJob, IMemoryAdapter } from "interfaces";
-import { BaseMemoryType, CreateMemoryInput, ScheduledRequest } from "types";
+import { ICronJob, IMemoryAdapter } from "../../../../interfaces";
+import {
+  BaseMemoryType,
+  CreateMemoryInput,
+  ScheduledRequest,
+} from "../../../../types";
 
 /**
  * @module InMemoryAdapter

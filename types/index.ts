@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
-import { IEventEmitter } from "interfaces";
 import { ZodSchema } from "zod";
+import { IEventEmitter } from "../interfaces";
 
 /* ======================== MEMORY ======================== */
 
