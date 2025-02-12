@@ -75,7 +75,7 @@ export class GraphFlow<T extends ZodSchema> {
       config.onError
     );
     this.nodeExecutor = new GraphNode(
-      this.nodes as Map<string, import("./node").Node<T, any>>,
+      this.nodes as Map<string, Node<T, any>>,
       this.logger,
       this.eventManager,
       this.eventSubject,
@@ -236,8 +236,8 @@ export class GraphFlow<T extends ZodSchema> {
       const node = this.nodes.get(startNode);
       if (!node) throw new Error(`Node "${startNode}" not found`);
 
-      if (node.inputs && !params) {
-        throw new Error(`Inputs required for node "${startNode}"`);
+      if (node.params && !params) {
+        throw new Error(`Params required for node "${startNode}"`);
       }
 
       await this.nodeExecutor.executeNode(

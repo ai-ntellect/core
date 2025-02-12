@@ -81,10 +81,10 @@ export type GraphContext<T> = SchemaType<T>;
 export interface Node<T extends ZodSchema, I = any> {
   /** Name of the node */
   name: string;
+  /** Description of the node */
+  description?: string;
   /** Schema for node inputs */
-  inputs?: I extends void ? never : ZodSchema<I>;
-  /** Schema for node outputs */
-  outputs?: ZodSchema;
+  params?: I extends void ? never : ZodSchema<I>;
   /** Execute function for the node */
   execute: (context: GraphContext<T>, params?: I) => Promise<void>;
   /** Optional condition for node execution */

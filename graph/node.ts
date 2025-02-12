@@ -1,6 +1,6 @@
 import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
-import { GraphContext, GraphEvent } from "../types";
+import { GraphContext, GraphEvent, Node } from "../types";
 import { GraphEventManager } from "./event-manager";
 
 /**
@@ -9,33 +9,6 @@ import { GraphEventManager } from "./event-manager";
  */
 export interface NodeParams<T = any> {
   [key: string]: T;
-}
-
-export interface Node<T extends ZodSchema, I = any> {
-  condition?: (context: GraphContext<T>, params?: NodeParams) => boolean;
-  execute: (
-    context: GraphContext<T>,
-    inputs: I,
-    params?: NodeParams
-  ) => Promise<void>;
-  next?: string[] | ((context: GraphContext<T>) => string[]);
-  inputs?: ZodSchema;
-  outputs?: ZodSchema;
-  retry?: {
-    maxAttempts: number;
-    delay?: number;
-    onRetryFailed?: (error: Error, context: GraphContext<T>) => Promise<void>;
-    continueOnFailed?: boolean;
-  };
-  correlateEvents?: {
-    events: string[];
-    timeout?: number;
-    correlation: (events: GraphEvent<T>[]) => boolean;
-  };
-  waitForEvents?: {
-    events: string[];
-    timeout: number;
-  };
 }
 
 export interface GraphLogger {
@@ -102,14 +75,14 @@ export class GraphNode<T extends ZodSchema> {
    * Executes a node with the given name and context
    * @param nodeName - The name of the node to execute
    * @param context - The current graph context
-   * @param inputs - Input data for the node
+   * @param params - Input data for the node
    * @param triggeredByEvent - Whether the execution was triggered by an event
    * @throws Error if the node is not found or execution fails
    */
   public async executeNode(
     nodeName: string,
     context: GraphContext<T>,
-    inputs: any,
+    params: any,
     triggeredByEvent: boolean = false
   ): Promise<void> {
     const node = this.nodes.get(nodeName);
@@ -140,11 +113,11 @@ export class GraphNode<T extends ZodSchema> {
         },
       });
 
-      if (node.condition && !node.condition(contextProxy, inputs)) {
+      if (node.condition && !node.condition(contextProxy, params)) {
         return;
       }
 
-      await this.executeWithRetry(node, contextProxy, inputs, nodeName);
+      await this.executeWithRetry(node, contextProxy, nodeName, params);
       this.emitEvent("nodeCompleted", { name: nodeName, context: nodeContext });
 
       if (!triggeredByEvent && node.next) {
@@ -165,52 +138,30 @@ export class GraphNode<T extends ZodSchema> {
   }
 
   /**
-   * Validates the inputs for a node using its schema
-   * @param node - The node whose inputs need validation
-   * @param inputs - The input data to validate
+   * Validates the params for a node using its schema
+   * @param node - The node whose params need validation
+   * @param params - The input data to validate
    * @param nodeName - The name of the node (for error messages)
    * @throws Error if validation fails
    * @private
    */
-  private async validateInputs(
+  private async validateParams(
     node: Node<T, any>,
-    inputs: any,
+    params: any,
     nodeName: string
   ): Promise<void> {
-    if (!inputs) {
-      throw new Error(`Inputs required for node "${nodeName}"`);
+    // Si pas de schéma de validation ou si le schéma est optionnel, accepter n'importe quels params
+    if (!node.params || node.params.isOptional?.()) return;
+
+    // Vérifier les params uniquement si un schéma est défini et non optionnel
+    if (!params) {
+      throw new Error(`Params required for node "${nodeName}"`);
     }
 
     try {
-      return node.inputs!.parse(inputs);
+      return node.params.parse(params);
     } catch (error: any) {
-      throw new Error(
-        error.errors?.[0]?.message || error.message || "Input validation failed"
-      );
-    }
-  }
-
-  /**
-   * Validates the outputs of a node against its schema
-   * @param node - The node whose outputs need validation
-   * @param context - The current graph context
-   * @param nodeName - The name of the node (for error messages)
-   * @throws Error if validation fails
-   * @private
-   */
-  private async validateOutputs(
-    node: Node<T, any>,
-    context: GraphContext<T>,
-    nodeName: string
-  ): Promise<void> {
-    try {
-      node.outputs!.parse(context);
-    } catch (error: any) {
-      throw new Error(
-        error.errors?.[0]?.message ||
-          error.message ||
-          "Output validation failed"
-      );
+      throw error;
     }
   }
 
@@ -239,44 +190,29 @@ export class GraphNode<T extends ZodSchema> {
    * Executes a node with retry logic
    * @param node - The node to execute
    * @param contextProxy - The proxied graph context
-   * @param inputs - Input data for the node
+   * @param params - Input data for the node
    * @param nodeName - The name of the node
+   * @param params - Parameters for the node
    * @throws Error if all retry attempts fail
    * @private
    */
   private async executeWithRetry(
     node: Node<T, any>,
     contextProxy: GraphContext<T>,
-    inputs: any,
-    nodeName: string
+    nodeName: string,
+    params?: NodeParams
   ): Promise<void> {
     let attempts = 0;
     let lastError: Error = new Error("Unknown error");
 
     while (attempts < (node.retry?.maxAttempts || 1)) {
       try {
-        // Validation des inputs
-        if (node.inputs) {
-          try {
-            node.inputs.parse(inputs);
-          } catch (error: any) {
-            const message = error.errors?.[0]?.message || error.message;
-            throw new Error(`Input validation failed: ${message}`);
-          }
+        // Valider les params uniquement si un schéma est défini
+        if (node.params) {
+          await this.validateParams(node, params, nodeName);
         }
 
-        // Exécution du node
-        await node.execute(contextProxy, inputs);
-
-        // Validation des outputs
-        if (node.outputs) {
-          try {
-            node.outputs.parse(contextProxy);
-          } catch (error: any) {
-            const message = error.errors?.[0]?.message || error.message;
-            throw new Error(`Output validation failed: ${message}`);
-          }
-        }
+        await node.execute(contextProxy, params);
         return;
       } catch (error: any) {
         lastError =

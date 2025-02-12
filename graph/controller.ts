@@ -12,7 +12,6 @@ export class GraphController {
    * Executes multiple graphs sequentially
    * @param graphs - Array of GraphFlow instances to execute
    * @param startNodes - Array of starting node identifiers for each graph
-   * @param inputs - Optional array of additional inputs for each graph
    * @param params - Optional array of node parameters for each graph
    * @returns Map containing results of each graph execution, keyed by graph name and index
    * @template T - Zod schema type for graph context validation
@@ -24,11 +23,7 @@ export class GraphController {
   ): Promise<any[]> {
     const results = new Map<string, GraphContext<T>>();
     for (let i = 0; i < graphs.length; i++) {
-      const result = await graphs[i].execute(
-        startNodes[i],
-        params?.[i],
-        undefined
-      );
+      const result = await graphs[i].execute(startNodes[i], params?.[i]);
       results.set(`${graphs[i].name}-${i}`, result);
     }
     return Array.from(results.values());
@@ -51,7 +46,7 @@ export class GraphController {
    * @param graphs - Array of GraphFlow instances to execute
    * @param startNodes - Array of starting node identifiers for each graph
    * @param concurrency - Optional limit on number of concurrent graph executions
-   * @param inputs - Optional array of additional inputs for each graph
+   * @param params - Optional array of node parameters for each graph
    * @returns Map containing results of each graph execution, keyed by graph name
    * @template T - Zod schema type for graph context validation
    */
@@ -59,7 +54,7 @@ export class GraphController {
     graphs: GraphFlow<T>[],
     startNodes: string[],
     concurrency: number,
-    inputs?: any[]
+    params?: NodeParams[]
   ): Promise<GraphContext<T>[]> {
     const results: GraphContext<T>[] = [];
 
@@ -67,8 +62,8 @@ export class GraphController {
       const batch = graphs.slice(i, i + concurrency);
       const batchResults = await Promise.all(
         batch.map((graph, idx) => {
-          const input = inputs?.[i + idx];
-          return this.executeGraph(graph, startNodes[i + idx], input);
+          const param = params?.[i + idx];
+          return this.executeGraph(graph, startNodes[i + idx], param);
         })
       );
       results.push(...batchResults);

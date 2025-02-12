@@ -1,19 +1,27 @@
-import { expect } from "chai";
+import { expect, use } from "chai";
+import chaiAsPromised from "chai-as-promised";
 import EventEmitter from "events";
 import sinon from "sinon";
 import { z } from "zod";
 import { GraphController } from "../../graph/controller";
 import { GraphFlow } from "../../graph/index";
+import { NodeParams } from "../../graph/node";
 import { GraphContext, GraphDefinition, Node } from "../../types";
+
+use(chaiAsPromised);
 
 /**
  * Test schema definition using Zod for graph context validation
  * Defines a schema with:
  * - value: numeric value for tracking state changes
+ * - counter: numeric value for tracking state changes
+ * - message: string for tracking state changes
  * - eventPayload: optional object containing transaction metadata
  */
 const TestSchema = z.object({
   value: z.number().default(0),
+  counter: z.number().default(0),
+  message: z.string().default(""),
   eventPayload: z
     .object({
       transactionId: z.string().optional(),
@@ -172,18 +180,15 @@ describe("GraphFlow", function () {
    * - Integration between node execution and validation
    * Ensures type safety and data consistency in node interactions
    */
-  it("should execute a node with validated inputs and outputs", async function () {
+  it("should execute a node with validated params and outputs", async function () {
     const paramNode: Node<TestSchema, { increment: number }> = {
       name: "paramNode",
-      inputs: z.object({
+      params: z.object({
         increment: z.number(),
       }),
-      outputs: z.object({
-        value: z.number().min(5),
-      }),
-      execute: async (context, inputs?: { increment: number }) => {
-        if (!inputs) throw new Error("Inputs required");
-        context.value = (context.value ?? 0) + inputs.increment;
+      execute: async (context, params?: { increment: number }) => {
+        if (!params) throw new Error("params required");
+        context.value = (context.value ?? 0) + params.increment;
       },
       next: [],
     };
@@ -304,12 +309,12 @@ describe("GraphFlow", function () {
   it("should throw error when node input validation fails", async () => {
     const node: Node<TestSchema> = {
       name: "test",
-      inputs: z.object({
+      params: z.object({
         value: z.number().min(0),
       }),
-      execute: async (context, inputs) => {
-        if (!inputs) throw new Error("Inputs required");
-        context.value = inputs.value;
+      execute: async (context, params) => {
+        if (!params) throw new Error("params required");
+        context.value = params.value;
       },
     };
 
@@ -327,98 +332,68 @@ describe("GraphFlow", function () {
       expect(error.message).to.include("Number must be greater than or equal");
     }
   });
-
-  /**
-   * Tests output validation error handling
-   */
-  it("should throw error when node output validation fails", async function () {
-    const nodeWithOutput: Node<TestSchema> = {
-      name: "outputNode",
-      outputs: z.object({
-        value: z.number().max(10),
-      }),
-      execute: async (context) => {
-        context.value = 20; // This will fail output validation
-      },
-      next: [],
-    };
-
-    graph.addNode(nodeWithOutput);
-
-    try {
-      await graph.execute("outputNode");
-      expect.fail("Should have thrown an error");
-    } catch (error) {
-      expect((error as Error).message).to.include(
-        "Number must be less than or equal to 10"
-      );
-    }
-  });
-
   /**
    * Tests successful input/output validation flow
    */
-  it("should successfully validate both inputs and outputs", async function () {
+  it("should successfully validate both params and outputs", async function () {
     const graph = new GraphFlow("test", {
       name: "test",
+      nodes: [
+        {
+          name: "validatedNode",
+          params: z.object({
+            increment: z.number().min(0).max(5),
+          }),
+          execute: async (
+            context: GraphContext<TestSchema>,
+            params?: NodeParams
+          ) => {
+            if (!params) throw new Error("params required");
+            context.value = (context.value ?? 0) + params.increment;
+          },
+        },
+      ],
       schema: TestSchema,
-      context: { value: 0 },
-      nodes: [],
+      context: { value: 0, counter: 0, message: "" },
     });
 
-    const validatedNode: Node<TestSchema, { increment: number }> = {
-      name: "validatedNode",
-      inputs: z.object({
-        increment: z.number().min(0).max(5),
-      }),
-      outputs: z.object({
-        value: z.number().min(0).max(10),
-      }),
-      execute: async (context, inputs?: { increment: number }) => {
-        if (!inputs) throw new Error("Inputs required");
-        context.value = (context.value ?? 0) + inputs.increment;
-      },
-      next: [],
-    };
-
-    graph.addNode(validatedNode);
-
-    // Test with valid input that produces valid output
+    // Test avec valeur valide
     await graph.execute("validatedNode", { increment: 3 });
     expect(graph.getContext().value).to.equal(3);
 
-    // Test with valid input that would produce invalid output
-    try {
-      await graph.execute("validatedNode", { increment: 5 }, { value: 7 });
-      expect.fail("Should have thrown an error");
-    } catch (error) {
-      expect((error as Error).message).to.include(
-        "Number must be less than or equal to 10"
-      );
-    }
+    // Test avec valeur invalide
+    await expect(
+      graph.execute("validatedNode", { increment: 10 })
+    ).to.be.rejectedWith("Number must be less than or equal to 5");
   });
 
   /**
-   * Tests handling of missing required inputs
+   * Tests handling of missing required params
    */
-  it("should throw error when required inputs are missing", async function () {
-    const nodeWithRequiredInput: Node<TestSchema, { required: string }> = {
-      name: "requiredInputNode",
-      inputs: z.object({
-        required: z.string(),
-      }),
-      execute: async () => {},
-      next: [],
-    };
+  it("should throw error when required params are missing", async function () {
+    const graph = new GraphFlow("test", {
+      name: "test",
+      nodes: [
+        {
+          name: "requiredInputNode",
+          params: z.object({
+            value: z.number(),
+          }),
+          execute: async (
+            context: GraphContext<TestSchema>,
+            params?: NodeParams
+          ) => {
+            context.counter = params?.value || 0;
+          },
+        },
+      ],
+      schema: TestSchema,
+      context: { value: 0, counter: 0, message: "" },
+    });
 
-    graph.addNode(nodeWithRequiredInput);
-
-    try {
-      await graph.execute("requiredInputNode");
-      expect.fail("Should have thrown an error");
-    } catch (error) {
-      expect((error as Error).message).to.include("Inputs required for node");
-    }
+    await expect(graph.execute("requiredInputNode")).to.be.rejectedWith(
+      "Params required for node"
+    );
   });
 
   /**
@@ -734,5 +709,60 @@ describe("GraphFlow", function () {
 
     const result = await resultPromise;
     expect(result.value).to.equal(6); // 1 (waitingNode) + 5 (finalNode)
+  });
+
+  // Test de validation des paramètres
+  it("should successfully validate params", async () => {
+    const graph = new GraphFlow("test", {
+      name: "test",
+      nodes: [
+        {
+          name: "validationNode",
+          params: z.object({
+            value: z.number().max(10),
+          }),
+          execute: async (
+            context: GraphContext<TestSchema>,
+            params?: NodeParams
+          ) => {
+            context.counter = params?.value || 0;
+          },
+        },
+      ],
+      schema: TestSchema,
+      context: { value: 0, counter: 0, message: "" },
+    });
+
+    // Test avec valeur invalide
+    await expect(
+      graph.execute("validationNode", { value: 20 })
+    ).to.be.rejectedWith("Number must be less than or equal to 10");
+  });
+
+  // Test des paramètres requis
+  it("should throw error when required params are missing", async () => {
+    const graph = new GraphFlow("test", {
+      name: "test",
+      nodes: [
+        {
+          name: "requiredInputNode",
+          params: z.object({
+            value: z.number(),
+          }),
+          execute: async (
+            context: GraphContext<TestSchema>,
+            params?: NodeParams
+          ) => {
+            context.counter = params?.value || 0;
+          },
+        },
+      ],
+      schema: TestSchema,
+      context: { value: 0, counter: 0, message: "" },
+    });
+
+    await expect(graph.execute("requiredInputNode")).to.be.rejectedWith(
+      "Params required for node"
+    );
   });
 });

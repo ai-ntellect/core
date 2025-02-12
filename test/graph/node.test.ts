@@ -329,4 +329,182 @@ describe("GraphNode", () => {
     expect(stateChanges.length).to.equal(uniqueChanges.size);
     expect(stateChanges).to.have.lengthOf(2); // Un pour counter, un pour message
   });
+
+  it("should validate node parameters with Zod schema", async () => {
+    const paramSchema = z.object({
+      increment: z.number().min(1),
+      message: z.string().min(1),
+    });
+
+    const nodes = new Map();
+    nodes.set("test", {
+      name: "test",
+      params: paramSchema,
+      execute: async (context: TestContext, params?: NodeParams) => {
+        context.counter += params?.increment || 0;
+        context.message = params?.message || "";
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    // Test avec des paramètres valides
+    await node.executeNode(
+      "test",
+      { counter: 0, message: "Hello" },
+      { increment: 5, message: "Valid" }
+    );
+
+    // Test avec des paramètres invalides
+    await expect(
+      node.executeNode(
+        "test",
+        { counter: 0, message: "Hello" },
+        { increment: 0, message: "" }
+      )
+    ).to.be.rejected; // Enlever le .with() car le message d'erreur vient directement de Zod
+  });
+
+  it("should work without params schema", async () => {
+    const nodes = new Map();
+    nodes.set("test", {
+      name: "test",
+      execute: async (context: TestContext) => {
+        context.counter++;
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    // Devrait fonctionner sans erreur même sans schema de params
+    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
+  });
+
+  it("should not require params when node has no params schema", async () => {
+    const nodes = new Map();
+    nodes.set("test", {
+      name: "test",
+      // Pas de schéma de params défini
+      execute: async (context: TestContext) => {
+        context.counter++;
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
+
+    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
+    expect(stateChanges).to.have.lengthOf(1);
+    expect(stateChanges[0].payload.newValue).to.equal(1);
+  });
+
+  it("should require params only when node has params schema", async () => {
+    const nodes = new Map();
+    nodes.set("test", {
+      name: "test",
+      params: z.object({
+        // Avec un schéma de params
+        value: z.number(),
+      }),
+      execute: async (context: TestContext, params?: NodeParams) => {
+        context.counter = params?.value || 0;
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    // Devrait échouer sans params
+    await expect(
+      node.executeNode("test", { counter: 0, message: "Hello" }, null)
+    ).to.be.rejectedWith("Params required for node");
+  });
+
+  it("should execute node without params when no schema is defined (real world scenario)", async () => {
+    const nodes = new Map();
+    nodes.set("incrementCounter", {
+      name: "incrementCounter",
+      execute: async (context: TestContext) => {
+        context.counter++;
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    // Simuler l'appel comme dans examples/t2.ts
+    await node.executeNode(
+      "incrementCounter",
+      { message: "Hello", counter: 0 },
+      { test: "test" } // Passer des params même si non requis
+    );
+
+    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
+    expect(stateChanges).to.have.lengthOf(1);
+    expect(stateChanges[0].payload.newValue).to.equal(1);
+  });
+
+  it("should handle optional params schema", async () => {
+    const nodes = new Map();
+    nodes.set("test", {
+      name: "test",
+      params: z
+        .object({
+          test: z.string(),
+        })
+        .optional(),
+      execute: async (context: TestContext, params?: NodeParams) => {
+        context.counter++;
+      },
+    });
+
+    node = new GraphNode(
+      nodes,
+      logger,
+      eventManager,
+      eventSubject,
+      stateSubject
+    );
+
+    // Devrait fonctionner avec ou sans params
+    await node.executeNode(
+      "test",
+      { counter: 0, message: "Hello" },
+      { test: "test" }
+    );
+    await node.executeNode("test", { counter: 1, message: "Hello" }, null);
+
+    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
+    expect(stateChanges).to.have.lengthOf(2);
+    expect(stateChanges[1].payload.newValue).to.equal(2);
+  });
 });
