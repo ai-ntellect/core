@@ -14,6 +14,7 @@
 export * from "./graph/controller";
 export * from "./graph/index";
 export * from "./modules/memory";
+export * from "./modules/memory/adapters/in-memory";
 export * from "./modules/memory/adapters/meilisearch";
 export * from "./modules/memory/adapters/redis";
 
