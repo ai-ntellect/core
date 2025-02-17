@@ -12,7 +12,11 @@
  */
 
 export * from "./graph/controller";
+export * from "./graph/event-manager";
 export * from "./graph/index";
+export * from "./graph/node";
+export * from "./graph/observer";
+
 export * from "./modules/memory";
 export * from "./modules/memory/adapters/in-memory";
 export * from "./modules/memory/adapters/meilisearch";
