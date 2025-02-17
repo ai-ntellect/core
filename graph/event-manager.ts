@@ -1,7 +1,7 @@
 import { Observable, Subject, filter } from "rxjs";
 import { ZodSchema } from "zod";
 import { IEventEmitter } from "../interfaces";
-import { GraphContext, GraphEvent, Node } from "../types";
+import { GraphContext, GraphEvent, GraphNodeConfig } from "../types";
 import { GraphNode } from "./node";
 
 /**
@@ -31,7 +31,7 @@ export class GraphEventManager<T extends ZodSchema> {
    */
   constructor(
     private eventEmitter: IEventEmitter,
-    private nodes: Map<string, Node<T, any>>,
+    private nodes: Map<string, GraphNodeConfig<T, any>>,
     name: string,
     context: GraphContext<T>,
     graphEvents?: string[],

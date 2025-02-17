@@ -6,7 +6,7 @@ import { z } from "zod";
 import { GraphController } from "../../graph/controller";
 import { GraphFlow } from "../../graph/index";
 import { NodeParams } from "../../graph/node";
-import { GraphContext, GraphDefinition, Node } from "../../types";
+import { GraphContext, GraphConfig, GraphNodeConfig } from "../../types";
 
 use(chaiAsPromised);
 
@@ -69,7 +69,7 @@ describe("GraphFlow", function () {
    * - The updated context is accessible after execution
    */
   it("should execute a simple node and update the context", async function () {
-    const simpleNode: Node<TestSchema> = {
+    const simpleNode: GraphNodeConfig<TestSchema> = {
       name: "simpleNode",
       execute: async (context) => {
         context.value = (context.value ?? 0) + 1;
@@ -98,7 +98,7 @@ describe("GraphFlow", function () {
     graph.on("nodeStarted", nodeStartedSpy);
     graph.on("nodeCompleted", nodeCompletedSpy);
 
-    const testNode: Node<TestSchema> = {
+    const testNode: GraphNodeConfig<TestSchema> = {
       name: "testNode",
       execute: async (context) => {
         context.value = (context.value ?? 0) + 1;
@@ -122,7 +122,7 @@ describe("GraphFlow", function () {
    * This ensures robust error handling in the workflow
    */
   it("should handle errors and trigger `nodeError` event", async function () {
-    const errorNode: Node<TestSchema> = {
+    const errorNode: GraphNodeConfig<TestSchema> = {
       name: "errorNode",
       execute: async () => {
         throw new Error("Test error");
@@ -155,7 +155,7 @@ describe("GraphFlow", function () {
     const invalidContext = { value: "invalid_string" };
 
     try {
-      const simpleNode: Node<TestSchema> = {
+      const simpleNode: GraphNodeConfig<TestSchema> = {
         name: "simpleNode",
         execute: async (context) => {
           context.value = (context.value ?? 0) + 1;
@@ -181,7 +181,7 @@ describe("GraphFlow", function () {
    * Ensures type safety and data consistency in node interactions
    */
   it("should execute a node with validated params and outputs", async function () {
-    const paramNode: Node<TestSchema, { increment: number }> = {
+    const paramNode: GraphNodeConfig<TestSchema, { increment: number }> = {
       name: "paramNode",
       params: z.object({
         increment: z.number(),
@@ -209,7 +209,7 @@ describe("GraphFlow", function () {
    * This enables dynamic workflow paths based on state
    */
   it("should not execute a node when condition is false", async function () {
-    const conditionalNode: Node<TestSchema> = {
+    const conditionalNode: GraphNodeConfig<TestSchema> = {
       name: "conditionalNode",
       condition: (context) => (context.value ?? 0) > 0,
       execute: async (context) => {
@@ -236,7 +236,7 @@ describe("GraphFlow", function () {
    */
   it("should retry a node execution when it fails", async () => {
     let attempts = 0;
-    const retryNode: Node<TestSchema> = {
+    const retryNode: GraphNodeConfig<TestSchema> = {
       name: "retryNode",
       execute: async (context) => {
         attempts++;
@@ -267,7 +267,7 @@ describe("GraphFlow", function () {
    * Tests node removal functionality
    */
   it("should remove a node from the graph", function () {
-    const testNode: Node<TestSchema> = {
+    const testNode: GraphNodeConfig<TestSchema> = {
       name: "testNode",
       execute: async () => {},
     };
@@ -281,16 +281,16 @@ describe("GraphFlow", function () {
    * Tests graph reloading functionality
    */
   it("should clear and reload the graph using `load`", function () {
-    const nodeA: Node<TestSchema> = {
+    const nodeA: GraphNodeConfig<TestSchema> = {
       name: "A",
       execute: async () => {},
     };
-    const nodeB: Node<TestSchema> = {
+    const nodeB: GraphNodeConfig<TestSchema> = {
       name: "B",
       execute: async () => {},
     };
 
-    const newDefinition: GraphDefinition<TestSchema> = {
+    const newDefinition: GraphConfig<TestSchema> = {
       name: "TestGraph",
       entryNode: "A",
       nodes: [nodeA, nodeB],
@@ -307,7 +307,7 @@ describe("GraphFlow", function () {
    * Tests input validation error handling
    */
   it("should throw error when node input validation fails", async () => {
-    const node: Node<TestSchema> = {
+    const node: GraphNodeConfig<TestSchema> = {
       name: "test",
       params: z.object({
         value: z.number().min(0),
@@ -406,7 +406,7 @@ describe("GraphFlow", function () {
    * This validates the graph's ability to handle complex business processes
    */
   it("should execute a complex workflow with multiple nodes and accumulate the value", async function () {
-    const nodeA: Node<TestSchema> = {
+    const nodeA: GraphNodeConfig<TestSchema> = {
       name: "nodeA",
       execute: async (context) => {
         context.value = (context.value ?? 0) + 1;
@@ -414,7 +414,7 @@ describe("GraphFlow", function () {
       next: ["nodeB1", "nodeB2"],
     };
 
-    const nodeB1: Node<TestSchema> = {
+    const nodeB1: GraphNodeConfig<TestSchema> = {
       name: "nodeB1",
       execute: async (context) => {
         context.value = (context.value ?? 0) * 2;
@@ -422,7 +422,7 @@ describe("GraphFlow", function () {
       next: ["nodeC"],
     };
 
-    const nodeB2: Node<TestSchema> = {
+    const nodeB2: GraphNodeConfig<TestSchema> = {
       name: "nodeB2",
       execute: async (context) => {
         context.value = (context.value ?? 0) + 3;
@@ -430,7 +430,7 @@ describe("GraphFlow", function () {
       next: ["nodeC"],
     };
 
-    const nodeC: Node<TestSchema> = {
+    const nodeC: GraphNodeConfig<TestSchema> = {
       name: "nodeC",
       execute: async (context) => {
         context.value = (context.value ?? 0) + 5;
@@ -447,7 +447,7 @@ describe("GraphFlow", function () {
    * Tests conditional branching in workflows
    */
   it("should execute different branches based on conditions", async function () {
-    const startNode: Node<TestSchema> = {
+    const startNode: GraphNodeConfig<TestSchema> = {
       name: "start",
       execute: async (context) => {
         context.value = (context.value ?? 0) + 5;
@@ -455,7 +455,7 @@ describe("GraphFlow", function () {
       next: ["end"],
     };
 
-    const endNode: Node<TestSchema> = {
+    const endNode: GraphNodeConfig<TestSchema> = {
       name: "end",
       execute: async (context) => {
         if ((context.value ?? 0) < 10) {
@@ -490,7 +490,7 @@ describe("GraphFlow", function () {
       schema: TestSchema,
     });
 
-    const processNode1: Node<TestSchema> = {
+    const processNode1: GraphNodeConfig<TestSchema> = {
       name: "process1",
       execute: async (context) => {
         context.value = 1;
@@ -498,7 +498,7 @@ describe("GraphFlow", function () {
       next: ["finalize1"],
     };
 
-    const finalizeNode1: Node<TestSchema> = {
+    const finalizeNode1: GraphNodeConfig<TestSchema> = {
       name: "finalize1",
       execute: async (context) => {
         context.value = (context.value ?? 0) * 2;
@@ -513,7 +513,7 @@ describe("GraphFlow", function () {
       schema: TestSchema,
     });
 
-    const processNode2: Node<TestSchema> = {
+    const processNode2: GraphNodeConfig<TestSchema> = {
       name: "process2",
       execute: async (context) => {
         context.value = 2;
@@ -521,7 +521,7 @@ describe("GraphFlow", function () {
       next: ["finalize2"],
     };
 
-    const finalizeNode2: Node<TestSchema> = {
+    const finalizeNode2: GraphNodeConfig<TestSchema> = {
       name: "finalize2",
       execute: async (context) => {
         context.value = (context.value ?? 0) + 3;
@@ -556,7 +556,7 @@ describe("GraphFlow", function () {
       schema: TestSchema,
     });
 
-    const startNode1: Node<TestSchema> = {
+    const startNode1: GraphNodeConfig<TestSchema> = {
       name: "start1",
       execute: async (context) => {
         context.value = (context.value ?? 0) * 2;
@@ -571,7 +571,7 @@ describe("GraphFlow", function () {
       schema: TestSchema,
     });
 
-    const startNode2: Node<TestSchema> = {
+    const startNode2: GraphNodeConfig<TestSchema> = {
       name: "start2",
       execute: async (context) => {
         context.value = (context.value ?? 0) + 2;
@@ -597,7 +597,7 @@ describe("GraphFlow", function () {
   it("should wait for a single event before continuing", async function () {
     this.timeout(5000);
 
-    const waitingNode: Node<TestSchema> = {
+    const waitingNode: GraphNodeConfig<TestSchema> = {
       name: "waitingNode",
       execute: async (context: GraphContext<typeof TestSchema>) => {
         context.value = 1;
@@ -606,7 +606,7 @@ describe("GraphFlow", function () {
       next: ["finalNode"],
     };
 
-    const finalNode: Node<TestSchema> = {
+    const finalNode: GraphNodeConfig<TestSchema> = {
       name: "finalNode",
       execute: async (context: GraphContext<typeof TestSchema>) => {
         context.value = (context.value ?? 0) + 5;

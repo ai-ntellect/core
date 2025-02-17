@@ -2,7 +2,12 @@ import { EventEmitter } from "events";
 import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
 import { GraphObservable, IEventEmitter } from "../interfaces";
-import { GraphContext, GraphDefinition, GraphEvent, Node } from "../types";
+import {
+  GraphConfig,
+  GraphContext,
+  GraphEvent,
+  GraphNodeConfig,
+} from "../types";
 import { GraphEventManager } from "./event-manager";
 import { GraphLogger } from "./logger";
 import { GraphNode, NodeParams } from "./node";
@@ -29,7 +34,7 @@ export class GraphFlow<T extends ZodSchema> {
   private graphEvents?: string[];
   private entryNode?: string;
   private verbose: boolean = false;
-  public nodes: Map<string, Node<T, any>>;
+  public nodes: Map<string, GraphNodeConfig<T, any>>;
 
   private eventSubject: Subject<GraphEvent<T>> = new Subject();
   private stateSubject: BehaviorSubject<GraphContext<T>>;
@@ -43,16 +48,16 @@ export class GraphFlow<T extends ZodSchema> {
   /**
    * Creates a new instance of GraphFlow
    * @param {string} name - The name of the graph flow
-   * @param {GraphDefinition<T>} config - Configuration object containing nodes, schema, context, and error handlers
+   * @param {GraphConfig<T>} config - Configuration object containing nodes, schema, context, and error handlers
    * @param {Object} options - Optional options for the graph flow
    */
   constructor(
     public name: string,
-    config: GraphDefinition<T>,
+    config: GraphConfig<T>,
     options: { verbose?: boolean } = {}
   ) {
     this.nodes = new Map(
-      config.nodes.map((node: Node<T, any>) => [node.name, node])
+      config.nodes.map((node: GraphNodeConfig<T, any>) => [node.name, node])
     );
     this.validator = config.schema;
     this.context = config.schema.parse(config.context) as GraphContext<T>;
@@ -75,7 +80,7 @@ export class GraphFlow<T extends ZodSchema> {
       config.onError
     );
     this.nodeExecutor = new GraphNode(
-      this.nodes as Map<string, Node<T, any>>,
+      this.nodes as Map<string, GraphNodeConfig<T, any>>,
       this.logger,
       this.eventManager,
       this.eventSubject,
@@ -288,9 +293,9 @@ export class GraphFlow<T extends ZodSchema> {
 
   /**
    * Updates the graph definition with new configuration
-   * @param {GraphDefinition<T>} definition - New graph definition
+   * @param {GraphConfig<T>} definition - New graph definition
    */
-  public load(definition: GraphDefinition<T>): void {
+  public load(definition: GraphConfig<T>): void {
     // Clear all existing nodes
     this.nodes.clear();
     // Wipe out old node-based event listeners
@@ -358,10 +363,10 @@ export class GraphFlow<T extends ZodSchema> {
 
   /**
    * Adds a new node to the graph
-   * @param {Node<T>} node - Node to add
+   * @param {GraphNodeConfig<T, any>} node - Node to add
    * @throws {Error} If node with same name already exists
    */
-  public addNode(node: Node<T, any>): void {
+  public addNode(node: GraphNodeConfig<T, any>): void {
     this.nodes.set(node.name, node);
     this.eventManager.setupEventListeners();
   }
@@ -379,7 +384,7 @@ export class GraphFlow<T extends ZodSchema> {
    * Returns all nodes in the graph
    * @returns {Node<T>[]} Array of all nodes
    */
-  public getNodes(): Node<T, any>[] {
+  public getNodes(): GraphNodeConfig<T, any>[] {
     return Array.from(this.nodes.values());
   }
 

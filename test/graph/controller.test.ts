@@ -2,7 +2,7 @@ import { expect } from "chai";
 import { z } from "zod";
 import { GraphController } from "../../graph/controller";
 import { GraphFlow } from "../../graph/index";
-import { Node } from "../../types";
+import { GraphNodeConfig } from "../../types";
 
 describe("GraphController", () => {
   const TestSchema = z.object({
@@ -11,7 +11,7 @@ describe("GraphController", () => {
   });
 
   const createTestGraph = (name: string): GraphFlow<typeof TestSchema> => {
-    const nodes: Node<typeof TestSchema>[] = [
+    const nodes: GraphNodeConfig<typeof TestSchema>[] = [
       {
         name: "start",
         execute: async (context, params) => {

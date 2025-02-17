@@ -1,7 +1,7 @@
 import { IEventEmitter } from "interfaces";
 import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
-import { GraphContext, GraphEvent, Node } from "../types";
+import { GraphContext, GraphEvent, GraphNodeConfig } from "../types";
 import { GraphEventManager } from "./event-manager";
 
 /**
@@ -29,7 +29,7 @@ export class GraphNode<T extends ZodSchema> {
    * @param stateSubject - Subject for managing graph state
    */
   constructor(
-    private nodes: Map<string, Node<T, any>>,
+    private nodes: Map<string, GraphNodeConfig<T, any>>,
     private logger: GraphLogger,
     private eventManager: GraphEventManager<T>,
     private eventSubject: Subject<GraphEvent<T>>,
@@ -167,7 +167,7 @@ export class GraphNode<T extends ZodSchema> {
    * @private
    */
   private async validateParams(
-    node: Node<T, any>,
+    node: GraphNodeConfig<T, any>,
     params: any,
     nodeName: string
   ): Promise<void> {
@@ -194,7 +194,7 @@ export class GraphNode<T extends ZodSchema> {
    * @private
    */
   private async handleEvents(
-    node: Node<T, any>,
+    node: GraphNodeConfig<T, any>,
     nodeName: string,
     context: GraphContext<T>
   ): Promise<void> {
@@ -218,7 +218,7 @@ export class GraphNode<T extends ZodSchema> {
    * @private
    */
   private async executeWithRetry(
-    node: Node<T, any>,
+    node: GraphNodeConfig<T, any>,
     contextProxy: GraphContext<T>,
     nodeName: string,
     params?: NodeParams
@@ -266,7 +266,7 @@ export class GraphNode<T extends ZodSchema> {
    * @private
    */
   private async handleCorrelatedEvents(
-    node: Node<T, any>,
+    node: GraphNodeConfig<T, any>,
     nodeName: string
   ): Promise<void> {
     if (node.correlateEvents) {
@@ -312,7 +312,7 @@ export class GraphNode<T extends ZodSchema> {
    * @private
    */
   private async handleWaitForEvents(
-    node: Node<T, any>,
+    node: GraphNodeConfig<T, any>,
     nodeName: string
   ): Promise<void> {
     if (node.waitForEvents) {

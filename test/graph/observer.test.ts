@@ -3,7 +3,7 @@ import { BehaviorSubject, Subject } from "rxjs";
 import { z } from "zod";
 import { GraphFlow } from "../../graph";
 import { GraphObserver } from "../../graph/observer";
-import { GraphContext, GraphEvent, Node } from "../../types";
+import { GraphContext, GraphEvent, GraphNodeConfig } from "../../types";
 
 /**
  * Test schema definition for observer tests
@@ -69,7 +69,7 @@ describe("GraphObserver", () => {
      */
     it("should observe state changes", async () => {
       const states: any[] = [];
-      const testNode: Node<typeof TestSchema> = {
+      const testNode: GraphNodeConfig<typeof TestSchema> = {
         name: "testNode",
         execute: async (context) => {
           context.value = 1;
@@ -104,7 +104,7 @@ describe("GraphObserver", () => {
      */
     it("should observe specific node state changes", async () => {
       const states: any[] = [];
-      const testNode: Node<typeof TestSchema> = {
+      const testNode: GraphNodeConfig<typeof TestSchema> = {
         name: "testNode",
         execute: async (context) => {
           context.status = "pending";
@@ -135,13 +135,13 @@ describe("GraphObserver", () => {
      */
     it("should observe multiple nodes", async () => {
       const states: any[] = [];
-      const node1: Node<typeof TestSchema> = {
+      const node1: GraphNodeConfig<typeof TestSchema> = {
         name: "node1",
         execute: async (context) => {
           context.value = 1;
         },
       };
-      const node2: Node<typeof TestSchema> = {
+      const node2: GraphNodeConfig<typeof TestSchema> = {
         name: "node2",
         execute: async (context) => {
           context.value = 2;
@@ -181,7 +181,7 @@ describe("GraphObserver", () => {
      */
     it("should observe single property", async () => {
       const values: any[] = [];
-      const testNode: Node<typeof TestSchema> = {
+      const testNode: GraphNodeConfig<typeof TestSchema> = {
         name: "testNode",
         execute: async (context) => {
           context.value = 42;
@@ -209,7 +209,7 @@ describe("GraphObserver", () => {
      */
     it("should observe multiple properties", async () => {
       const values: any[] = [];
-      const testNode: Node<typeof TestSchema> = {
+      const testNode: GraphNodeConfig<typeof TestSchema> = {
         name: "testNode",
         execute: async (context) => {
           context.value = 42;
@@ -244,7 +244,7 @@ describe("GraphObserver", () => {
      * - State reflects all required changes
      */
     it("should wait for multiple conditions", async () => {
-      const testNode: Node<typeof TestSchema> = {
+      const testNode: GraphNodeConfig<typeof TestSchema> = {
         name: "testNode",
         execute: async (context) => {
           context.value = 42;
@@ -372,7 +372,7 @@ describe("GraphObserver", () => {
      */
     it("should observe complete workflow", async () => {
       const states: any[] = [];
-      const node: Node<typeof TestSchema> = {
+      const node: GraphNodeConfig<typeof TestSchema> = {
         name: "testNode",
         execute: async (context) => {
           context.status = "pending";

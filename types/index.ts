@@ -80,7 +80,7 @@ export type GraphContext<T extends ZodSchema> = {
  * @template I - Input schema type
  * @template O - Output schema type
  */
-export interface Node<T extends ZodSchema, P = any> {
+export type GraphNodeConfig<T extends ZodSchema, P = any> = {
   /** Name of the node */
   name: string;
   /** Description of the node */
@@ -122,18 +122,18 @@ export interface Node<T extends ZodSchema, P = any> {
   };
   /** Error handler function */
   onError?: (error: Error) => void;
-}
+};
 
 /**
  * Interface for graph definition
  * @interface
  * @template T - Schema type
  */
-export interface GraphDefinition<T extends ZodSchema> {
+export type GraphConfig<T extends ZodSchema> = {
   /** Name of the graph */
   name: string;
   /** Array of nodes in the graph */
-  nodes: Node<T, any>[];
+  nodes: GraphNodeConfig<T, any>[];
   /** Initial context */
   context: SchemaType<T>;
   /** Schema for validation */
@@ -146,7 +146,7 @@ export interface GraphDefinition<T extends ZodSchema> {
   eventEmitter?: IEventEmitter | EventEmitter;
   /** Array of events */
   events?: string[];
-}
+};
 
 /* ======================== MEILISEARCH ======================== */
 
