@@ -144,7 +144,9 @@ export class GraphNode<T extends ZodSchema> {
       if (!triggeredByEvent && node.next) {
         const nextNodes =
           typeof node.next === "function" ? node.next(contextProxy) : node.next;
-        for (const nextNodeName of nextNodes) {
+        for (const nextNode of nextNodes) {
+          const nextNodeName =
+            typeof nextNode === "string" ? nextNode : nextNode.node;
           await this.executeNode(nextNodeName, context, undefined, false);
         }
       }

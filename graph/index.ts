@@ -12,6 +12,7 @@ import { GraphEventManager } from "./event-manager";
 import { GraphLogger } from "./logger";
 import { GraphNode, NodeParams } from "./node";
 import { GraphObserver } from "./observer";
+import { GraphVisualizer } from "./visualizer";
 
 /**
  * @module GraphFlow
@@ -396,5 +397,13 @@ export class GraphFlow<T extends ZodSchema> {
     this.destroySubject.complete();
     this.eventSubject.complete();
     this.stateSubject.complete();
+  }
+
+  /**
+   * Creates a visualizer instance for the current graph
+   * @returns {GraphVisualizer<T>} A visualizer instance
+   */
+  public createVisualizer(): GraphVisualizer<T> {
+    return new GraphVisualizer(this.nodes);
   }
 }

@@ -93,10 +93,17 @@ export type GraphNodeConfig<T extends ZodSchema, P = any> = {
     params?: P,
     tools?: { eventEmitter: IEventEmitter }
   ) => Promise<void>;
-  /** Optional condition for node execution */
+  /** Optional condition for node start execution */
   condition?: (context: GraphContext<T>, params?: P) => boolean;
-  /** Array of next node names */
-  next?: string[] | ((context: GraphContext<T>) => string[]);
+
+  /** Array of next node names or objects with conditions for the next node */
+  next?:
+    | Array<
+        | string
+        | { node: string; condition: (context: GraphContext<T>) => boolean }
+      >
+    | string
+    | ((context: GraphContext<T>) => string[]);
   /** Array of event names that trigger this node */
   events?: string[];
   /** Wait for a single event before continuing */

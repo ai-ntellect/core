@@ -16,6 +16,7 @@ export * from "./graph/event-manager";
 export * from "./graph/index";
 export * from "./graph/node";
 export * from "./graph/observer";
+export * from "./graph/visualizer";
 
 export * from "./modules/memory";
 export * from "./modules/memory/adapters/in-memory";
