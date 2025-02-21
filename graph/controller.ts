@@ -1,5 +1,5 @@
 import { ZodSchema } from "zod";
-import { GraphContext } from "../types";
+import { GraphExecutionResult } from "../types";
 import { GraphFlow } from "./index";
 import { NodeParams } from "./node";
 
@@ -7,13 +7,6 @@ import { NodeParams } from "./node";
  * Controller class for managing the execution of graph flows
  * Handles both sequential and parallel execution of multiple graphs
  */
-
-interface GraphExecutionResult<T extends ZodSchema> {
-  graphName: string;
-  nodeName: string;
-  context: GraphContext<T>;
-}
-
 export class GraphController {
   /**
    * Executes multiple graphs sequentially

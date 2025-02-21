@@ -155,6 +155,16 @@ export type GraphConfig<T extends ZodSchema> = {
   events?: string[];
 };
 
+/**
+ * Type for graph execution result
+ * @template T - Schema type
+ */
+export type GraphExecutionResult<T extends ZodSchema> = {
+  graphName: string;
+  nodeName: string;
+  context: GraphContext<T>;
+};
+
 /* ======================== MEILISEARCH ======================== */
 
 /**
