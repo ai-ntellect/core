@@ -12,7 +12,12 @@
     "baseUrl": ".",
     "outDir": "./dist",
     "types": ["node", "mocha"],
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "jsx": "preserve",
+    "lib": ["dom", "dom.iterable", "esnext"]
   },
   "include": [
     "index.ts",

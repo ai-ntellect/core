@@ -144,10 +144,28 @@ export class GraphNode<T extends ZodSchema> {
       if (!triggeredByEvent && node.next) {
         const nextNodes =
           typeof node.next === "function" ? node.next(contextProxy) : node.next;
-        for (const nextNode of nextNodes) {
-          const nextNodeName =
-            typeof nextNode === "string" ? nextNode : nextNode.node;
-          await this.executeNode(nextNodeName, context, undefined, false);
+
+        // Vérifier d'abord les conditions de tous les nœuds suivants
+        const nextNodeConfigs = Array.isArray(nextNodes)
+          ? nextNodes
+          : [nextNodes];
+        const validNextNodes = nextNodeConfigs
+          .map((nextNode) => {
+            const nextNodeName =
+              typeof nextNode === "string" ? nextNode : nextNode.node;
+            const condition =
+              typeof nextNode === "string" ? undefined : nextNode.condition;
+            return {
+              name: nextNodeName,
+              condition,
+              isValid: !condition || condition(contextProxy),
+            };
+          })
+          .filter((n) => n.isValid);
+
+        // Sinon, exécuter les autres nœuds valides
+        for (const nextNode of validNextNodes) {
+          await this.executeNode(nextNode.name, context, undefined, false);
         }
       }
     } catch (error) {
