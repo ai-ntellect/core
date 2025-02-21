@@ -56,12 +56,14 @@ describe("GraphController", () => {
       );
 
       expect(results).to.have.length(3);
-      expect(results[0].counter).to.equal(10);
-      expect(results[1].counter).to.equal(20);
-      expect(results[2].counter).to.equal(30);
-      expect(results[0].message).to.equal("test1-graph1");
-      expect(results[1].message).to.equal("test2-graph2");
-      expect(results[2].message).to.equal("test3-graph3");
+      expect(results[0].context.counter).to.equal(10);
+      expect(results[1].context.counter).to.equal(20);
+      expect(results[2].context.counter).to.equal(30);
+      expect(results[0].context.message).to.equal("test1-graph1");
+      expect(results[1].context.message).to.equal("test2-graph2");
+      expect(results[2].context.message).to.equal("test3-graph3");
+      expect(results[0].graphName).to.equal("graph1");
+      expect(results[0].nodeName).to.equal("start");
     });
 
     it("should handle missing params and params gracefully", async () => {
@@ -74,10 +76,10 @@ describe("GraphController", () => {
       );
 
       expect(results).to.have.length(2);
-      expect(results[0].counter).to.equal(0);
-      expect(results[1].counter).to.equal(0);
-      expect(results[0].message).to.equal("graph1");
-      expect(results[1].message).to.equal("graph2");
+      expect(results[0].context.counter).to.equal(0);
+      expect(results[1].context.counter).to.equal(0);
+      expect(results[0].context.message).to.equal("graph1");
+      expect(results[1].context.message).to.equal("graph2");
     });
   });
 
@@ -111,8 +113,8 @@ describe("GraphController", () => {
       expect(executionTime).to.be.greaterThan(0);
       expect(results).to.have.length(5);
       results.forEach((result, i) => {
-        expect(result.counter).to.equal((i + 1) * 10);
-        expect(result.message).to.equal(`test${i + 1}-graph${i + 1}`);
+        expect(result.context.counter).to.equal((i + 1) * 10);
+        expect(result.context.message).to.equal(`test${i + 1}-graph${i + 1}`);
       });
     });
 
@@ -175,8 +177,10 @@ describe("GraphController", () => {
 
       const allResults = [...parallelResults, ...sequentialResults];
       expect(allResults).to.have.length(4);
-      expect(allResults.map((r) => r.counter)).to.deep.equal([10, 20, 30, 40]);
-      expect(allResults.map((r) => r.message)).to.deep.equal([
+      expect(allResults.map((r) => r.context.counter)).to.deep.equal([
+        10, 20, 30, 40,
+      ]);
+      expect(allResults.map((r) => r.context.message)).to.deep.equal([
         "parallel1-graph1",
         "parallel2-graph2",
         "seq1-graph3",

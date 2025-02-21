@@ -7,6 +7,13 @@ import { NodeParams } from "./node";
  * Controller class for managing the execution of graph flows
  * Handles both sequential and parallel execution of multiple graphs
  */
+
+interface GraphExecutionResult<T extends ZodSchema> {
+  graphName: string;
+  nodeName: string;
+  context: GraphContext<T>;
+}
+
 export class GraphController {
   /**
    * Executes multiple graphs sequentially
@@ -20,22 +27,33 @@ export class GraphController {
     graphs: GraphFlow<T>[],
     startNodes: string[],
     params?: NodeParams[]
-  ): Promise<any[]> {
-    const results = new Map<string, GraphContext<T>>();
+  ): Promise<GraphExecutionResult<T>[]> {
+    const results: GraphExecutionResult<T>[] = [];
+
     for (let i = 0; i < graphs.length; i++) {
-      const result = await graphs[i].execute(startNodes[i], params?.[i]);
-      results.set(`${graphs[i].name}-${i}`, result);
+      const context = await graphs[i].execute(startNodes[i], params?.[i]);
+      results.push({
+        graphName: graphs[i].name,
+        nodeName: startNodes[i],
+        context,
+      });
     }
-    return Array.from(results.values());
+
+    return results;
   }
 
   private static async executeGraph<T extends ZodSchema>(
     graph: GraphFlow<T>,
     startNode: string,
     params?: NodeParams
-  ): Promise<GraphContext<T>> {
+  ): Promise<GraphExecutionResult<T>> {
     try {
-      return await graph.execute(startNode, params);
+      const context = await graph.execute(startNode, params);
+      return {
+        graphName: graph.name,
+        nodeName: startNode,
+        context,
+      };
     } catch (error) {
       throw error;
     }
@@ -55,8 +73,8 @@ export class GraphController {
     startNodes: string[],
     concurrency: number,
     params?: NodeParams[]
-  ): Promise<GraphContext<T>[]> {
-    const results: GraphContext<T>[] = [];
+  ): Promise<GraphExecutionResult<T>[]> {
+    const results: GraphExecutionResult<T>[] = [];
 
     for (let i = 0; i < graphs.length; i += concurrency) {
       const batch = graphs.slice(i, i + concurrency);

@@ -540,8 +540,8 @@ describe("GraphFlow", function () {
       [{}, {}]
     );
 
-    expect(results[0].value).to.equal(2); // Graph1: 1 * 2
-    expect(results[1].value).to.equal(5); // Graph2: 2 + 3
+    expect(results[0].context.value).to.equal(2); // Graph1: 1 * 2
+    expect(results[1].context.value).to.equal(5); // Graph2: 2 + 3
   });
 
   /**
@@ -587,8 +587,8 @@ describe("GraphFlow", function () {
       [{}, {}]
     );
 
-    expect(results[0].value).to.equal(2); // Graph1: 1 * 2
-    expect(results[1].value).to.equal(5); // Graph2: 3 + 2
+    expect(results[0].context.value).to.equal(2); // Graph1: 1 * 2
+    expect(results[1].context.value).to.equal(5); // Graph2: 3 + 2
   });
 
   /**
