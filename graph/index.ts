@@ -16,7 +16,7 @@ import { GraphVisualizer } from "./visualizer";
 
 /**
  * @module GraphFlow
- * @description A flexible workflow engine that manages the execution of nodes in a graph-like structure.
+ * @description A workflow engine that manages the execution of nodes in a graph-like structure.
  *
  * Key features:
  * - Multiple branches support
