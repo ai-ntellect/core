@@ -512,10 +512,10 @@ describe("GraphNode", () => {
     const nodes = new Map();
     nodes.set("waitForEventsNode", {
       name: "waitForEventsNode",
-      waitForEvents: {
+      when: {
         events: ["event1", "event2"],
         timeout: 1000,
-        strategy: "all",
+        strategy: { type: "all" },
       },
       execute: async (context: TestContext) => {
         context.message = "Events received";
@@ -554,10 +554,10 @@ describe("GraphNode", () => {
     const nodes = new Map();
     nodes.set("timeoutNode", {
       name: "timeoutNode",
-      waitForEvents: {
+      when: {
         events: ["event1", "event2"],
         timeout: 100,
-        strategy: "all",
+        strategy: { type: "all" },
       },
       execute: async (context: TestContext) => {
         context.message = "Should not execute";
@@ -571,7 +571,6 @@ describe("GraphNode", () => {
       eventSubject,
       stateSubject
     );
-
     await expect(
       node.executeNode("timeoutNode", { counter: 0, message: "Hello" }, null)
     ).to.be.rejectedWith("Timeout waiting for events");
@@ -581,10 +580,10 @@ describe("GraphNode", () => {
     const nodes = new Map();
     nodes.set("partialEventsNode", {
       name: "partialEventsNode",
-      waitForEvents: {
+      when: {
         events: ["event1", "event2"],
         timeout: 1000,
-        strategy: "all",
+        strategy: { type: "all" },
       },
       execute: async (context: TestContext) => {
         context.message = "All events received";
@@ -598,14 +597,12 @@ describe("GraphNode", () => {
       eventSubject,
       stateSubject
     );
-
     const execution = node.executeNode(
       "partialEventsNode",
       { counter: 0, message: "Hello" },
       null
     );
 
-    // N'émettre qu'un seul événement
     setTimeout(() => {
       eventEmitter.emit("event1", { data: "test1" });
     }, 100);
@@ -617,13 +614,20 @@ describe("GraphNode", () => {
     const nodes = new Map();
     nodes.set("correlatedEventsNode", {
       name: "correlatedEventsNode",
-      correlateEvents: {
+      when: {
         events: ["payment", "stock"],
         timeout: 1000,
-        correlation: (events: Array<{ type: string; payload?: any }>) => {
-          const paymentEvent = events.find((e) => e.type === "payment");
-          const stockEvent = events.find((e) => e.type === "stock");
-          return paymentEvent?.payload?.id === stockEvent?.payload?.id;
+        strategy: {
+          type: "correlate",
+          correlation: (events: Array<{ type: string; payload?: any }>) => {
+            const paymentEvent = events.find(
+              (e: { type: string }) => e.type === "payment"
+            );
+            const stockEvent = events.find(
+              (e: { type: string }) => e.type === "stock"
+            );
+            return paymentEvent?.payload?.id === stockEvent?.payload?.id;
+          },
         },
       },
       execute: (context: TestContext) => {

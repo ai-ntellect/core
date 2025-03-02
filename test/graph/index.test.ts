@@ -6,7 +6,7 @@ import { z } from "zod";
 import { GraphController } from "../../graph/controller";
 import { GraphFlow } from "../../graph/index";
 import { NodeParams } from "../../graph/node";
-import { GraphContext, GraphConfig, GraphNodeConfig } from "../../types";
+import { GraphConfig, GraphContext, GraphNodeConfig } from "../../types";
 
 use(chaiAsPromised);
 
@@ -595,14 +595,16 @@ describe("GraphFlow", function () {
    * Tests single event waiting functionality
    */
   it("should wait for a single event before continuing", async function () {
-    this.timeout(5000);
-
     const waitingNode: GraphNodeConfig<TestSchema> = {
       name: "waitingNode",
       execute: async (context: GraphContext<typeof TestSchema>) => {
         context.value = 1;
       },
-      waitForEvent: true,
+      when: {
+        events: ["someEvent"],
+        timeout: 1000,
+        strategy: { type: "single" },
+      },
       next: ["finalNode"],
     };
 
