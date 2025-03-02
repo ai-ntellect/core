@@ -58,7 +58,8 @@ export class RedisAdapter implements IMemoryAdapter {
   ): Promise<BaseMemoryType | undefined> {
     const memory: BaseMemoryType = {
       id: input.id || crypto.randomUUID(),
-      data: input.data,
+      content: input.content,
+      metadata: input.metadata,
       embedding: input.embedding,
       roomId: input.roomId,
       createdAt: new Date(),

@@ -51,7 +51,7 @@ export class InMemoryAdapter implements IMemoryAdapter {
 
     // Check if memory already exists
     const memories = this.storage.get(input.roomId) || [];
-    const existingMemory = memories.find((m) => m.data === input.data);
+    const existingMemory = memories.find((m) => m.content === input.content);
     if (existingMemory) {
       return existingMemory;
     }
@@ -59,7 +59,8 @@ export class InMemoryAdapter implements IMemoryAdapter {
     // Create new memory
     const memory: BaseMemoryType = {
       id: input.id || crypto.randomUUID(),
-      data: input.data,
+      content: input.content,
+      metadata: input.metadata,
       embedding: input.embedding,
       roomId: input.roomId,
       createdAt: new Date(),
@@ -97,7 +98,7 @@ export class InMemoryAdapter implements IMemoryAdapter {
     options: { roomId: string; limit?: number }
   ): Promise<BaseMemoryType[]> {
     const memories = this.storage.get(options.roomId) || [];
-    const filtered = memories.filter((m) => m.data.includes(query));
+    const filtered = memories.filter((m) => m.content.includes(query));
     return filtered.slice(0, options.limit || filtered.length);
   }
 

@@ -204,7 +204,7 @@ export class MeilisearchAdapter implements IMemoryAdapter {
     await this.initializeStorage(input.roomId);
 
     // Check if the memory already exists
-    const existingMemory = await this.search(input.data, input.roomId, {
+    const existingMemory = await this.search(input.content, input.roomId, {
       limit: 1,
     });
     if (existingMemory.length > 0) {
@@ -214,7 +214,8 @@ export class MeilisearchAdapter implements IMemoryAdapter {
     // If not found, create new memory
     const memory: BaseMemoryType = {
       id: input.id || crypto.randomUUID(),
-      data: input.data,
+      content: input.content,
+      metadata: input.metadata,
       embedding: input.embedding,
       roomId: input.roomId,
       createdAt: new Date(),
@@ -241,7 +242,8 @@ export class MeilisearchAdapter implements IMemoryAdapter {
       return result
         ? {
             id: result.id,
-            data: result.data,
+            content: result.content,
+            metadata: result.metadata,
             embedding: result.embedding,
             roomId: result.roomId,
             createdAt: result.createdAt,
@@ -271,7 +273,8 @@ export class MeilisearchAdapter implements IMemoryAdapter {
       .filter((result) => result.document.roomId === options.roomId)
       .map((result) => ({
         id: result.document.id,
-        data: result.document.data,
+        content: result.document.content,
+        metadata: result.document.metadata,
         embedding: result.document.embedding,
         roomId: result.document.roomId,
         createdAt: result.document.createdAt,
