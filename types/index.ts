@@ -14,10 +14,12 @@ import { IEventEmitter } from "../interfaces";
  */
 export interface CreateMemoryInput {
   id?: string;
-  data: string;
+  content: string;
+  metadata?: Record<string, any>;
   embedding?: number[];
   roomId: string;
   ttl?: number;
+  type?: string;
 }
 
 /**
@@ -32,7 +34,8 @@ export interface CreateMemoryInput {
  */
 export interface BaseMemoryType {
   id: string;
-  data: string;
+  content: string;
+  metadata?: Record<string, any>;
   embedding?: number[];
   roomId: string;
   createdAt: Date;
@@ -74,13 +77,29 @@ export type GraphContext<T extends ZodSchema> = {
 };
 
 /**
+ * Configuration for event handling in a node
+ */
+export type EventStrategy = {
+  type: "single" | "all" | "correlate";
+  correlation?: (events: any[]) => boolean;
+};
+
+export type EventConfig = {
+  events: string[];
+  timeout?: number;
+  strategy: EventStrategy;
+  onSuccess?: (events: any[]) => Promise<void>;
+  onTimeout?: () => Promise<void>;
+};
+
+/**
  * Interface representing a node in the graph
  * @interface
  * @template T - Schema type
  * @template I - Input schema type
  * @template O - Output schema type
  */
-export type GraphNodeConfig<T extends ZodSchema, P = any> = {
+export interface GraphNodeConfig<T extends ZodSchema, P = any> {
   /** Name of the node */
   name: string;
   /** Description of the node */
@@ -106,16 +125,8 @@ export type GraphNodeConfig<T extends ZodSchema, P = any> = {
     | ((context: GraphContext<T>) => string[]);
   /** Array of event names that trigger this node */
   events?: string[];
-  /** Wait for a single event before continuing */
-  waitForEvent?: boolean;
-  /** Wait for multiple events configuration */
-  waitForEvents?: WaitForEvents;
-  /** Event correlation configuration */
-  correlateEvents?: {
-    events: string[];
-    timeout: number;
-    correlation: (events: any[]) => boolean;
-  };
+  /** Event handling configuration */
+  when?: EventConfig;
   /** Retry configuration */
   retry?: {
     /** Maximum number of retry attempts */
@@ -129,7 +140,8 @@ export type GraphNodeConfig<T extends ZodSchema, P = any> = {
   };
   /** Error handler function */
   onError?: (error: Error) => void;
-};
+  agent?: string;
+}
 
 /**
  * Interface for graph definition
