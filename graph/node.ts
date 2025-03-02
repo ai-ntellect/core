@@ -96,22 +96,8 @@ export class GraphNode<T extends ZodSchema> {
     this.emitEvent("nodeStarted", { name: nodeName, context: nodeContext });
 
     try {
-      if (node.correlateEvents) {
-        await this.eventManager.waitForCorrelatedEvents(
-          node.correlateEvents.events,
-          node.correlateEvents.timeout || 30000,
-          (events) => {
-            return node.correlateEvents!.correlation(events);
-          }
-        );
-      }
-
-      // Ensuite, attendre les événements si waitForEvents est défini
-      if (node.waitForEvents) {
-        await this.eventManager.waitForEvents(
-          node.waitForEvents.events,
-          node.waitForEvents.timeout
-        );
+      if (node.when) {
+        await this.eventManager.handleNodeEvents(nodeName, node.when);
       }
 
       const contextProxy = new Proxy(nodeContext, {
@@ -207,27 +193,6 @@ export class GraphNode<T extends ZodSchema> {
   }
 
   /**
-   * Handles event-related operations for a node
-   * @param node - The node whose events need handling
-   * @param nodeName - The name of the node
-   * @param context - The current graph context
-   * @private
-   */
-  private async handleEvents(
-    node: GraphNodeConfig<T, any>,
-    nodeName: string,
-    context: GraphContext<T>
-  ): Promise<void> {
-    if (node.correlateEvents) {
-      await this.handleCorrelatedEvents(node, nodeName);
-    }
-
-    if (node.waitForEvents) {
-      await this.handleWaitForEvents(node, nodeName);
-    }
-  }
-
-  /**
    * Executes a node with retry logic
    * @param node - The node to execute
    * @param contextProxy - The proxied graph context
@@ -275,73 +240,6 @@ export class GraphNode<T extends ZodSchema> {
           setTimeout(resolve, node.retry?.delay || 0)
         );
       }
-    }
-  }
-
-  /**
-   * Handles correlated events for a node
-   * @param node - The node with correlated events
-   * @param nodeName - The name of the node
-   * @throws Error if correlation fails or timeout occurs
-   * @private
-   */
-  private async handleCorrelatedEvents(
-    node: GraphNodeConfig<T, any>,
-    nodeName: string
-  ): Promise<void> {
-    if (node.correlateEvents) {
-      const { events, timeout, correlation } = node.correlateEvents;
-      this.logger.addLog(
-        `⏳ Node "${nodeName}" waiting for correlated events: ${events.join(
-          ", "
-        )}`
-      );
-
-      try {
-        // Attendre les événements
-        const receivedEvents = await this.eventManager.waitForEvents(
-          events,
-          timeout
-        );
-
-        // Vérifier la corrélation
-        if (!correlation(receivedEvents)) {
-          this.logger.addLog(
-            `❌ Event correlation failed for node "${nodeName}"`
-          );
-          throw new Error(`Event correlation failed for node "${nodeName}"`);
-        }
-
-        this.logger.addLog(
-          `✅ Event correlation succeeded for node "${nodeName}"`
-        );
-      } catch (error) {
-        this.logger.addLog(
-          `❌ Error waiting for events: ${(error as Error).message}`
-        );
-        throw error;
-      }
-    }
-  }
-
-  /**
-   * Handles waiting for events
-   * @param node - The node waiting for events
-   * @param nodeName - The name of the node
-   * @throws Error if timeout occurs
-   * @private
-   */
-  private async handleWaitForEvents(
-    node: GraphNodeConfig<T, any>,
-    nodeName: string
-  ): Promise<void> {
-    if (node.waitForEvents) {
-      const { events, timeout } = node.waitForEvents;
-      this.logger.addLog(
-        `⏳ Node "${nodeName}" waiting for events: ${events.join(", ")}`
-      );
-      await this.eventManager.waitForEvents(events, timeout);
-      this.logger.addLog(`✅ All events received for node "${nodeName}"`);
     }
   }
 }

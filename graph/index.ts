@@ -8,6 +8,7 @@ import {
   GraphEvent,
   GraphNodeConfig,
 } from "../types";
+import { BaseAgent } from "./base-agent";
 import { GraphEventManager } from "./event-manager";
 import { GraphLogger } from "./logger";
 import { GraphNode, NodeParams } from "./node";
@@ -165,6 +166,9 @@ export class GraphFlow<T extends ZodSchema> {
     inputs: any,
     triggeredByEvent: boolean = false
   ): Promise<void> {
+    const node = this.nodes.get(nodeName);
+    if (!node) throw new Error(`Node "${nodeName}" not found`);
+
     return this.nodeExecutor.executeNode(
       nodeName,
       context,
@@ -270,7 +274,7 @@ export class GraphFlow<T extends ZodSchema> {
    * @param {Partial<GraphContext<T>>} data - Optional data to merge with context
    * @returns {Promise<void>}
    */
-  public async emit(
+  public emit(
     eventName: string,
     data?: Partial<GraphContext<T>>
   ): Promise<void> {
@@ -280,7 +284,8 @@ export class GraphFlow<T extends ZodSchema> {
       timestamp: Date.now(),
     };
     this.eventSubject.next(event);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    this.eventManager.emit(eventName, data);
+    return Promise.resolve();
   }
 
   /**
@@ -405,5 +410,9 @@ export class GraphFlow<T extends ZodSchema> {
    */
   public createVisualizer(): GraphVisualizer<T> {
     return new GraphVisualizer(this.nodes);
+  }
+
+  public getSchema(): T {
+    return this.validator as T;
   }
 }

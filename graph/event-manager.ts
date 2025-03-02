@@ -1,7 +1,12 @@
 import { Observable, Subject, filter } from "rxjs";
 import { ZodSchema } from "zod";
 import { IEventEmitter } from "../interfaces";
-import { GraphContext, GraphEvent, GraphNodeConfig } from "../types";
+import {
+  EventConfig,
+  GraphContext,
+  GraphEvent,
+  GraphNodeConfig,
+} from "../types";
 import { GraphNode } from "./node";
 
 /**
@@ -17,6 +22,7 @@ export class GraphEventManager<T extends ZodSchema> {
   private graphEvents?: string[];
   private entryNode?: string;
   private globalErrorHandler?: (error: Error, context: GraphContext<T>) => void;
+  private lastEvents = new Map<string, any>();
 
   /**
    * Creates a new GraphEventManager instance
@@ -248,6 +254,7 @@ export class GraphEventManager<T extends ZodSchema> {
    * @param data - Optional data to include with the event
    */
   emit(eventName: string, data?: any): void {
+    this.lastEvents.set(eventName, data);
     this.eventEmitter.emit(eventName, data);
   }
 
@@ -285,20 +292,9 @@ export class GraphEventManager<T extends ZodSchema> {
       throw new Error(`Node "${nodeName}" not found`);
     }
 
-    // Attendre les événements si waitForEvents est configuré
-    if (node.waitForEvents) {
-      try {
-        await this.waitForEvents(
-          node.waitForEvents.events,
-          node.waitForEvents.timeout
-        );
-      } catch (error) {
-        throw new Error(
-          `Timeout waiting for events in node "${nodeName}": ${
-            (error as Error).message
-          }`
-        );
-      }
+    // Remplacer le code existant de gestion d'événements
+    if (node.when) {
+      await this.handleNodeEvents(nodeName, node.when);
     }
 
     return this.nodeExecutor.executeNode(
@@ -358,6 +354,102 @@ export class GraphEventManager<T extends ZodSchema> {
           checkCorrelation();
         });
       });
+    });
+  }
+
+  /**
+   * Handles events based on the node's event handler configuration
+   */
+  async handleNodeEvents(
+    nodeName: string,
+    config: EventConfig
+  ): Promise<any[]> {
+    const { events, timeout = 30000, strategy } = config;
+
+    return new Promise((resolve, reject) => {
+      const receivedEvents = new Map<string, any>();
+      const eventHandlers = new Map();
+      let isResolved = false;
+
+      // Ajouter les événements déjà reçus
+      events.forEach((event: string) => {
+        const existingEvent = this.lastEvents.get(event);
+        if (existingEvent) {
+          receivedEvents.set(event, {
+            type: event,
+            payload: existingEvent,
+            timestamp: Date.now(),
+          });
+        }
+      });
+
+      // Vérifier si on a déjà tous les événements nécessaires
+      const checkEvents = () => {
+        if (isResolved) return;
+
+        const eventsList = Array.from(receivedEvents.values());
+
+        switch (strategy.type) {
+          case "single":
+            if (receivedEvents.size > 0) {
+              resolve(eventsList);
+              isResolved = true;
+            }
+            break;
+
+          case "all":
+          case "correlate":
+            const allReceived = events.every((e: string) =>
+              receivedEvents.has(e)
+            );
+            if (allReceived) {
+              if (strategy.type === "correlate") {
+                const correlated = strategy.correlation?.(eventsList);
+                if (!correlated) return;
+              }
+              resolve(eventsList);
+              isResolved = true;
+            }
+            break;
+        }
+
+        if (isResolved) {
+          cleanup();
+        }
+      };
+
+      // Configurer les listeners pour les événements manquants
+      events.forEach((event: string) => {
+        if (!receivedEvents.has(event)) {
+          const handler = (eventData: any) => {
+            receivedEvents.set(event, {
+              type: event,
+              payload: eventData,
+              timestamp: Date.now(),
+            });
+            checkEvents();
+          };
+          eventHandlers.set(event, handler);
+          this.eventEmitter.on(event, handler);
+        }
+      });
+
+      const cleanup = () => {
+        eventHandlers.forEach((handler, event) => {
+          this.eventEmitter.removeListener(event, handler);
+        });
+      };
+
+      // Vérifier immédiatement les événements déjà reçus
+      checkEvents();
+
+      // Configurer le timeout
+      const timeoutId = setTimeout(() => {
+        if (!isResolved) {
+          cleanup();
+          reject(new Error(`Timeout waiting for events: ${events.join(", ")}`));
+        }
+      }, timeout);
     });
   }
 }
