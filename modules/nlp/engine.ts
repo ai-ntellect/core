@@ -1,3 +1,5 @@
+import { ActionHandler, NLPConfig } from "../../types";
+
 const { dockStart } = require("@nlpjs/basic");
 
 /**
