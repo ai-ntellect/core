@@ -1,6 +1,6 @@
 {
   "name": "@ai.ntellect/core",
-  "version": "0.7.14",
+  "version": "0.8.0",
   "description": "",
   "main": "dist/index.js",
   "scripts": {
@@ -17,8 +17,11 @@
   "author": "Lorcann Rauzduel",
   "license": "ISC",
   "dependencies": {
+    "@ai-sdk/openai": "^1.1.15",
+    "@nlpjs/basic": "5.0.0-alpha.5",
     "@types/node-cron": "^3.0.11",
-    "ai": "^3.0.0",
+    "ai": "^4.1.46",
+    "chalk": "^5.4.1",
     "node-cron": "^3.0.3",
     "redis": "^4.7.0",
     "rxjs": "^7.8.1",
