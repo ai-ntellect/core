@@ -5,6 +5,7 @@ import {
   CreateMemoryInput,
   GraphContext,
   GraphEvent,
+  GraphNodeConfig,
   ScheduledRequest,
   SchemaType,
 } from "../types";
@@ -545,4 +546,15 @@ export interface GraphObservable<T extends ZodSchema> extends Observable<any> {
     observable: Observable<any>,
     predicate: (state: any) => boolean
   ): Promise<any>;
+}
+
+export interface NLPNodeConfig<T extends ZodSchema>
+  extends Omit<GraphNodeConfig<T>, "execute"> {
+  nlpConfig: {
+    corpus?: any;
+    responses?: Record<string, any>;
+    entities?: Record<string, any>;
+    language?: string;
+  };
+  intentHandlers?: Record<string, (data: any) => Promise<any>>;
 }
