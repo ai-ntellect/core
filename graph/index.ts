@@ -1,14 +1,14 @@
 import { EventEmitter } from "events";
 import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
-import { GraphObservable, IEventEmitter } from "../interfaces";
+import { GraphObservable, IEventEmitter, NLPNodeConfig } from "../interfaces";
+import { NLPNode } from "../modules/nlp";
 import {
   GraphConfig,
   GraphContext,
   GraphEvent,
   GraphNodeConfig,
 } from "../types";
-import { BaseAgent } from "./base-agent";
 import { GraphEventManager } from "./event-manager";
 import { GraphLogger } from "./logger";
 import { GraphNode, NodeParams } from "./node";
@@ -46,6 +46,8 @@ export class GraphFlow<T extends ZodSchema> {
   private logger: GraphLogger;
   private eventManager: GraphEventManager<T>;
   private nodeExecutor: GraphNode<T>;
+
+  private nlpNodes: Map<string, NLPNode<T>> = new Map();
 
   /**
    * Creates a new instance of GraphFlow
@@ -97,7 +99,8 @@ export class GraphFlow<T extends ZodSchema> {
       this,
       this.eventSubject,
       this.stateSubject,
-      this.destroySubject
+      this.destroySubject,
+      this.eventManager
     );
   }
 
@@ -412,7 +415,48 @@ export class GraphFlow<T extends ZodSchema> {
     return new GraphVisualizer(this.nodes);
   }
 
+  /**
+   * Gets the schema for the current graph
+   * @returns {T} The schema for the current graph
+   */
   public getSchema(): T {
     return this.validator as T;
+  }
+
+  /**
+   * Adds a new NLP node to the graph
+   * @param {NLPNodeConfig<T>} config - Configuration for the NLP node
+   * @returns {Promise<void>}
+   */
+  public async addNLPNode(config: NLPNodeConfig<T>) {
+    const node = new NLPNode(config);
+    await node.initialize();
+    this.nlpNodes.set(config.name, node);
+
+    this.addNode({
+      name: config.name,
+      execute: async (context, input) => {
+        if (!input?.input) return;
+        const result = await node.process(input.input);
+        console.log("GraphFlow NLP result:", result);
+        Object.assign(context, { nlpResult: result });
+      },
+      next: config.next,
+    });
+  }
+
+  /**
+   * Processes natural language input using a specific NLP node
+   * @param {string} text - The input text to process
+   * @param {string} nodeName - The name of the NLP node to use
+   * @returns {Promise<GraphContext<T>>} The result of the NLP node execution
+   */
+  public async processNaturalLanguage(text: string, nodeName: string) {
+    const node = this.nlpNodes.get(nodeName);
+    if (!node) {
+      throw new Error(`NLP node "${nodeName}" not found`);
+    }
+
+    return this.execute(nodeName, { input: text });
   }
 }
