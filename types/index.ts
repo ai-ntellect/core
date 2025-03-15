@@ -205,15 +205,42 @@ export type MeilisearchSettings = {
   sortableAttributes?: string[];
 };
 
-export interface GraphEvent<T extends ZodSchema> {
+export type GraphEvent<T extends ZodSchema> = {
   type: string;
   payload?: any;
   timestamp: number;
-}
+};
 
-export interface WaitForEvents {
+export type WaitForEvents<T extends ZodSchema> = {
   events: string[];
   timeout?: number;
   strategy: "all" | "any" | "race";
   onSuccess?: <T extends ZodSchema>(context: GraphContext<T>) => Promise<void>;
-}
+};
+
+/**
+ * Configuration interface for NLP Engine
+ * @interface NLPConfig
+ * @property {any} [corpus] - Training corpus data
+ * @property {Record<string, any>} [responses] - Response templates
+ * @property {Record<string, any>} [entities] - Entity definitions
+ * @property {string} [language] - Language code (default: 'en')
+ * @property {number} [threshold] - Entity recognition threshold (default: 0.5)
+ * @property {string} [path] - Path to save/load model
+ */
+export type NLPConfig = {
+  corpus?: any;
+  responses?: Record<string, any>;
+  entities?: Record<string, any>;
+  language?: string;
+  threshold?: number;
+  path?: string;
+};
+
+/**
+ * Type definition for action handlers
+ * @callback ActionHandler
+ * @param {any} data - Input data for the action
+ * @returns {Promise<any>} Result of the action
+ */
+export type ActionHandler = (data: any) => Promise<any>;
