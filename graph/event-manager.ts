@@ -305,21 +305,54 @@ export class GraphEventManager<T extends ZodSchema> {
     );
   }
 
-  async waitForCorrelatedEvents(
+  /**
+   * Waits for correlated events to occur and validates them using a correlation function
+   */
+  waitForCorrelatedEvents(
     eventTypes: string[],
     timeoutMs: number,
     correlationFn: (events: GraphEvent<T>[]) => boolean
   ): Promise<GraphEvent<T>[]> {
     return new Promise((resolve, reject) => {
       const receivedEvents = new Map<string, GraphEvent<T>>();
+      const eventHandlers = new Map();
       let isResolved = false;
+
+      const cleanup = () => {
+        eventHandlers.forEach((handler, event) => {
+          this.eventEmitter.removeListener(event, handler);
+        });
+      };
+
+      eventTypes.forEach((eventType) => {
+        const handler = (eventData: any) => {
+          if (!isResolved) {
+            const event: GraphEvent<T> = {
+              type: eventType,
+              payload: eventData,
+              timestamp: Date.now(),
+            };
+            receivedEvents.set(eventType, event);
+
+            if (eventTypes.every((type) => receivedEvents.has(type))) {
+              const events = Array.from(receivedEvents.values());
+              if (correlationFn(events)) {
+                isResolved = true;
+                clearTimeout(timeoutId);
+                cleanup();
+                resolve(events);
+              }
+            }
+          }
+        };
+
+        eventHandlers.set(eventType, handler);
+        this.eventEmitter.on(eventType, handler);
+      });
 
       const timeoutId = setTimeout(() => {
         if (!isResolved) {
-          isResolved = true;
-          eventTypes.forEach((type) => {
-            this.eventEmitter.removeAllListeners(type);
-          });
+          cleanup();
           reject(
             new Error(
               `Timeout waiting for correlated events: ${eventTypes.join(", ")}`
@@ -327,33 +360,6 @@ export class GraphEventManager<T extends ZodSchema> {
           );
         }
       }, timeoutMs);
-
-      const checkCorrelation = () => {
-        if (eventTypes.every((type) => receivedEvents.has(type))) {
-          const events = Array.from(receivedEvents.values());
-          if (correlationFn(events)) {
-            if (!isResolved) {
-              isResolved = true;
-              clearTimeout(timeoutId);
-              eventTypes.forEach((type) => {
-                this.eventEmitter.removeAllListeners(type);
-              });
-              resolve(events);
-            }
-          }
-        }
-      };
-
-      eventTypes.forEach((eventType) => {
-        this.eventEmitter.on(eventType, (eventData: any) => {
-          receivedEvents.set(eventType, {
-            type: eventType,
-            payload: eventData,
-            timestamp: Date.now(),
-          });
-          checkCorrelation();
-        });
-      });
     });
   }
 
@@ -440,10 +446,8 @@ export class GraphEventManager<T extends ZodSchema> {
         });
       };
 
-      // Vérifier immédiatement les événements déjà reçus
       checkEvents();
 
-      // Configurer le timeout
       const timeoutId = setTimeout(() => {
         if (!isResolved) {
           cleanup();
