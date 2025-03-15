@@ -244,3 +244,20 @@ export type NLPConfig = {
  * @returns {Promise<any>} Result of the action
  */
 export type ActionHandler = (data: any) => Promise<any>;
+
+/**
+ * Options for the observer
+ * @typedef {Object} ObserverOptions
+ * @property {number} [debounce] - Debounce time in milliseconds
+ * @property {number} [delay] - Delay time in milliseconds
+ * @property {boolean} [stream] - Whether to stream the response
+ * @property {(string | number)[]} [properties] - Properties to observe
+ */
+export type ObserverOptions = {
+  debounce?: number;
+  delay?: number;
+  stream?: boolean;
+  properties?: (string | number)[]; // Accepte uniquement string ou number comme clés
+  onStreamLetter?: (data: { letter: string; property: string }) => void;
+  onStreamComplete?: () => void;
+};
