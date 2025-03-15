@@ -11,6 +11,12 @@
  * - Utility functions for action schema generation and header building
  */
 
+export * from "./modules/agent/agent";
+export * from "./modules/agent/base";
+export * from "./modules/agent/generic-executor";
+export * from "./modules/agent/llm-factory";
+export * from "./modules/agent/prompt-builder";
+
 export * from "./graph/controller";
 export * from "./graph/event-manager";
 export * from "./graph/index";
@@ -18,16 +24,9 @@ export * from "./graph/node";
 export * from "./graph/observer";
 export * from "./graph/visualizer";
 
-export * from "./modules/memory";
-export * from "./modules/memory/adapters/in-memory";
-export * from "./modules/memory/adapters/meilisearch";
-export * from "./modules/memory/adapters/redis";
-
 export * from "./interfaces";
 export * from "./modules/agenda";
-export * from "./modules/agenda/adapters/node-cron";
 export * from "./modules/embedding";
-export * from "./modules/embedding/adapters/ai";
 
 export * from "./types";
 
