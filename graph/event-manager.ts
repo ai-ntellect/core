@@ -78,14 +78,12 @@ export class GraphEventManager<T extends ZodSchema> {
     payload?: P,
     context?: GraphContext<T>
   ): void {
-    // Éviter la double imbrication des événements
     const event = {
       type,
       payload,
       timestamp: Date.now(),
     };
 
-    // Émettre l'événement une seule fois
     this.eventSubject.next(event);
     this.eventEmitter.emit(type, payload);
   }
@@ -424,7 +422,6 @@ export class GraphEventManager<T extends ZodSchema> {
         }
       };
 
-      // Configurer les listeners pour les événements manquants
       events.forEach((event: string) => {
         if (!receivedEvents.has(event)) {
           const handler = (eventData: any) => {
