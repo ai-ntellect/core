@@ -1,5 +1,5 @@
 import { BaseAgent } from ".";
-import { GraphFlow } from "../..";
+import { GraphFlow } from "../../../graph";
 import {
   ActionSchema,
   AgentContext,

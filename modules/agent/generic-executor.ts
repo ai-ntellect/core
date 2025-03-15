@@ -1,12 +1,12 @@
 import chalk from "chalk";
 import { z } from "zod";
+import { GraphFlow } from "../../graph/index";
 import {
   ActionSchema,
   AgentContext,
   DecisionOutput,
   ExecutorConfig,
 } from "../../types/agent";
-import { GraphFlow } from "../index";
 import { BaseAgent } from "./base";
 import { AgentExecutor } from "./base/executor";
 import { LLMFactory } from "./llm-factory";

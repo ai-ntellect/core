@@ -1,6 +1,6 @@
 import { AgentConfig } from "@/types/agent";
-import { Memory } from "../../../modules/memory";
 import { BaseMemoryType } from "../../../types";
+import { Memory } from "../../memory";
 
 /**
  * Base agent class that handles role, goal, and personality management

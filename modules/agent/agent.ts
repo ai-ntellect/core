@@ -1,9 +1,9 @@
+import { GraphFlow } from "../../graph/index";
 import {
   AgentConfig,
   AgentContext,
   AgentContextSchema,
 } from "../../types/agent";
-import { GraphFlow } from "../index";
 import { BaseAgent } from "./base";
 import { GenericExecutor } from "./generic-executor";
 
