@@ -12,6 +12,7 @@
  */
 
 export * from "./modules/agent/agent";
+export * from "./modules/agent/prompt-builder";
 
 export * from "./graph/controller";
 export * from "./graph/event-manager";
@@ -23,6 +24,7 @@ export * from "./graph/visualizer";
 export * from "./interfaces";
 export * from "./modules/agenda";
 export * from "./modules/embedding";
+export * from "./modules/memory";
 
 export * from "./types";
 
