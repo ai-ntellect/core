@@ -161,16 +161,6 @@ workflow
 
 For complete documentation, visit our [GitBook](https://ai-ntellect.gitbook.io/core).
 
-## Examples
-
-Check out our examples directory for more use cases:
-
-- Email Workflow
-- Task Management
-- Customer Support Bot
-- Data Processing Pipeline
-- Event-driven Automation
-
 ## Contributing
 
 We welcome contributions! To get started:
