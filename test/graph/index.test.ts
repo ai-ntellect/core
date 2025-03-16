@@ -51,11 +51,11 @@ describe("GraphFlow", function () {
 
   beforeEach(() => {
     eventEmitter = new EventEmitter();
-    graph = new GraphFlow("TestGraph", {
+    graph = new GraphFlow({
       name: "TestGraph",
+      schema: TestSchema,
       nodes: [],
       context: { value: 0 },
-      schema: TestSchema,
       eventEmitter: eventEmitter,
     });
   });
@@ -251,8 +251,8 @@ describe("GraphFlow", function () {
       },
     };
 
-    const graph = new GraphFlow("test", {
-      name: "test",
+    const graph = new GraphFlow({
+      name: "retryGraph",
       schema: TestSchema,
       context: { value: 0 },
       nodes: [retryNode],
@@ -292,10 +292,10 @@ describe("GraphFlow", function () {
 
     const newDefinition: GraphConfig<TestSchema> = {
       name: "TestGraph",
-      entryNode: "A",
+      schema: TestSchema,
       nodes: [nodeA, nodeB],
       context: { value: 0 },
-      schema: TestSchema,
+      entryNode: "A",
     };
 
     graph.load(newDefinition);
@@ -318,7 +318,7 @@ describe("GraphFlow", function () {
       },
     };
 
-    const graph = new GraphFlow("test", {
+    const graph = new GraphFlow({
       name: "test",
       schema: TestSchema,
       context: { value: 0 },
@@ -336,8 +336,9 @@ describe("GraphFlow", function () {
    * Tests successful input/output validation flow
    */
   it("should successfully validate both params and outputs", async function () {
-    const graph = new GraphFlow("test", {
+    const graph = new GraphFlow({
       name: "test",
+      schema: TestSchema,
       nodes: [
         {
           name: "validatedNode",
@@ -353,7 +354,6 @@ describe("GraphFlow", function () {
           },
         },
       ],
-      schema: TestSchema,
       context: { value: 0, counter: 0, message: "" },
     });
 
@@ -371,8 +371,9 @@ describe("GraphFlow", function () {
    * Tests handling of missing required params
    */
   it("should throw error when required params are missing", async function () {
-    const graph = new GraphFlow("test", {
+    const graph = new GraphFlow({
       name: "test",
+      schema: TestSchema,
       nodes: [
         {
           name: "requiredInputNode",
@@ -387,7 +388,6 @@ describe("GraphFlow", function () {
           },
         },
       ],
-      schema: TestSchema,
       context: { value: 0, counter: 0, message: "" },
     });
 
@@ -483,11 +483,11 @@ describe("GraphFlow", function () {
    */
   it("should handle parallel workflows using GraphController", async function () {
     // Graph 1
-    const graph1 = new GraphFlow("Graph1", {
+    const graph1 = new GraphFlow({
       name: "Graph1",
-      nodes: [],
-      context: { value: 0 },
       schema: TestSchema,
+      context: { value: 0 },
+      nodes: [],
     });
 
     const processNode1: GraphNodeConfig<TestSchema> = {
@@ -506,11 +506,11 @@ describe("GraphFlow", function () {
     };
 
     // Graph 2
-    const graph2 = new GraphFlow("Graph2", {
+    const graph2 = new GraphFlow({
       name: "Graph2",
-      nodes: [],
-      context: { value: 0 },
       schema: TestSchema,
+      context: { value: 0 },
+      nodes: [],
     });
 
     const processNode2: GraphNodeConfig<TestSchema> = {
@@ -549,11 +549,11 @@ describe("GraphFlow", function () {
    */
   it("should handle sequential workflows using GraphController", async function () {
     // Graph 1
-    const graph1 = new GraphFlow("Graph1", {
+    const graph1 = new GraphFlow({
       name: "Graph1",
-      nodes: [],
-      context: { value: 1 },
       schema: TestSchema,
+      context: { value: 1 },
+      nodes: [],
     });
 
     const startNode1: GraphNodeConfig<TestSchema> = {
@@ -564,11 +564,11 @@ describe("GraphFlow", function () {
     };
 
     // Graph 2
-    const graph2 = new GraphFlow("Graph2", {
+    const graph2 = new GraphFlow({
       name: "Graph2",
-      nodes: [],
-      context: { value: 3 },
       schema: TestSchema,
+      context: { value: 3 },
+      nodes: [],
     });
 
     const startNode2: GraphNodeConfig<TestSchema> = {
@@ -631,8 +631,9 @@ describe("GraphFlow", function () {
 
   // Test de validation des paramètres
   it("should successfully validate params", async () => {
-    const graph = new GraphFlow("test", {
+    const graph = new GraphFlow({
       name: "test",
+      schema: TestSchema,
       nodes: [
         {
           name: "validationNode",
@@ -647,7 +648,6 @@ describe("GraphFlow", function () {
           },
         },
       ],
-      schema: TestSchema,
       context: { value: 0, counter: 0, message: "" },
     });
 
@@ -659,8 +659,9 @@ describe("GraphFlow", function () {
 
   // Test des paramètres requis
   it("should throw error when required params are missing", async () => {
-    const graph = new GraphFlow("test", {
+    const graph = new GraphFlow({
       name: "test",
+      schema: TestSchema,
       nodes: [
         {
           name: "requiredInputNode",
@@ -675,7 +676,6 @@ describe("GraphFlow", function () {
           },
         },
       ],
-      schema: TestSchema,
       context: { value: 0, counter: 0, message: "" },
     });
 

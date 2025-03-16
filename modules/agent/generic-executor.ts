@@ -10,6 +10,7 @@ import {
 import { BaseAgent } from "./base";
 import { AgentExecutor } from "./base/executor";
 import { LLMFactory } from "./llm-factory";
+import { PromptBuilder } from "./prompt-builder";
 
 /**
  * Generic executor that handles the interaction between the agent and LLM
@@ -96,6 +97,33 @@ ${graph
       .join("\n\n");
   }
 
+  private async buildSystemPrompt(context: AgentContext): Promise<string> {
+    return new PromptBuilder()
+      .addSection("ROLE", this.agent.getRole())
+      .addSection("GOAL", this.agent.getGoal())
+      .addSection("BACKSTORY", this.agent.getBackstory())
+      .addSection(
+        "RECENT ACTIONS (check this before deciding what to do)",
+        context.knowledge || "None"
+      )
+      .addSection(
+        "AVAILABLE ACTIONS (only if you need)",
+        this.generateActionSchema()
+      )
+      .addSection(
+        "INSTRUCTIONS",
+        `
+- Never take actions if an recent action matches the user's input
+- If you need to take actions, structure parameters according to the action's schema
+- If goal is achieved, explain that you achieved for examples:
+  - "I have achieved the goal"
+  - "I have done what I needed to do"
+  - "I have completed the task"
+      `
+      )
+      .build(context);
+  }
+
   /**
    * Makes a decision based on the current context using the LLM
    * @param {AgentContext} context - The context to base the decision on
@@ -107,50 +135,16 @@ ${graph
       chalk.dim("Analyzing context and available actions...")
     );
 
-    const memories = await this.agent.recall(context.input.raw);
-    if (memories.length > 0) {
-      this.log("info", chalk.dim("Retrieved relevant memories:"));
-      memories.forEach((m) => this.log("info", chalk.dim(`- ${m.content}`)));
+    const systemPrompt = await this.buildSystemPrompt(context);
 
-      context.knowledge =
-        (context.knowledge || "") +
-        "\n" +
-        memories.map((m) => m.content).join("\n");
-    }
-
-    const systemPrompt = `
-      ## ROLE
-      ${this.agent.getRole()}
-
-      ## GOAL
-      ${this.agent.getGoal()}
-
-      ## BACKSTORY
-      ${this.agent.getBackstory()}
-
-      ## RECENT ACTIONS
-      ${context.knowledge ? `${context.knowledge}\n` : "None"}
-     
-      ## AVAILABLE ACTIONS
-      ${this.generateActionSchema()}
-
-      ## INSTRUCTIONS
-      - Analyze the user input and what you have done (if no action is needed, just return an empty array)
-      - Choose appropriate actions based on their parameters
-      - Structure parameters according to the action's schema
-      - Look at the goal and the actions you have done, if you have achieved the goal, STOP
-    `;
-
+    console.log({ systemPrompt });
     this.log("info", chalk.dim("Generating response..."));
 
     const result = await this.llm.generate(
       {
         system: systemPrompt,
-        user: `User input: ${context.input.raw}
-        Actions you have already done: ${
-          context.executedActions
-            ?.map((a) => `\n- ${a.name} => ${JSON.stringify(a.result)}`)
-            .join("") || "None"
+        user: `User sent you this message at ${new Date().toISOString()}\n${
+          context.input.raw
         }`,
       },
       z.object({
@@ -168,7 +162,6 @@ ${graph
         response: z.string(),
       })
     );
-
     if (result.object.actions.length > 0) {
       this.log("success", chalk.green("Decided to take actions:"));
       result.object.actions.forEach(

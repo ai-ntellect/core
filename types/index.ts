@@ -77,13 +77,45 @@ export type GraphContext<T extends ZodSchema> = {
 };
 
 /**
- * Configuration for event handling in a node
+ * Configuration for event handling strategies in nodes
+ * @typedef {Object} EventStrategy
+ * @property {"single" | "all" | "correlate"} type - The type of event handling strategy
+ * - single: Waits for any single event from the specified events
+ * - all: Waits for all specified events to occur
+ * - correlate: Uses a correlation function to match related events
+ * @property {(events: any[]) => boolean} [correlation] - Optional correlation function for "correlate" strategy
  */
 export type EventStrategy = {
   type: "single" | "all" | "correlate";
   correlation?: (events: any[]) => boolean;
 };
 
+/**
+ * Configuration for event handling in nodes
+ * @typedef {Object} EventConfig
+ * @property {string[]} events - Array of event names to wait for
+ * @property {number} [timeout] - Optional timeout in milliseconds
+ * @property {EventStrategy} strategy - Strategy for handling multiple events
+ * @property {(events: any[]) => Promise<void>} [onSuccess] - Optional callback when events are successfully received
+ * @property {() => Promise<void>} [onTimeout] - Optional callback when event waiting times out
+ * @example
+ * ```typescript
+ * const eventConfig: EventConfig = {
+ *   events: ["payment.received", "order.validated"],
+ *   timeout: 5000,
+ *   strategy: {
+ *     type: "correlate",
+ *     correlation: (events) => events.every(e => e.transactionId === events[0].transactionId)
+ *   },
+ *   onSuccess: async (events) => {
+ *     console.log("Correlated events received:", events);
+ *   },
+ *   onTimeout: async () => {
+ *     console.log("Event waiting timed out");
+ *   }
+ * };
+ * ```
+ */
 export type EventConfig = {
   events: string[];
   timeout?: number;
@@ -93,11 +125,61 @@ export type EventConfig = {
 };
 
 /**
+ * Represents an event in the graph system
+ * @template T - Schema type for context validation
+ * @property {string} type - The type/name of the event
+ * @property {any} [payload] - Optional payload data
+ * @property {number} timestamp - Unix timestamp of when the event occurred
+ * @example
+ * ```typescript
+ * const event: GraphEvent<MySchema> = {
+ *   type: "payment.received",
+ *   payload: {
+ *     transactionId: "tx123",
+ *     amount: 100,
+ *     currency: "USD"
+ *   },
+ *   timestamp: Date.now()
+ * };
+ * ```
+ */
+export type GraphEvent<T extends ZodSchema> = {
+  type: string;
+  payload?: any;
+  timestamp: number;
+};
+
+/**
+ * Configuration for waiting on multiple events
+ * @template T - Schema type for context validation
+ * @property {string[]} events - Array of event names to wait for
+ * @property {number} [timeout] - Optional timeout in milliseconds
+ * @property {"all" | "any" | "race"} strategy - Strategy for handling multiple events
+ * @property {(context: GraphContext<T>) => Promise<void>} [onSuccess] - Optional success callback
+ * @example
+ * ```typescript
+ * const config: WaitForEvents<MySchema> = {
+ *   events: ["event1", "event2"],
+ *   timeout: 5000,
+ *   strategy: "all",
+ *   onSuccess: async (context) => {
+ *     console.log("All events received");
+ *   }
+ * };
+ * ```
+ */
+export type WaitForEvents<T extends ZodSchema> = {
+  events: string[];
+  timeout?: number;
+  strategy: "all" | "any" | "race";
+  onSuccess?: <T extends ZodSchema>(context: GraphContext<T>) => Promise<void>;
+};
+
+/**
  * Interface representing a node in the graph
  * @interface
  * @template T - Schema type
- * @template I - Input schema type
- * @template O - Output schema type
+ * @template P - Parameters type
  */
 export interface GraphNodeConfig<T extends ZodSchema, P = any> {
   /** Name of the node */
@@ -112,10 +194,9 @@ export interface GraphNodeConfig<T extends ZodSchema, P = any> {
     params?: P,
     tools?: { eventEmitter: IEventEmitter }
   ) => Promise<void>;
-  /** Optional condition for node start execution */
+  /** Optional condition for node execution */
   condition?: (context: GraphContext<T>, params?: P) => boolean;
-
-  /** Array of next node names or objects with conditions for the next node */
+  /** Array of next node names or objects with conditions */
   next?:
     | Array<
         | string
@@ -129,13 +210,9 @@ export interface GraphNodeConfig<T extends ZodSchema, P = any> {
   when?: EventConfig;
   /** Retry configuration */
   retry?: {
-    /** Maximum number of retry attempts */
     maxAttempts: number;
-    /** Delay between retries in milliseconds */
     delay: number;
-    /** Error handler function */
     onRetryFailed?: (error: Error, context: GraphContext<T>) => Promise<void>;
-    /** Continue execution on failed retry */
     continueOnFailed?: boolean;
   };
   /** Error handler function */
@@ -151,12 +228,12 @@ export interface GraphNodeConfig<T extends ZodSchema, P = any> {
 export type GraphConfig<T extends ZodSchema> = {
   /** Name of the graph */
   name: string;
-  /** Array of nodes in the graph */
-  nodes: GraphNodeConfig<T, any>[];
-  /** Initial context */
-  context: SchemaType<T>;
   /** Schema for validation */
   schema: T;
+  /** Initial context */
+  context: SchemaType<T>;
+  /** Array of nodes in the graph */
+  nodes: GraphNodeConfig<T, any>[];
   /** Global error handler */
   onError?: (error: Error, context: GraphContext<T>) => void;
   /** Entry node name */
@@ -203,19 +280,6 @@ export type MeilisearchSettings = {
   searchableAttributes?: string[];
   /** Array of sortable attributes */
   sortableAttributes?: string[];
-};
-
-export type GraphEvent<T extends ZodSchema> = {
-  type: string;
-  payload?: any;
-  timestamp: number;
-};
-
-export type WaitForEvents<T extends ZodSchema> = {
-  events: string[];
-  timeout?: number;
-  strategy: "all" | "any" | "race";
-  onSuccess?: <T extends ZodSchema>(context: GraphContext<T>) => Promise<void>;
 };
 
 /**

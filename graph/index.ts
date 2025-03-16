@@ -37,6 +37,7 @@ export class GraphFlow<T extends ZodSchema> {
   private entryNode?: string;
   private verbose: boolean = false;
   public nodes: Map<string, GraphNodeConfig<T, any>>;
+  public name: string;
 
   private eventSubject: Subject<GraphEvent<T>> = new Subject();
   private stateSubject: BehaviorSubject<GraphContext<T>>;
@@ -51,15 +52,11 @@ export class GraphFlow<T extends ZodSchema> {
 
   /**
    * Creates a new instance of GraphFlow
-   * @param {string} name - The name of the graph flow
-   * @param {GraphConfig<T>} config - Configuration object containing nodes, schema, context, and error handlers
+   * @param {GraphConfig<T>} config - Configuration object containing name, nodes, schema, context, and error handlers
    * @param {Object} options - Optional options for the graph flow
    */
-  constructor(
-    public name: string,
-    config: GraphConfig<T>,
-    options: { verbose?: boolean } = {}
-  ) {
+  constructor(config: GraphConfig<T>, options: { verbose?: boolean } = {}) {
+    this.name = config.name;
     this.nodes = new Map(
       config.nodes.map((node: GraphNodeConfig<T, any>) => [node.name, node])
     );
@@ -69,22 +66,23 @@ export class GraphFlow<T extends ZodSchema> {
     this.eventEmitter =
       config.eventEmitter || (new EventEmitter() as IEventEmitter);
     this.graphEvents = config.events;
+    this.entryNode = config.entryNode;
     this.verbose = options.verbose ?? false;
 
     this.stateSubject = new BehaviorSubject<GraphContext<T>>(this.context);
 
-    this.logger = new GraphLogger(name, options.verbose);
+    this.logger = new GraphLogger(this.name, options.verbose);
     this.eventManager = new GraphEventManager(
       this.eventEmitter,
       this.nodes,
-      name,
+      this.name,
       this.context,
       config.events,
       config.entryNode,
       config.onError
     );
     this.nodeExecutor = new GraphNode(
-      this.nodes as Map<string, GraphNodeConfig<T, any>>,
+      this.nodes,
       this.logger,
       this.eventManager,
       this.eventSubject,

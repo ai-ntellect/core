@@ -1,59 +1,208 @@
 # @ai.ntellect/core
 
-@ai.ntellect/core is a modular and event-driven framework designed to orchestrate and execute intelligent workflows using execution graphs. It enables automation of complex tasks, seamless integration with external services, and the creation of AI-driven agents in a flexible and scalable way.
+A TypeScript framework for building workflow automation with event-driven architecture.
 
 ## Features
 
-- **GraphFlow** – Graph-based execution engine for automating business processes
-- **AI Agents** – Built-in support for LLM-powered agents with memory and tools
-- **Event-Driven** – Nodes can react to real-time events and trigger actions dynamically
-- **Modular** – Plug-and-play modules and adapters for memory, scheduling, and external APIs
-- **Extensible** – Custom nodes, adapters, and interactions with third-party services
-- **Observable** – Complete state and event monitoring
-- **Type-Safe** – Built with TypeScript for robust type checking
-- **Schema Validation** – Integrated Zod schema validation
-- **Retry Mechanisms** – Built-in retry strategies for resilient workflows
-- **Event Correlation** – Advanced event handling with correlation strategies
+- Graph-based workflow execution
+- Event-driven node processing
+- TypeScript type safety
+- Zod schema validation
+- Retry mechanisms
+- State observation
+- AI Agent integration
 
 ## Installation
-
-### Prerequisites
-
-- Node.js (LTS version recommended)
-- TypeScript
-- Zod (for data validation)
-
-Verify your installation:
-
-```sh
-node -v
-npm -v
-```
-
-### Installing the framework
 
 ```sh
 npm install @ai.ntellect/core zod
 ```
 
-## Quick Start
+## Basic Usage
 
-### 1. Basic Workflow
+### Building a simple workflow
 
 ```typescript
-import { GraphFlow } from "@ai.ntellect/core";
 import { z } from "zod";
+import { GraphFlow } from "@ai.ntellect/core";
+import { GraphContext, GraphNodeConfig } from "@ai.ntellect/core/types";
+
+// Define the schema
+const Schema = z.object({
+  message: z.string(),
+});
+
+// Define a node
+const greetNode = {
+  name: "greet",
+  execute: async (context: GraphContext<typeof Schema>) => {
+    context.message = "Hello, World!";
+  },
+};
+
+// Create workflow
+const workflow = new GraphFlow({
+  name: "hello",
+  schema: Schema,
+  context: { message: "" },
+  nodes: [greetNode],
+});
+
+// Execute and observe
+const main = async () => {
+  // Observe state changes
+  workflow
+    .observe()
+    .state()
+    .subscribe((context) => {
+      console.log(context);
+    });
+
+  // Execute workflow
+  await workflow.execute("greet");
+};
+
+main();
+```
+
+### Handling events in a workflow
+
+```typescript
+import { z } from "zod";
+import { GraphFlow } from "@ai.ntellect/core";
+import { GraphContext } from "@ai.ntellect/core/types";
 
 // Define schema
+const OrderSchema = z.object({
+  orderId: z.string(),
+  status: z.string(),
+  amount: z.number(),
+});
+
+// Define nodes
+const paymentNode: GraphNodeConfig<typeof OrderSchema> = {
+  name: "payment",
+  when: {
+    events: ["payment.received"],
+    timeout: 30000,
+    strategy: { type: "single" },
+  },
+  execute: async (context: GraphContext<typeof OrderSchema>) => {
+    context.status = "processing";
+  },
+  next: ["validation"],
+};
+
+const validationNode: GraphNodeConfig<typeof OrderSchema> = {
+  name: "validation",
+  when: {
+    events: ["payment.validated", "inventory.checked"],
+    timeout: 5000,
+    strategy: {
+      type: "correlate",
+      correlation: (events) => {
+        return events.every(
+          (e) => e.payload.orderId === events[0].payload.orderId
+        );
+      },
+    },
+  },
+  execute: async (context: GraphContext<typeof OrderSchema>) => {
+    context.status = "validated";
+  },
+};
+
+// Create workflow
+const orderWorkflow = new GraphFlow({
+  name: "order",
+  schema: OrderSchema,
+  context: {
+    orderId: "",
+    status: "pending",
+    amount: 0,
+  },
+  nodes: [paymentNode, validationNode],
+});
+
+// Usage
+const main = async () => {
+  // Observe state
+  orderWorkflow
+    .observe()
+    .property("status")
+    .subscribe((status) => {
+      console.log("Status:", status);
+    });
+
+  // Start listening for events
+  orderWorkflow.execute("payment");
+
+  // Emit event after a short delay
+  setTimeout(async () => {
+    await orderWorkflow.emit("payment.received", {
+      orderId: "123",
+      amount: 100,
+    });
+  }, 100);
+
+  // Observe payment received event
+  orderWorkflow
+    .observe()
+    .event("payment.received")
+    .subscribe((event) => {
+      console.log("Payment received:", event);
+      orderWorkflow.emit("inventory.checked", {
+        orderId: event.payload.orderId,
+      });
+    });
+
+  // Observe inventory checked event
+  orderWorkflow
+    .observe()
+    .event("inventory.checked")
+    .subscribe((event) => {
+      console.log("Inventory checked:", event);
+      orderWorkflow.emit("payment.validated", {
+        orderId: event.payload.orderId,
+      });
+    });
+
+  // Observe payment validated event
+  orderWorkflow
+    .observe()
+    .event("payment.validated")
+    .subscribe((event) => {
+      console.log("Payment validated:", event);
+    });
+};
+
+main();
+```
+
+### Creating a workflow with Agent
+
+```typescript
+import { z } from "zod";
+import { GraphFlow, Agent } from "@ai.ntellect/core";
+import { GraphContext } from "@ai.ntellect/core/types";
+
 const EmailSchema = z.object({
   to: z.string(),
   subject: z.string(),
   content: z.string(),
-  status: z.string().default("pending"),
+  status: z.string(),
 });
 
-// Create workflow
-const emailFlow = new GraphFlow("email", {
+const sendNode = {
+  name: "send",
+  execute: async (context: GraphContext<typeof EmailSchema>) => {
+    context.status = "sending";
+    // Email sending implementation
+    context.status = "sent";
+  },
+};
+
+const emailFlow = new GraphFlow({
   name: "email",
   schema: EmailSchema,
   context: {
@@ -62,114 +211,37 @@ const emailFlow = new GraphFlow("email", {
     content: "",
     status: "pending",
   },
-  nodes: [
-    {
-      name: "send",
-      execute: async (context) => {
-        console.log(`Sending email to ${context.to}`);
-        // Logic to send email
-        context.status = "sent";
-      },
-    },
-  ],
+  nodes: [sendNode],
 });
-```
-
-### 2. AI-Powered Assistant
-
-```typescript
-import { Agent } from "@ai.ntellect/core";
 
 const assistant = new Agent({
   role: "Email Assistant",
-  goal: "Help users send emails efficiently",
-  backstory: "I am an AI assistant specialized in email communications",
+  goal: "Help users send emails",
   tools: [emailFlow],
   llmConfig: {
     provider: "openai",
     model: "gpt-4",
-    apiKey: "YOUR_API_KEY",
+    apiKey: process.env.OPENAI_API_KEY,
   },
 });
 
-// Use the assistant
-const result = await assistant.process(
-  "Send an email to john@example.com about tomorrow's meeting"
-);
-```
-
-## Advanced Features
-
-### Event Handling
-
-```typescript
-const workflow = new GraphFlow("notification", {
-  nodes: [
-    {
-      name: "waitForEvent",
-      events: ["emailSent"],
-      execute: async (context, event) => {
-        console.log(`Email sent to ${event.payload.recipient}`);
-      },
-    },
-  ],
-});
-
-// Emit events
-workflow.emit("emailSent", { recipient: "john@example.com" });
-```
-
-### Retry Mechanisms
-
-```typescript
-const node = {
-  name: "sendEmail",
-  execute: async (context) => {
-    // Email sending logic
-  },
-  retry: {
-    maxAttempts: 3,
-    delay: 1000,
-    onRetryFailed: async (error, context) => {
-      console.error(`Failed to send email to ${context.to}`);
-    },
-  },
+const main = async () => {
+  const result = await assistant.process(
+    "Send an email to john@example.com about the project update"
+  );
+  console.log(result);
 };
-```
 
-### State Observation
-
-```typescript
-// Observe specific properties
-workflow
-  .observe()
-  .property("status")
-  .subscribe((status) => {
-    console.log(`Email status changed to: ${status}`);
-  });
-
-// Observe specific nodes
-workflow
-  .observe()
-  .node("sendEmail")
-  .subscribe((state) => {
-    console.log(`Send email node state:`, state);
-  });
+main();
 ```
 
 ## Documentation
 
-For complete documentation, visit our [GitBook](https://ai-ntellect.gitbook.io/core).
+See the [documentation](https://ai-ntellect.gitbook.io/core) for detailed usage examples.
 
 ## Contributing
 
-We welcome contributions! To get started:
-
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
-
-Join our [Discord community](https://discord.gg/kEc5gWXJ) for discussions and support.
+Contributions are welcome. Please submit pull requests with tests.
 
 ## License
 

@@ -1,3 +1,4 @@
+import { GraphContext } from "@/types";
 import { GraphFlow } from "../../graph/index";
 import {
   AgentConfig,
@@ -51,31 +52,29 @@ export class Agent {
    * @returns {GraphFlow<typeof AgentContextSchema>} The configured workflow
    */
   private setupWorkflow(): GraphFlow<typeof AgentContextSchema> {
-    return new GraphFlow("assistant", {
+    return new GraphFlow({
       name: "assistant",
       schema: AgentContextSchema,
       context: {
         input: { raw: "" },
         actions: [],
         response: "",
-        executedActions: [],
       },
       nodes: [
         {
           name: "process",
-          execute: async (context) => {
+          execute: async (context: GraphContext<typeof AgentContextSchema>) => {
             const agentContext = context as unknown as AgentContext;
             const decision = await this.executor.makeDecision(agentContext);
             context.actions = decision.actions;
             context.response = decision.response;
           },
-          next: (context) => (context.actions.length > 0 ? ["execute"] : []),
+          next: (context: GraphContext<typeof AgentContextSchema>) =>
+            context.actions.length > 0 ? ["execute"] : [],
         },
         {
           name: "execute",
-          execute: async (context) => {
-            console.log(`Executing actions:`);
-            console.log(context.actions);
+          execute: async (context: GraphContext<typeof AgentContextSchema>) => {
             const timestamp = new Date().toISOString();
             context.knowledge = `Date: ${timestamp}\n${JSON.stringify(
               context.actions

@@ -33,7 +33,7 @@ describe("GraphObserver", () => {
   let observer: GraphObserver<typeof TestSchema>;
 
   beforeEach(() => {
-    graph = new GraphFlow("TestGraph", {
+    graph = new GraphFlow({
       name: "TestGraph",
       nodes: [],
       context: { value: 0 },
@@ -50,7 +50,8 @@ describe("GraphObserver", () => {
       graph,
       eventSubject,
       stateSubject,
-      destroySubject
+      destroySubject,
+      graph["eventManager"]
     );
   });
 
@@ -319,33 +320,27 @@ describe("GraphObserver", () => {
      * - Events are captured in correct order
      */
     it("should wait for correlated events", async () => {
-      // Create test events
-      const eventA = {
-        type: "eventA",
-        payload: { eventPayload: { status: "success" } },
-        timestamp: Date.now(),
-      } as GraphEvent<typeof TestSchema>;
-
-      const eventB = {
-        type: "eventB",
-        payload: { eventPayload: { status: "success" } },
-        timestamp: Date.now(),
-      } as GraphEvent<typeof TestSchema>;
-
-      // Emit events after a short delay
-      setTimeout(() => {
-        eventSubject.next(eventA);
-        eventSubject.next(eventB);
-      }, 100);
-
-      const events = await observer.waitForCorrelatedEvents(
+      const promise = observer.waitForCorrelatedEvents(
         ["eventA", "eventB"],
-        2000,
-        (events) =>
-          events.every((e) => e.payload.eventPayload?.status === "success")
+        1000,
+        (events) => events.every((e) => e.payload?.status === "success")
       );
 
-      expect(events.length).to.equal(2);
+      // Emit events immediately
+      eventSubject.next({
+        type: "eventA",
+        payload: { status: "success" },
+        timestamp: Date.now(),
+      });
+
+      eventSubject.next({
+        type: "eventB",
+        payload: { status: "success" },
+        timestamp: Date.now(),
+      });
+
+      const events = await promise;
+      expect(events).to.have.length(2);
       expect(events[0].type).to.equal("eventA");
       expect(events[1].type).to.equal("eventB");
     });

@@ -27,7 +27,7 @@ describe("GraphController", () => {
       },
     ];
 
-    return new GraphFlow(name, {
+    return new GraphFlow({
       name,
       nodes,
       schema: TestSchema,
@@ -119,7 +119,7 @@ describe("GraphController", () => {
     });
 
     it("should handle errors in parallel execution", async () => {
-      const errorGraph = new GraphFlow("errorGraph", {
+      const errorGraph = new GraphFlow({
         name: "errorGraph",
         nodes: [
           {
