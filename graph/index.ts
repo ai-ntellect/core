@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
-import { GraphObservable, IEventEmitter, NLPNodeConfig } from "../interfaces";
+import { GraphObservable, IEventEmitter } from "../interfaces";
 import { NLPNode } from "../modules/nlp";
 import {
   GraphConfig,
@@ -11,7 +11,7 @@ import {
 } from "../types";
 import { GraphEventManager } from "./event-manager";
 import { GraphLogger } from "./logger";
-import { GraphNode, NodeParams } from "./node";
+import { GraphNode } from "./node";
 import { GraphObserver } from "./observer";
 import { GraphVisualizer } from "./visualizer";
 
@@ -157,25 +157,18 @@ export class GraphFlow<T extends ZodSchema> {
    * @private
    * @param {string} nodeName - Name of the node to execute
    * @param {GraphContext<T>} context - Current execution context
-   * @param {any} inputs - Input parameters for the node
    * @param {boolean} triggeredByEvent - Whether the execution was triggered by an event
    * @returns {Promise<void>}
    */
   private async executeNode(
     nodeName: string,
     context: GraphContext<T>,
-    inputs: any,
     triggeredByEvent: boolean = false
   ): Promise<void> {
     const node = this.nodes.get(nodeName);
     if (!node) throw new Error(`Node "${nodeName}" not found`);
 
-    return this.nodeExecutor.executeNode(
-      nodeName,
-      context,
-      inputs,
-      triggeredByEvent
-    );
+    return this.nodeExecutor.executeNode(nodeName, context, triggeredByEvent);
   }
 
   private addLog(message: string): void {
@@ -225,36 +218,33 @@ export class GraphFlow<T extends ZodSchema> {
   /**
    * Executes the graph flow starting from a specific node
    * @param {string} startNode - Name of the node to start execution from
-   * @param {any} inputs - Optional input parameters for the start node
    * @param {Partial<GraphContext<T>>} context - Optional context to merge
-   * @param {NodeParams} params - Optional node parameters
    * @returns {Promise<GraphContext<T>>} Final context after execution
    */
   public async execute(
     startNode: string,
-    params?: NodeParams,
     context?: Partial<GraphContext<T>>
   ): Promise<GraphContext<T>> {
-    if (context) {
-      Object.assign(this.context, context);
-    }
-
-    this.eventEmitter.emit("graphStarted", { name: this.name });
-
     try {
+      // Validate and merge context if provided
+      if (context) {
+        const mergedContext = { ...this.context, ...context };
+        const validationResult = this.validator?.safeParse(mergedContext);
+        if (!validationResult?.success) {
+          const errors = validationResult?.error?.errors.map(
+            (err) => `${err.path.join(".")}: ${err.message}`
+          );
+          throw new Error(`Context validation failed: ${errors?.join(", ")}`);
+        }
+        this.context = validationResult.data;
+      }
+
+      this.eventEmitter.emit("graphStarted", { name: this.name });
+
       const node = this.nodes.get(startNode);
       if (!node) throw new Error(`Node "${startNode}" not found`);
 
-      if (node.params && !params) {
-        throw new Error(`Params required for node "${startNode}"`);
-      }
-
-      await this.nodeExecutor.executeNode(
-        startNode,
-        this.context,
-        params,
-        false
-      );
+      await this.nodeExecutor.executeNode(startNode, this.context, false);
 
       this.eventEmitter.emit("graphCompleted", {
         name: this.name,
@@ -305,8 +295,8 @@ export class GraphFlow<T extends ZodSchema> {
   public load(definition: GraphConfig<T>): void {
     // Clear all existing nodes
     this.nodes.clear();
+
     // Wipe out old node-based event listeners
-    // (We keep external test listeners like "nodeStarted" or "nodeCompleted".)
     if (definition.nodes?.length) {
       const allEvents = new Set<string>();
       definition.nodes.forEach((n) =>
@@ -321,14 +311,18 @@ export class GraphFlow<T extends ZodSchema> {
     definition.nodes.forEach((node) => this.nodes.set(node.name, node));
 
     // Parse the new context
-    this.context = definition.schema.parse(
-      definition.context
-    ) as GraphContext<T>;
+    const validationResult = definition.schema.safeParse(definition.context);
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map(
+        (err) => `${err.path.join(".")}: ${err.message}`
+      );
+      throw new Error(`Context validation failed: ${errors.join(", ")}`);
+    }
+    this.context = validationResult.data;
     this.validator = definition.schema;
 
-    // Store entry node
+    // Store entry node and graph events
     this.entryNode = definition.entryNode;
-    // Store graph events
     this.graphEvents = definition.events;
 
     // Re-setup only node-based event triggers
@@ -340,7 +334,7 @@ export class GraphFlow<T extends ZodSchema> {
             async (data?: Partial<GraphContext<T>>) => {
               const freshContext = structuredClone(this.context);
               if (data) Object.assign(freshContext, data);
-              await this.executeNode(node.name, freshContext, undefined, true);
+              await this.executeNode(node.name, freshContext, true);
             }
           );
         });
@@ -419,28 +413,6 @@ export class GraphFlow<T extends ZodSchema> {
    */
   public getSchema(): T {
     return this.validator as T;
-  }
-
-  /**
-   * Adds a new NLP node to the graph
-   * @param {NLPNodeConfig<T>} config - Configuration for the NLP node
-   * @returns {Promise<void>}
-   */
-  public async addNLPNode(config: NLPNodeConfig<T>) {
-    const node = new NLPNode(config);
-    await node.initialize();
-    this.nlpNodes.set(config.name, node);
-
-    this.addNode({
-      name: config.name,
-      execute: async (context, input) => {
-        if (!input?.input) return;
-        const result = await node.process(input.input);
-        console.log("GraphFlow NLP result:", result);
-        Object.assign(context, { nlpResult: result });
-      },
-      next: config.next,
-    });
   }
 
   /**
