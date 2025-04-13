@@ -86,7 +86,6 @@ export class GraphNode<T extends ZodSchema> {
   public async executeNode(
     nodeName: string,
     context: GraphContext<T>,
-    params: any,
     triggeredByEvent: boolean = false
   ): Promise<void> {
     const node = this.nodes.get(nodeName);
@@ -120,11 +119,11 @@ export class GraphNode<T extends ZodSchema> {
         },
       });
 
-      if (node.condition && !node.condition(contextProxy, params)) {
+      if (node.condition && !node.condition(contextProxy)) {
         return;
       }
 
-      await this.executeWithRetry(node, contextProxy, nodeName, params);
+      await this.executeWithRetry(node, contextProxy, nodeName);
       this.emitEvent("nodeCompleted", { name: nodeName, context: nodeContext });
 
       if (!triggeredByEvent && node.next) {
@@ -151,7 +150,7 @@ export class GraphNode<T extends ZodSchema> {
 
         // Sinon, exécuter les autres nœuds valides
         for (const nextNode of validNextNodes) {
-          await this.executeNode(nextNode.name, context, undefined, false);
+          await this.executeNode(nextNode.name, context, false);
         }
       }
     } catch (error) {
@@ -160,34 +159,6 @@ export class GraphNode<T extends ZodSchema> {
         error,
         context: nodeContext,
       });
-      throw error;
-    }
-  }
-
-  /**
-   * Validates the params for a node using its schema
-   * @param node - The node whose params need validation
-   * @param params - The input data to validate
-   * @param nodeName - The name of the node (for error messages)
-   * @throws Error if validation fails
-   * @private
-   */
-  private async validateParams(
-    node: GraphNodeConfig<T, any>,
-    params: any,
-    nodeName: string
-  ): Promise<void> {
-    // Si pas de schéma de validation ou si le schéma est optionnel, accepter n'importe quels params
-    if (!node.params || node.params.isOptional?.()) return;
-
-    // Vérifier les params uniquement si un schéma est défini et non optionnel
-    if (!params) {
-      throw new Error(`Params required for node "${nodeName}"`);
-    }
-
-    try {
-      return node.params.parse(params);
-    } catch (error: any) {
       throw error;
     }
   }
@@ -205,19 +176,14 @@ export class GraphNode<T extends ZodSchema> {
   private async executeWithRetry(
     node: GraphNodeConfig<T, any>,
     contextProxy: GraphContext<T>,
-    nodeName: string,
-    params?: NodeParams
+    nodeName: string
   ): Promise<void> {
     let attempts = 0;
     let lastError: Error = new Error("Unknown error");
 
     while (attempts < (node.retry?.maxAttempts || 1)) {
       try {
-        if (node.params) {
-          await this.validateParams(node, params, nodeName);
-        }
-
-        await node.execute(contextProxy, params, {
+        await node.execute(contextProxy, {
           eventEmitter: this.eventEmitter,
         });
         return;
