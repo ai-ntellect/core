@@ -5,7 +5,8 @@ import { BehaviorSubject, Subject } from "rxjs";
 import { z } from "zod";
 import { GraphEventManager } from "../../graph/event-manager";
 import { GraphLogger } from "../../graph/logger";
-import { GraphNode, NodeParams } from "../../graph/node";
+import { GraphNode } from "../../graph/node";
+import { IEventEmitter } from "../../interfaces";
 import { GraphContext } from "../../types";
 
 use(chaiAsPromised);
@@ -66,7 +67,7 @@ describe("GraphNode", () => {
       stateSubject
     );
 
-    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
+    await node.executeNode("test", { counter: 0, message: "Hello" }, undefined);
 
     // Vérifier les événements émis
     expect(events).to.have.lengthOf(3); // nodeStarted, nodeStateChanged, nodeCompleted
@@ -94,12 +95,12 @@ describe("GraphNode", () => {
     );
 
     // Test avec condition vraie
-    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
+    await node.executeNode("test", { counter: 0, message: "Hello" }, undefined);
     expect(events.some((e) => e.type === "nodeStateChanged")).to.be.true;
 
     // Test avec condition fausse
     events = [];
-    await node.executeNode("test", { counter: 5, message: "Hello" }, null);
+    await node.executeNode("test", { counter: 5, message: "Hello" }, undefined);
     expect(events.some((e) => e.type === "nodeStateChanged")).to.be.false;
   });
 
@@ -121,12 +122,7 @@ describe("GraphNode", () => {
     );
 
     try {
-      await node.executeNode(
-        "test",
-        { counter: 0, message: "Hello" },
-        null,
-        false
-      );
+      await node.executeNode("test", { counter: 0, message: "Hello" }, false);
       expect.fail("Test error");
     } catch (error: any) {
       expect(error.message).to.equal("Test error");
@@ -152,7 +148,7 @@ describe("GraphNode", () => {
       eventSubject,
       stateSubject
     );
-    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
+    await node.executeNode("test", { counter: 0, message: "Hello" }, undefined);
 
     // Compter les occurrences de chaque type d'événement
     const eventCounts = events.reduce((acc, event) => {
@@ -192,7 +188,7 @@ describe("GraphNode", () => {
       eventSubject,
       stateSubject
     );
-    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
+    await node.executeNode("test", { counter: 0, message: "Hello" }, undefined);
 
     const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
     expect(stateChanges).to.have.lengthOf(1); // Seulement pour message
@@ -203,9 +199,9 @@ describe("GraphNode", () => {
     const nodes = new Map();
     nodes.set("test", {
       name: "test",
-      execute: async (context: TestContext, inputs?: any) => {
-        context.counter = inputs?.value ?? 0;
-        context.message = inputs?.message ?? "Default";
+      execute: async (context: TestContext) => {
+        context.counter = 42;
+        context.message = "Custom";
       },
     });
 
@@ -217,56 +213,21 @@ describe("GraphNode", () => {
       stateSubject
     );
 
-    await node.executeNode(
-      "test",
-      { counter: 0, message: "Hello" },
-      { value: 5, message: "Custom" },
-      false
-    );
+    await node.executeNode("test", { counter: 0, message: "Hello" }, false);
 
     const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
     expect(stateChanges).to.have.lengthOf(2);
-    expect(stateChanges[0].payload.newValue).to.equal(5);
+    expect(stateChanges[0].payload.newValue).to.equal(42);
     expect(stateChanges[1].payload.newValue).to.equal("Custom");
-  });
-
-  it("should use default values when no parameters provided", async () => {
-    const nodes = new Map();
-    nodes.set("test", {
-      name: "test",
-      execute: async (
-        context: TestContext,
-        _inputs: any,
-        params?: NodeParams
-      ) => {
-        context.counter = params?.increment || 1;
-        context.message = params?.message || "Default";
-      },
-    });
-
-    node = new GraphNode(
-      nodes,
-      logger,
-      eventManager,
-      eventSubject,
-      stateSubject
-    );
-
-    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
-
-    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
-    expect(stateChanges).to.have.lengthOf(2);
-    expect(stateChanges[0].payload.newValue).to.equal(1); // counter (default)
-    expect(stateChanges[1].payload.newValue).to.equal("Default"); // message (default)
   });
 
   it("should properly handle node inputs", async () => {
     const nodes = new Map();
     nodes.set("test", {
       name: "test",
-      execute: async (context: TestContext, inputs: any) => {
-        context.counter = inputs.value;
-        context.message = inputs.message;
+      execute: async (context: TestContext) => {
+        context.counter = 42;
+        context.message = "Test Input";
       },
     });
 
@@ -278,21 +239,12 @@ describe("GraphNode", () => {
       stateSubject
     );
 
-    const testInputs = {
-      value: 42,
-      message: "Test Input",
-    };
-
-    await node.executeNode(
-      "test",
-      { counter: 0, message: "Hello" },
-      testInputs
-    );
+    await node.executeNode("test", { counter: 0, message: "Hello" }, false);
 
     const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
     expect(stateChanges).to.have.lengthOf(2);
-    expect(stateChanges[0].payload.newValue).to.equal(42); // counter from input
-    expect(stateChanges[1].payload.newValue).to.equal("Test Input"); // message from input
+    expect(stateChanges[0].payload.newValue).to.equal(42);
+    expect(stateChanges[1].payload.newValue).to.equal("Test Input");
   });
 
   it("should not emit duplicate state changes", async () => {
@@ -315,7 +267,7 @@ describe("GraphNode", () => {
       stateSubject
     );
 
-    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
+    await node.executeNode("test", { counter: 0, message: "Hello" }, undefined);
 
     // Vérifier qu'il n'y a pas de doublons dans les événements
     const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
@@ -330,52 +282,14 @@ describe("GraphNode", () => {
     expect(stateChanges).to.have.lengthOf(2); // Un pour counter, un pour message
   });
 
-  it("should validate node parameters with Zod schema", async () => {
-    const paramSchema = z.object({
-      increment: z.number().min(1),
-      message: z.string().min(1),
-    });
-
+  it("should handle node execution without params", async () => {
     const nodes = new Map();
     nodes.set("test", {
       name: "test",
-      params: paramSchema,
-      execute: async (context: TestContext, params?: NodeParams) => {
-        context.counter += params?.increment || 0;
-        context.message = params?.message || "";
-      },
-    });
-
-    node = new GraphNode(
-      nodes,
-      logger,
-      eventManager,
-      eventSubject,
-      stateSubject
-    );
-
-    // Test avec des paramètres valides
-    await node.executeNode(
-      "test",
-      { counter: 0, message: "Hello" },
-      { increment: 5, message: "Valid" }
-    );
-
-    // Test avec des paramètres invalides
-    await expect(
-      node.executeNode(
-        "test",
-        { counter: 0, message: "Hello" },
-        { increment: 0, message: "" }
-      )
-    ).to.be.rejected; // Enlever le .with() car le message d'erreur vient directement de Zod
-  });
-
-  it("should work without params schema", async () => {
-    const nodes = new Map();
-    nodes.set("test", {
-      name: "test",
-      execute: async (context: TestContext) => {
+      execute: async (
+        context: TestContext,
+        tools?: { eventEmitter: IEventEmitter }
+      ) => {
         context.counter++;
       },
     });
@@ -388,120 +302,8 @@ describe("GraphNode", () => {
       stateSubject
     );
 
-    // Devrait fonctionner sans erreur même sans schema de params
-    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
-  });
-
-  it("should not require params when node has no params schema", async () => {
-    const nodes = new Map();
-    nodes.set("test", {
-      name: "test",
-      // Pas de schéma de params défini
-      execute: async (context: TestContext) => {
-        context.counter++;
-      },
-    });
-
-    node = new GraphNode(
-      nodes,
-      logger,
-      eventManager,
-      eventSubject,
-      stateSubject
-    );
-
-    await node.executeNode("test", { counter: 0, message: "Hello" }, null);
-
-    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
-    expect(stateChanges).to.have.lengthOf(1);
-    expect(stateChanges[0].payload.newValue).to.equal(1);
-  });
-
-  it("should require params only when node has params schema", async () => {
-    const nodes = new Map();
-    nodes.set("test", {
-      name: "test",
-      params: z.object({
-        // Avec un schéma de params
-        value: z.number(),
-      }),
-      execute: async (context: TestContext, params?: NodeParams) => {
-        context.counter = params?.value || 0;
-      },
-    });
-
-    node = new GraphNode(
-      nodes,
-      logger,
-      eventManager,
-      eventSubject,
-      stateSubject
-    );
-
-    // Devrait échouer sans params
-    await expect(
-      node.executeNode("test", { counter: 0, message: "Hello" }, null)
-    ).to.be.rejectedWith("Params required for node");
-  });
-
-  it("should execute node without params when no schema is defined (real world scenario)", async () => {
-    const nodes = new Map();
-    nodes.set("incrementCounter", {
-      name: "incrementCounter",
-      execute: async (context: TestContext) => {
-        context.counter++;
-      },
-    });
-
-    node = new GraphNode(
-      nodes,
-      logger,
-      eventManager,
-      eventSubject,
-      stateSubject
-    );
-
-    // Simuler l'appel comme dans examples/t2.ts
-    await node.executeNode(
-      "incrementCounter",
-      { message: "Hello", counter: 0 },
-      { test: "test" } // Passer des params même si non requis
-    );
-
-    const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
-    expect(stateChanges).to.have.lengthOf(1);
-    expect(stateChanges[0].payload.newValue).to.equal(1);
-  });
-
-  it("should handle optional params schema", async () => {
-    const nodes = new Map();
-    nodes.set("test", {
-      name: "test",
-      params: z
-        .object({
-          test: z.string(),
-        })
-        .optional(),
-      execute: async (context: TestContext, params?: NodeParams) => {
-        context.counter++;
-      },
-    });
-
-    node = new GraphNode(
-      nodes,
-      logger,
-      eventManager,
-      eventSubject,
-      stateSubject
-    );
-
-    // Devrait fonctionner avec ou sans params
-    await node.executeNode(
-      "test",
-      { counter: 0, message: "Hello" },
-      { test: "test" }
-    );
-    await node.executeNode("test", { counter: 1, message: "Hello" }, null);
+    await node.executeNode("test", { counter: 0, message: "Hello" }, undefined);
+    await node.executeNode("test", { counter: 1, message: "Hello" }, undefined);
 
     const stateChanges = events.filter((e) => e.type === "nodeStateChanged");
     expect(stateChanges).to.have.lengthOf(2);
@@ -534,7 +336,7 @@ describe("GraphNode", () => {
     const execution = node.executeNode(
       "waitForEventsNode",
       { counter: 0, message: "Hello" },
-      null
+      undefined
     );
 
     // Simuler les événements après un court délai
@@ -572,7 +374,11 @@ describe("GraphNode", () => {
       stateSubject
     );
     await expect(
-      node.executeNode("timeoutNode", { counter: 0, message: "Hello" }, null)
+      node.executeNode(
+        "timeoutNode",
+        { counter: 0, message: "Hello" },
+        undefined
+      )
     ).to.be.rejectedWith("Timeout waiting for events");
   });
 
@@ -597,11 +403,10 @@ describe("GraphNode", () => {
       eventSubject,
       stateSubject
     );
-    const execution = node.executeNode(
-      "partialEventsNode",
-      { counter: 0, message: "Hello" },
-      null
-    );
+    const execution = node.executeNode("partialEventsNode", {
+      counter: 0,
+      message: "Hello",
+    });
 
     setTimeout(() => {
       eventEmitter.emit("event1", { data: "test1" });
@@ -648,7 +453,7 @@ describe("GraphNode", () => {
     node.executeNode(
       "correlatedEventsNode",
       { counter: 0, message: "Hello" },
-      null
+      undefined
     );
 
     setTimeout(() => {

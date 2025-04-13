@@ -5,7 +5,6 @@ import sinon from "sinon";
 import { z } from "zod";
 import { GraphController } from "../../graph/controller";
 import { GraphFlow } from "../../graph/index";
-import { NodeParams } from "../../graph/node";
 import { GraphConfig, GraphContext, GraphNodeConfig } from "../../types";
 
 use(chaiAsPromised);
@@ -19,7 +18,7 @@ use(chaiAsPromised);
  * - eventPayload: optional object containing transaction metadata
  */
 const TestSchema = z.object({
-  value: z.number().default(0),
+  value: z.number().min(0).default(0),
   counter: z.number().default(0),
   message: z.string().default(""),
   eventPayload: z
@@ -165,10 +164,9 @@ describe("GraphFlow", function () {
 
       graph.addNode(simpleNode);
       await graph.execute("simpleNode", invalidContext as any);
-    } catch (error) {
-      expect((error as Error & { errors: any[] }).errors[0].message).to.include(
-        "Expected number"
-      );
+      expect.fail("Should have thrown an error");
+    } catch (error: any) {
+      expect(error.message).to.include("Expected number");
     }
   });
 
@@ -181,23 +179,22 @@ describe("GraphFlow", function () {
    * Ensures type safety and data consistency in node interactions
    */
   it("should execute a node with validated params and outputs", async function () {
-    const paramNode: GraphNodeConfig<TestSchema, { increment: number }> = {
-      name: "paramNode",
-      params: z.object({
-        increment: z.number(),
-      }),
-      execute: async (context, params?: { increment: number }) => {
-        if (!params) throw new Error("params required");
-        context.value = (context.value ?? 0) + params.increment;
-      },
-      next: [],
-    };
+    const graph = new GraphFlow({
+      name: "test",
+      schema: TestSchema,
+      nodes: [
+        {
+          name: "validatedNode",
+          execute: async (context: GraphContext<TestSchema>) => {
+            context.value = 5;
+          },
+        },
+      ],
+      context: { value: 0, counter: 0, message: "" },
+    });
 
-    graph.addNode(paramNode);
-    await graph.execute("paramNode", { increment: 5 });
-
-    const context = graph.getContext();
-    expect(context.value).to.equal(5);
+    await graph.execute("validatedNode");
+    expect(graph.getContext().value).to.equal(5);
   });
 
   /**
@@ -307,93 +304,107 @@ describe("GraphFlow", function () {
    * Tests input validation error handling
    */
   it("should throw error when node input validation fails", async () => {
-    const node: GraphNodeConfig<TestSchema> = {
-      name: "test",
-      params: z.object({
-        value: z.number().min(0),
-      }),
-      execute: async (context, params) => {
-        if (!params) throw new Error("params required");
-        context.value = params.value;
-      },
-    };
-
     const graph = new GraphFlow({
       name: "test",
       schema: TestSchema,
-      context: { value: 0 },
-      nodes: [node],
+      nodes: [
+        {
+          name: "test",
+          execute: async (context: GraphContext<TestSchema>) => {
+            context.value = -1;
+          },
+        },
+      ],
+      context: { value: 0, counter: 0, message: "" },
     });
 
     try {
       await graph.execute("test", { value: -1 });
       expect.fail("Should have thrown an error");
     } catch (error: any) {
-      expect(error.message).to.include("Number must be greater than or equal");
+      expect(error.message).to.include(
+        "Number must be greater than or equal to 0"
+      );
     }
   });
+
   /**
    * Tests successful input/output validation flow
    */
-  it("should successfully validate both params and outputs", async function () {
+  it("should execute a node with validated context", async function () {
     const graph = new GraphFlow({
       name: "test",
       schema: TestSchema,
       nodes: [
         {
           name: "validatedNode",
-          params: z.object({
-            increment: z.number().min(0).max(5),
-          }),
-          execute: async (
-            context: GraphContext<TestSchema>,
-            params?: NodeParams
-          ) => {
-            if (!params) throw new Error("params required");
-            context.value = (context.value ?? 0) + params.increment;
+          execute: async (context: GraphContext<TestSchema>) => {
+            context.value = 5;
           },
         },
       ],
       context: { value: 0, counter: 0, message: "" },
     });
 
-    // Test avec valeur valide
-    await graph.execute("validatedNode", { increment: 3 });
-    expect(graph.getContext().value).to.equal(3);
-
-    // Test avec valeur invalide
-    await expect(
-      graph.execute("validatedNode", { increment: 10 })
-    ).to.be.rejectedWith("Number must be less than or equal to 5");
+    await graph.execute("validatedNode");
+    expect(graph.getContext().value).to.equal(5);
   });
 
-  /**
-   * Tests handling of missing required params
-   */
-  it("should throw error when required params are missing", async function () {
+  it("should throw error when required context values are missing", async function () {
     const graph = new GraphFlow({
       name: "test",
       schema: TestSchema,
       nodes: [
         {
           name: "requiredInputNode",
-          params: z.object({
-            value: z.number(),
-          }),
-          execute: async (
-            context: GraphContext<TestSchema>,
-            params?: NodeParams
-          ) => {
-            context.counter = params?.value || 0;
+          execute: async (context: GraphContext<TestSchema>) => {
+            if (context.value === undefined) {
+              throw new Error("Value is required");
+            }
+            context.counter = context.value;
           },
         },
       ],
       context: { value: 0, counter: 0, message: "" },
     });
 
-    await expect(graph.execute("requiredInputNode")).to.be.rejectedWith(
-      "Params required for node"
-    );
+    try {
+      graph["context"].value = undefined;
+      await graph.execute("requiredInputNode");
+      throw new Error("Should have thrown an error");
+    } catch (error: any) {
+      expect(error.message).to.equal("Value is required");
+    }
+  });
+
+  it("should validate context against schema constraints", async () => {
+    const graph = new GraphFlow({
+      name: "test",
+      schema: TestSchema,
+      nodes: [
+        {
+          name: "validationNode",
+          execute: async (context: GraphContext<TestSchema>) => {
+            const newContext = { ...context, value: -1 };
+            const validationResult = TestSchema.safeParse(newContext);
+            if (!validationResult.success) {
+              throw new Error(validationResult.error.errors[0].message);
+            }
+            graph["context"] = newContext;
+          },
+        },
+      ],
+      context: { value: 0, counter: 0, message: "" },
+    });
+
+    try {
+      await graph.execute("validationNode");
+      throw new Error("Should have thrown an error");
+    } catch (error: any) {
+      expect(error.message).to.include(
+        "Number must be greater than or equal to 0"
+      );
+    }
   });
 
   /**
@@ -629,58 +640,42 @@ describe("GraphFlow", function () {
     expect(result.value).to.equal(6); // 1 (waitingNode) + 5 (finalNode)
   });
 
-  // Test de validation des paramètres
-  it("should successfully validate params", async () => {
+  it("should wait for correlated events", async function () {
     const graph = new GraphFlow({
       name: "test",
       schema: TestSchema,
       nodes: [
         {
-          name: "validationNode",
-          params: z.object({
-            value: z.number().max(10),
-          }),
-          execute: async (
-            context: GraphContext<TestSchema>,
-            params?: NodeParams
-          ) => {
-            context.counter = params?.value || 0;
+          name: "correlatedEventsNode",
+          when: {
+            events: ["eventA", "eventB"],
+            timeout: 1000,
+            strategy: {
+              type: "correlate",
+              correlation: (events) => {
+                const eventA = events.find((e) => e.type === "eventA");
+                const eventB = events.find((e) => e.type === "eventB");
+                return eventA?.payload?.id === eventB?.payload?.id;
+              },
+            },
+          },
+          execute: async (context: GraphContext<TestSchema>) => {
+            context.message = "Correlated events received";
           },
         },
       ],
       context: { value: 0, counter: 0, message: "" },
     });
 
-    // Test avec valeur invalide
-    await expect(
-      graph.execute("validationNode", { value: 20 })
-    ).to.be.rejectedWith("Number must be less than or equal to 10");
-  });
+    const execution = graph.execute("correlatedEventsNode");
 
-  // Test des paramètres requis
-  it("should throw error when required params are missing", async () => {
-    const graph = new GraphFlow({
-      name: "test",
-      schema: TestSchema,
-      nodes: [
-        {
-          name: "requiredInputNode",
-          params: z.object({
-            value: z.number(),
-          }),
-          execute: async (
-            context: GraphContext<TestSchema>,
-            params?: NodeParams
-          ) => {
-            context.counter = params?.value || 0;
-          },
-        },
-      ],
-      context: { value: 0, counter: 0, message: "" },
-    });
+    // Émettre les événements corrélés
+    setTimeout(() => {
+      graph.emit("eventA", { id: "123", status: "completed" });
+      graph.emit("eventB", { id: "123", status: "available" });
+    }, 100);
 
-    await expect(graph.execute("requiredInputNode")).to.be.rejectedWith(
-      "Params required for node"
-    );
+    await execution;
+    expect(graph.getContext().message).to.equal("Correlated events received");
   });
 });

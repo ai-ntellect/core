@@ -326,7 +326,7 @@ describe("GraphObserver", () => {
         (events) => events.every((e) => e.payload?.status === "success")
       );
 
-      // Emit events immediately
+      // Émettre les événements immédiatement
       eventSubject.next({
         type: "eventA",
         payload: { status: "success" },

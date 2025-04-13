@@ -2,21 +2,29 @@ import { expect } from "chai";
 import { z } from "zod";
 import { GraphController } from "../../graph/controller";
 import { GraphFlow } from "../../graph/index";
-import { GraphNodeConfig } from "../../types";
+import { GraphContext, GraphNodeConfig } from "../../types";
 
 describe("GraphController", () => {
   const TestSchema = z.object({
     counter: z.number(),
     message: z.string(),
+    value: z.number().optional(),
+    prefix: z.string().optional(),
   });
 
   const createTestGraph = (name: string): GraphFlow<typeof TestSchema> => {
     const nodes: GraphNodeConfig<typeof TestSchema>[] = [
       {
         name: "start",
-        execute: async (context, params) => {
-          context.counter = params?.value ?? 0;
-          context.message = params?.prefix ? `${params.prefix}-${name}` : name;
+        execute: async (context) => {
+          if (context.value !== undefined) {
+            context.counter = context.value;
+          }
+          if (context.prefix) {
+            context.message = `${context.prefix}-${name}`;
+          } else {
+            context.message = name;
+          }
         },
       },
       {
@@ -36,23 +44,21 @@ describe("GraphController", () => {
   };
 
   describe("Sequential Execution", () => {
-    it("should execute graphs sequentially with different params and params", async () => {
+    it("should execute graphs sequentially with different contexts", async () => {
       const graph1 = createTestGraph("graph1");
       const graph2 = createTestGraph("graph2");
       const graph3 = createTestGraph("graph3");
 
-      const params = [{ value: 10 }, { value: 20 }, { value: 30 }];
-
-      const params2 = [
-        { prefix: "test1" },
-        { prefix: "test2" },
-        { prefix: "test3" },
+      const contexts = [
+        { value: 10, prefix: "test1" },
+        { value: 20, prefix: "test2" },
+        { value: 30, prefix: "test3" },
       ];
 
       const results = await GraphController.executeSequential(
         [graph1, graph2, graph3],
         ["start", "start", "start"],
-        params.map((value, i) => ({ ...value, prefix: params2[i].prefix }))
+        contexts
       );
 
       expect(results).to.have.length(3);
@@ -66,7 +72,7 @@ describe("GraphController", () => {
       expect(results[0].nodeName).to.equal("start");
     });
 
-    it("should handle missing params and params gracefully", async () => {
+    it("should handle missing contexts gracefully", async () => {
       const graph1 = createTestGraph("graph1");
       const graph2 = createTestGraph("graph2");
 
@@ -89,7 +95,7 @@ describe("GraphController", () => {
         createTestGraph(`graph${i + 1}`)
       );
 
-      const params = Array.from({ length: 5 }, (_, i) => ({
+      const contexts = Array.from({ length: 5 }, (_, i) => ({
         value: (i + 1) * 10,
         prefix: `test${i + 1}`,
       }));
@@ -106,7 +112,7 @@ describe("GraphController", () => {
         graphs,
         Array(5).fill("start"),
         2,
-        params
+        contexts
       );
       const executionTime = Date.now() - startTime;
 
@@ -187,5 +193,44 @@ describe("GraphController", () => {
         "seq2-graph4",
       ]);
     });
+  });
+
+  it("should wait for correlated events", async function () {
+    const graph = new GraphFlow({
+      name: "test",
+      schema: TestSchema,
+      nodes: [
+        {
+          name: "correlatedEventsNode",
+          when: {
+            events: ["eventA", "eventB"],
+            timeout: 1000,
+            strategy: {
+              type: "correlate",
+              correlation: (events) => {
+                const eventA = events.find((e) => e.type === "eventA");
+                const eventB = events.find((e) => e.type === "eventB");
+                return eventA?.payload?.id === eventB?.payload?.id;
+              },
+            },
+          },
+          execute: async (context: GraphContext<typeof TestSchema>) => {
+            context.message = "Correlated events received";
+          },
+        },
+      ],
+      context: { value: 0, counter: 0, message: "" },
+    });
+
+    const execution = graph.execute("correlatedEventsNode");
+
+    // Émettre les événements corrélés
+    setTimeout(() => {
+      graph.emit("eventA", { id: "123", status: "completed" });
+      graph.emit("eventB", { id: "123", status: "available" });
+    }, 100);
+
+    await execution;
+    expect(graph.getContext().message).to.equal("Correlated events received");
   });
 });
