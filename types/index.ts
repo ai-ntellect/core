@@ -191,7 +191,6 @@ export interface GraphNodeConfig<T extends ZodSchema, P = any> {
   /** Execute function for the node */
   execute: (
     context: GraphContext<T>,
-    params?: P,
     tools?: { eventEmitter: IEventEmitter }
   ) => Promise<void>;
   /** Optional condition for node execution */
