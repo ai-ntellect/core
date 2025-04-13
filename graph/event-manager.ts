@@ -131,7 +131,6 @@ export class GraphEventManager<T extends ZodSchema> {
               await this.executeNode(
                 node.name,
                 freshContext,
-                undefined,
                 /* triggeredByEvent= */ true
               );
             }
@@ -161,12 +160,7 @@ export class GraphEventManager<T extends ZodSchema> {
               throw new Error("No entry node defined for graph event handling");
             }
 
-            await this.executeNode(
-              this.entryNode,
-              freshContext,
-              undefined,
-              false
-            );
+            await this.executeNode(this.entryNode, freshContext, false);
 
             // Emit "graphCompleted"
             this.eventEmitter.emit("graphCompleted", {
@@ -278,7 +272,6 @@ export class GraphEventManager<T extends ZodSchema> {
   private async executeNode(
     nodeName: string,
     context: GraphContext<T>,
-    inputs: any,
     triggeredByEvent: boolean
   ): Promise<void> {
     if (!this.nodeExecutor) {
@@ -295,12 +288,7 @@ export class GraphEventManager<T extends ZodSchema> {
       await this.handleNodeEvents(nodeName, node.when);
     }
 
-    return this.nodeExecutor.executeNode(
-      nodeName,
-      context,
-      inputs,
-      triggeredByEvent
-    );
+    return this.nodeExecutor.executeNode(nodeName, context, triggeredByEvent);
   }
 
   /**
