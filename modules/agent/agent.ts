@@ -96,7 +96,7 @@ export class Agent {
    * @returns {Promise<AgentContext>} The resulting context after processing
    */
   public async process(input: string): Promise<AgentContext> {
-    await this.workflow.execute("process", undefined, {
+    await this.workflow.execute("process", {
       input: { raw: input },
       actions: [],
       response: "",
