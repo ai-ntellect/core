@@ -232,7 +232,7 @@ ${graph
       // Execute with merged context
       const result = await workflow.execute(
         startNode,
-        undefined,
+
         workflowContext
       );
 

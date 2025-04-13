@@ -81,7 +81,7 @@ export class Agent {
   }
 
   public async process(input: string): Promise<AgentContext> {
-    await this.workflow.execute("process", undefined, {
+    await this.workflow.execute("process", {
       input: { raw: input },
       actions: [],
       response: "",
