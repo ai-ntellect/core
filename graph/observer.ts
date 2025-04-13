@@ -125,17 +125,47 @@ export class GraphObserver<T extends ZodSchema> {
 
   /**
    * Waits for correlated events to occur and validates them using a correlation function
+   * @param eventTypes - Array of event types to wait for
+   * @param timeoutMs - Timeout in milliseconds
+   * @param correlationFn - Function to validate event correlation
+   * @returns Promise that resolves with the correlated events
    */
   waitForCorrelatedEvents(
     eventTypes: string[],
     timeoutMs: number,
     correlationFn: (events: GraphEvent<T>[]) => boolean
   ): Promise<GraphEvent<T>[]> {
-    return this.eventManager.waitForCorrelatedEvents(
-      eventTypes,
-      timeoutMs,
-      correlationFn
-    );
+    return new Promise((resolve, reject) => {
+      const events: GraphEvent<T>[] = [];
+      const timeout = setTimeout(() => {
+        reject(
+          new Error(
+            `Timeout waiting for correlated events: ${eventTypes.join(", ")}`
+          )
+        );
+      }, timeoutMs);
+
+      const subscription = this.eventSubject
+        .pipe(
+          filter((event) => eventTypes.includes(event.type)),
+          takeUntil(this.destroySubject)
+        )
+        .subscribe({
+          next: (event) => {
+            events.push(event);
+            if (events.length === eventTypes.length && correlationFn(events)) {
+              clearTimeout(timeout);
+              subscription.unsubscribe();
+              resolve(events);
+            }
+          },
+          error: (error) => {
+            clearTimeout(timeout);
+            subscription.unsubscribe();
+            reject(error);
+          },
+        });
+    });
   }
 
   /**
