@@ -1,7 +1,6 @@
 import { ZodSchema } from "zod";
 import { GraphExecutionResult } from "../types";
 import { GraphFlow } from "./index";
-import { NodeParams } from "./node";
 
 /**
  * Controller class for managing the execution of graph flows
@@ -12,19 +11,19 @@ export class GraphController {
    * Executes multiple graphs sequentially
    * @param graphs - Array of GraphFlow instances to execute
    * @param startNodes - Array of starting node identifiers for each graph
-   * @param params - Optional array of node parameters for each graph
+   * @param contexts - Optional array of contexts for each graph
    * @returns Map containing results of each graph execution, keyed by graph name and index
    * @template T - Zod schema type for graph context validation
    */
   static async executeSequential<T extends ZodSchema>(
     graphs: GraphFlow<T>[],
     startNodes: string[],
-    params?: NodeParams[]
+    contexts?: Partial<any>[]
   ): Promise<GraphExecutionResult<T>[]> {
     const results: GraphExecutionResult<T>[] = [];
 
     for (let i = 0; i < graphs.length; i++) {
-      const context = await graphs[i].execute(startNodes[i], params?.[i]);
+      const context = await graphs[i].execute(startNodes[i], contexts?.[i]);
       results.push({
         graphName: graphs[i].name,
         nodeName: startNodes[i],
@@ -38,14 +37,14 @@ export class GraphController {
   private static async executeGraph<T extends ZodSchema>(
     graph: GraphFlow<T>,
     startNode: string,
-    params?: NodeParams
+    context?: Partial<any>
   ): Promise<GraphExecutionResult<T>> {
     try {
-      const context = await graph.execute(startNode, params);
+      const result = await graph.execute(startNode, context);
       return {
         graphName: graph.name,
         nodeName: startNode,
-        context,
+        context: result,
       };
     } catch (error) {
       throw error;
@@ -57,7 +56,7 @@ export class GraphController {
    * @param graphs - Array of GraphFlow instances to execute
    * @param startNodes - Array of starting node identifiers for each graph
    * @param concurrency - Optional limit on number of concurrent graph executions
-   * @param params - Optional array of node parameters for each graph
+   * @param contexts - Optional array of contexts for each graph
    * @returns Map containing results of each graph execution, keyed by graph name
    * @template T - Zod schema type for graph context validation
    */
@@ -65,7 +64,7 @@ export class GraphController {
     graphs: GraphFlow<T>[],
     startNodes: string[],
     concurrency: number,
-    params?: NodeParams[]
+    contexts?: Partial<any>[]
   ): Promise<GraphExecutionResult<T>[]> {
     const results: GraphExecutionResult<T>[] = [];
 
@@ -73,8 +72,8 @@ export class GraphController {
       const batch = graphs.slice(i, i + concurrency);
       const batchResults = await Promise.all(
         batch.map((graph, idx) => {
-          const param = params?.[i + idx];
-          return this.executeGraph(graph, startNodes[i + idx], param);
+          const context = contexts?.[i + idx];
+          return this.executeGraph(graph, startNodes[i + idx], context);
         })
       );
       results.push(...batchResults);
