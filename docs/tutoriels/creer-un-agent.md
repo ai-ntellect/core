@@ -329,5 +329,4 @@ OLLAMA_MODEL=gemma4:4b pnpm ts-node examples/agent-tools.ts
 ## Voir aussi
 
 - [Créer un agent onchain](creer-agent-onchain.md) — Agent avec blockchain, mémoire avancée
-- [File Editor Workflow](file-editor-workflow.md) — Workflow multi-étapes
-- [API Pipeline](api-pipeline-workflow.md) — Workflow avec cache
+- [Créer un agent avec décision](creer-agent-avec-decision.md) — Agent qui analyse avant d'agir

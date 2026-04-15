@@ -16,10 +16,8 @@
 
 * [Pour commencer](tutoriels/pour-commencer.md)
 * [Créer un graphe simple](tutoriels/creer-un-graphe-simple.md)
-* [Créer un agent basique](tutoriels/creer-un-agent.md)
-* [Agent avec mémoire](tutoriels/agent-avec-memoire.md)
-* [Agent qui enchaîne les actions](tutoriels/agent-action-chaining.md)
-* [Agent avec prise de décision](tutoriels/agent-prise-decision.md)
+* [Créer un agent](tutoriels/creer-un-agent.md)
+* [Créer un agent avec décision](tutoriels/creer-agent-avec-decision.md)
 * [Créer un agent onchain](tutoriels/creer-agent-onchain.md)
 
 ## Liens
