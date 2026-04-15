@@ -69,16 +69,19 @@ export abstract class AgentExecutor {
   /**
    * Prepares the input parameters for an action
    * @private
-   * @param {Array<{name: string, value: any}>} parameters - Array of parameter objects
+   * @param {Array<{name: string, value: any}> | Record<string, any>} parameters - Array of parameter objects or direct object
    * @returns {Record<string, any>} Object with parameter names as keys and their values
    */
   private prepareActionInputs(
-    parameters: Array<{ name: string; value: any }>
+    parameters: Array<{ name: string; value: any }> | Record<string, any>
   ): Record<string, any> {
-    return parameters.reduce((acc, param) => {
-      acc[param.name] = param.value;
-      return acc;
-    }, {} as Record<string, any>);
+    if (Array.isArray(parameters)) {
+      return parameters.reduce((acc, param) => {
+        acc[param.name] = param.value;
+        return acc;
+      }, {} as Record<string, any>);
+    }
+    return parameters as Record<string, any>;
   }
 
   /**

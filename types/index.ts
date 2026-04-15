@@ -7,9 +7,11 @@ import { IEventEmitter } from "../interfaces";
 /**
  * Represents the input structure for creating a memory entry.
  * @typedef {Object} CreateMemoryInput
- * @property {string} query - The query associated with the memory.
- * @property {any} data - The data to be stored.
+ * @property {string} content - The text content to store.
  * @property {string} roomId - The room identifier.
+ * @property {string} [id] - Optional stable id.
+ * @property {Record<string, any>} [metadata] - Optional metadata.
+ * @property {number[]} [embedding] - Optional vector embedding.
  * @property {number} [ttl] - Time-to-live in seconds (optional).
  */
 export interface CreateMemoryInput {
@@ -26,8 +28,7 @@ export interface CreateMemoryInput {
  * Represents a stored memory entry.
  * @typedef {Object} BaseMemoryType
  * @property {string} id - Unique identifier of the memory entry.
- * @property {string} data - Stored data as a string.
- * @property {string} query - The associated query.
+ * @property {string} content - Stored text content.
  * @property {number[] | null} embedding - Vector representation of the data.
  * @property {string} roomId - The associated room ID.
  * @property {Date} createdAt - Creation date.

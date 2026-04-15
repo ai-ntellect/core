@@ -33,6 +33,57 @@ export class LLMFactory {
             });
           },
         };
+      case "ollama":
+        return {
+          generate: async (
+            prompt: string | PromptInput,
+            schema: z.ZodType<any>
+          ) => {
+            const baseUrl = config.baseUrl || "http://localhost:11434";
+            const userPrompt = typeof prompt === "string" ? prompt : prompt.user;
+            const systemPrompt = typeof prompt === "string" ? undefined : prompt.system;
+
+            const response = await fetch(`${baseUrl}/api/chat`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: config.model,
+                messages: [
+                  ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+                  { role: "user", content: userPrompt + "\n\nImportant: Respond ONLY with valid JSON matching the required schema." },
+                ],
+                stream: false,
+              }),
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`Ollama API error (${response.status}): ${errorText}`);
+            }
+
+            const data = await response.json();
+            let content = data.message?.content || "";
+
+            let parsed: any;
+            try {
+              parsed = JSON.parse(content);
+            } catch {
+              const jsonMatch = content.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                try {
+                  parsed = JSON.parse(jsonMatch[0]);
+                } catch {
+                  throw new Error(`Failed to parse JSON from LLM response: ${content.substring(0, 200)}`);
+                }
+              } else {
+                throw new Error(`No JSON found in LLM response: ${content.substring(0, 200)}`);
+              }
+            }
+
+            const validated = schema.parse(parsed);
+            return { object: validated };
+          },
+        };
       case "custom":
         if (!config.customCall) {
           throw new Error("Custom LLM provider requires a customCall function");

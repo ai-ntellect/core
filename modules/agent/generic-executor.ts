@@ -107,19 +107,19 @@ ${graph
         context.knowledge || "None"
       )
       .addSection(
-        "AVAILABLE ACTIONS (only if you need)",
+        "AVAILABLE ACTIONS",
         this.generateActionSchema()
       )
       .addSection(
         "INSTRUCTIONS",
-        `
-- Never take actions if an recent action matches the user's input
-- If you need to take actions, structure parameters according to the action's schema
-- If goal is achieved, explain that you achieved for examples:
-  - "I have achieved the goal"
-  - "I have done what I needed to do"
-  - "I have completed the task"
-      `
+        `You must respond with valid JSON only. No other text.
+{
+  "actions": [{"name": "action_name", "parameters": [{"name": "param_name", "value": "param_value"}]}],
+  "response": "Your response text here"
+}
+- If no action needed, set actions to empty array []
+- If goal is achieved, explain briefly
+- Keep response concise`
       )
       .build(context);
   }
@@ -137,7 +137,6 @@ ${graph
 
     const systemPrompt = await this.buildSystemPrompt(context);
 
-    console.log({ systemPrompt });
     this.log("info", chalk.dim("Generating response..."));
 
     const result = await this.llm.generate(
@@ -151,12 +150,15 @@ ${graph
         actions: z.array(
           z.object({
             name: z.string(),
-            parameters: z.array(
-              z.object({
-                name: z.string(),
-                value: z.any(),
-              })
-            ),
+            parameters: z.union([
+              z.array(
+                z.object({
+                  name: z.string(),
+                  value: z.any(),
+                })
+              ),
+              z.record(z.any()),
+            ]),
           })
         ),
         response: z.string(),
@@ -167,15 +169,24 @@ ${graph
       result.object.actions.forEach(
         (action: {
           name: string;
-          parameters: Array<{ name: string; value: any }>;
+          parameters: Array<{ name: string; value: any }> | Record<string, any>;
         }) => {
           this.log("info", chalk.cyan(`Action: ${action.name}`));
-          action.parameters.forEach((param: { name: string; value: any }) => {
-            this.log(
-              "info",
-              chalk.dim(`  - ${param.name}: ${JSON.stringify(param.value)}`)
-            );
-          });
+          if (Array.isArray(action.parameters)) {
+            action.parameters.forEach((param: { name: string; value: any }) => {
+              this.log(
+                "info",
+                chalk.dim(`  - ${param.name}: ${JSON.stringify(param.value)}`)
+              );
+            });
+          } else {
+            Object.entries(action.parameters).forEach(([key, value]) => {
+              this.log(
+                "info",
+                chalk.dim(`  - ${key}: ${JSON.stringify(value)}`)
+              );
+            });
+          }
         }
       );
     } else {

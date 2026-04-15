@@ -85,7 +85,7 @@ export type PromptSection = {
 /**
  * Supported LLM providers
  */
-export type LLMProvider = "openai" | "anthropic" | "custom";
+export type LLMProvider = "openai" | "anthropic" | "ollama" | "custom";
 
 /**
  * Supported LLM models
@@ -144,18 +144,20 @@ export type DecisionOutput = {
  * Configuration for the Language Model
  * @interface LLMConfig
  * @property {LLMProvider} provider - The LLM provider to use
- * @property {string} apiKey - API key for the provider
+ * @property {string} [apiKey] - API key for the provider (not required for Ollama)
  * @property {LLMModel} model - The specific model to use
  * @property {number} [temperature] - Optional temperature parameter for response randomness
  * @property {number} [maxTokens] - Optional maximum tokens for the response
+ * @property {string} [baseUrl] - Optional base URL for local providers (e.g., Ollama)
  * @property {Function} [customCall] - Optional custom implementation for API calls
  */
 export type LLMConfig = {
   provider: LLMProvider;
-  apiKey: string;
+  apiKey?: string;
   model: LLMModel;
   temperature?: number;
   maxTokens?: number;
+  baseUrl?: string;
   customCall?: (
     prompt: string | PromptInput,
     schema: z.ZodType<any>
