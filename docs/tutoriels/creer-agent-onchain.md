@@ -1,10 +1,10 @@
 ---
-description: >
+description: >-
   Assemblez un graphe cognitif pour la prise de décision et des graphes
   d'actions pour l'exécution pour créer un agent.
 ---
 
-# Créer un agent
+# Agent On-Chain
 
 Dans ce tutoriel, nous allons voir comment créer un agent on-chain intelligent basé sur le framework **@ai.ntellect/core** . L'agent sera capable de **prendre des décisions**, **exécuter des actions sur la blockchain**, **mémoriser des informations** et **interagir avec un LLM** comme OpenAI.
 
@@ -258,7 +258,7 @@ C'est ici qu'intervient la méthode **`generateActionSchema`**.
 
 La méthode `generateActionSchema` sert à **générer dynamiquement une documentation des actions disponibles** pour l'agent.
 
-**Son rôle :**  
+**Son rôle :**
 
 * Extraire les **actions** disponibles à partir des workflows enregistrés.
 * Générer une **description de chaque action** et de ses **paramètres**.
@@ -306,7 +306,7 @@ L'agent pourrait produire ce type de **réponse** :
 }
 ```
 
-Grâce à `generateActionSchema`, notre agent **sait exactement ce qu'il peut faire** et **peut guider le LLM** dans sa prise de décision.  
+Grâce à `generateActionSchema`, notre agent **sait exactement ce qu'il peut faire** et **peut guider le LLM** dans sa prise de décision.
 
 Voici un exemple avec **GPT-4o** pour analyser la situation et choisir la meilleure action.
 
@@ -508,7 +508,7 @@ Le **graphe cognitif** (`cognitiveGraph`) est le **cerveau** de l'agent. Il anal
 
 **Les graphes d'actions ne sont déclenchés que par une validation.** Un graphe d'action ne peut être exécuté **que si le graphe cognitif le valide**. Cela empêche l'agent d'effectuer des actions **non autorisées** ou **non demandées**.
 
-**L'agent apprend, donc, en mémorisant ses actions :**  
+**L'agent apprend, donc, en mémorisant ses actions :**
 
 Grâce à la variable, `executedGraphs`, injectée dans son contexte, l'agent sait **ce qu'il a déjà fait** et évite de répéter des actions inutiles.
 
@@ -998,7 +998,7 @@ const walletAssistant = new WalletAssistant(availableGraphs);
 
 ```
 
-**Félicitations ! Vous avez créé un agent capable d'interagir et d'exécuter des transactions blockchain !**  
+**Félicitations ! Vous avez créé un agent capable d'interagir et d'exécuter des transactions blockchain !**
 
 ### **Tester l'agent**
 
@@ -1031,11 +1031,11 @@ Maintenant que l'agent est défini, nous pouvons l'utiliser pour **exécuter une
 
 ### **Récapitulatif**
 
-Nous avons vu comment exploiter la puissance du framework **@ai.ntellect/core** en combinant :  
+Nous avons vu comment exploiter la puissance du framework **@ai.ntellect/core** en combinant :
 
 * **Un graph cognitif** pour structurer le raisonnement.
 * **Des graphes d'actions** pour exécuter des tâches spécifiques.
 
-Cette architecture **modulaire et évolutive** permet d'ajouter de nouvelles actions et d'adapter l'agent à différents cas d'usage.  
+Cette architecture **modulaire et évolutive** permet d'ajouter de nouvelles actions et d'adapter l'agent à différents cas d'usage.
 
 **Ce n'est qu'un exemple parmi d'autres** : chacun peut créer son propre **graphe cognitif** et ses **graphes d'actions** en fonction de ses besoins spécifiques.

@@ -1,26 +1,33 @@
-# Table des matières
+# Table of contents
 
 * [Bienvenue](README.md)
-
-## Concepts Core
-
-* [GraphFlow](core/graphflow.md)
-* [Événements](core/les-evenements.md)
-
-## Modules
-
-* [Mémoire](modules/memoire/README.md)
-* [Agenda](modules/agenda/README.md)
-
-## Tutoriels
-
-* [Pour commencer](tutoriels/pour-commencer.md)
-* [Créer un graphe simple](tutoriels/creer-un-graphe-simple.md)
-* [Créer un agent](tutoriels/creer-un-agent.md)
-* [Créer un agent avec décision](tutoriels/creer-agent-avec-decision.md)
-* [Créer un agent onchain](tutoriels/creer-agent-onchain.md)
-
-## Liens
-
-* [NPM](https://www.npmjs.com/package/@ai.ntellect/core)
-* [GitHub](https://github.com/ai-ntellect/core)
+  * [Table des matières](SUMMARY.md)
+  * [Cas d'usages](cas-dusages.md)
+  * [Concepts clés](concepts-cles.md)
+  * [Philosophie](philosophie.md)
+  * [Core](docs/core/README.md)
+    * [Architecture](core/architecture.md)
+    * [GraphFlow](core/graphflow.md)
+    * [Introduction](core/introduction.md)
+    * [Événements](core/les-evenements.md)
+  * [Modules](docs/modules/README.md)
+    * [Introduction](modules/introduction.md)
+    * [Les adaptateurs](modules/les-adaptateurs.md)
+    * [Agenda](modules/agenda/README.md)
+      * [Interface IAgenda](modules/agenda/interface-iagenda.md)
+      * [Les adaptateurs](modules/agenda/les-adaptateurs/README.md)
+        * [NodeCronAdapter](modules/agenda/les-adaptateurs/nodecronadapter.md)
+    * [Mémoire](modules/memoire/README.md)
+      * [Interface IMemory](modules/memoire/interface-imemory.md)
+      * [Les adaptateurs](modules/memoire/les-adaptateurs/README.md)
+        * [InMemoryAdapter](modules/memoire/les-adaptateurs/inmemoryadapter.md)
+        * [MeiliSearchAdapter](modules/memoire/les-adaptateurs/meilisearchadapter.md)
+        * [RedisAdapter](modules/memoire/les-adaptateurs/redisadapter.md)
+  * [Tutoriels](docs/tutoriels/README.md)
+    * [Ajouter des conditions](tutoriels/ajouter-des-conditions.md)
+    * [Agent avec prise de décision](tutoriels/creer-agent-avec-decision.md)
+    * [Agent On-Chain](tutoriels/creer-agent-onchain.md)
+    * [Créer un agent basique](tutoriels/creer-un-agent.md)
+    * [Créer un graphe simple](tutoriels/creer-un-graphe-simple.md)
+    * [Gérer les erreurs](tutoriels/gerer-les-erreurs.md)
+    * [Pour commencer](tutoriels/pour-commencer.md)
