@@ -1,153 +1,283 @@
----
-description: >-
-  Un graphe est une structure de données utilisée pour représenter des relations
-  entre des éléments appelés nœuds.
----
-
 # GraphFlow
 
-`GraphFlow` est un moteur de workflows conçu pour structurer et automatiser l'exécution de processus complexes. Il permet de modéliser des enchaînements d’actions sous forme de graphes.
+Le moteur de workflow central du framework.
 
-### Rappels : Qu’est-ce qu’un graphe ?
+## Création d'un workflow
 
-***
+```typescript
+import { z } from "zod";
+import { GraphFlow } from "@ai.ntellect/core";
+import { GraphContext, GraphNodeConfig } from "@ai.ntellect/core/types";
 
-#### Définition générale
+const Schema = z.object({
+  message: z.string(),
+});
 
-Un **graphe** est une structure de données composée de :
+const workflow = new GraphFlow({
+  name: "hello",
+  schema: Schema,
+  context: { message: "" },
+  nodes: [
+    {
+      name: "greet",
+      execute: async (ctx: GraphContext<typeof Schema>) => {
+        ctx.message = "Hello, World!";
+      },
+    },
+  ],
+});
 
-* **Nœuds (nodes)** : Représentent des points (ou états) spécifiques.
-* **Arêtes (edges)** : Représentent des liens entre les nœuds, indiquant comment on peut passer de l’un à l’autre.
+await workflow.execute("greet");
+console.log(workflow.getContext().message); // "Hello, World!"
+```
 
-En mathématiques, on utilise un graphe pour modéliser un ensemble d’objets (les nœuds) et les relations qui existent entre eux (les arêtes). Dans un cadre de workflow, l’idée est similaire :
+## Noeuds séquentiels
 
-* Chaque nœud correspond à une **étape du processus**.
-* Les arêtes définissent **l’ordre** ou les **conditions** pour se déplacer d’une étape à une autre.
+```typescript
+nodes: [
+  {
+    name: "step1",
+    execute: async (ctx) => { /* ... */ },
+    next: ["step2"],
+  },
+  {
+    name: "step2",
+    execute: async (ctx) => { /* ... */ },
+    next: (ctx) => ctx.value > 0 ? ["success"] : ["failure"],
+  },
+  {
+    name: "success",
+    execute: async (ctx) => { /* ... */ },
+  },
+  {
+    name: "failure",
+    execute: async (ctx) => { /* ... */ },
+  },
+]
+```
 
-### Pourquoi un graphe pour orchestrer un workflow ?
+`next` peut être:
+- Un tableau statique: `["step2", "step3"]`
+- Une fonction: `next: (ctx) => ctx.value > 0 ? ["success"] : []`
 
-Contrairement à un simple enchaînement linéaire (A → B → C), un graphe offre :
+## Noeuds événementiels
 
-1. **Branchements multiples** : À la fin du nœud A, on peut aller à B ou C en fonction de conditions.
-2. **Boucles ou retours** : Possibilité de repasser par des étapes déjà visitées, par exemple pour réessayer un processus ou organiser un cycle (A → B → A).
-3. **Parallélisation** : Plusieurs chemins peuvent s’exécuter simultanément (ou indépendamment).
+Un noeud peut attendre un événement avant de s'exécuter:
 
-Cela permet de modéliser des flux métiers complexes et adaptatifs, où l’on peut gérer facilement des **conditions**, des **événements** et des **branches** multiples.
+```typescript
+{
+  name: "await_payment",
+  when: {
+    events: ["payment.received"],
+    timeout: 30000, // 30 secondes
+    strategy: { type: "single" },
+  },
+  execute: async (ctx) => {
+    ctx.status = "paid";
+  },
+}
+```
 
-***
+### Strategies
 
-### Concepts de base dans `GraphFlow`
+**single** — Le noeud s'exécute dès le premier événement:
 
-#### Les nœuds (Nodes)
+```typescript
+strategy: { type: "single" }
+```
 
-Dans le framework, un **nœud** est une entité qui contient :
+**all** — Le noeud attend tous les événements:
 
-* Un **nom** unique (ex. `nodeA`).
-* Une **fonction d’exécution** (`execute`) qui décrit ce que le nœud fait lorsque le workflow y arrive.
-* Des **conditions** ou une logique permettant de vérifier si ce nœud doit s’exécuter (optionnel).
-* Des **événements** qui peuvent déclencher l’exécution du nœud (ex. “onUserClick” ou “customEvent”).
-* Des **liaisons vers d’autres nœuds** (ex. `next: ["nodeB", "nodeC"]`).
+```typescript
+strategy: { type: "all" }
+```
 
-#### Les arêtes et le chaînage
+**correlate** — Attend plusieurs événements corrélés:
 
-Chaque nœud peut pointer vers un ou plusieurs **nœuds suivants**. On définit ainsi un chaînage dans le graph :
+```typescript
+{
+  events: ["payment.validated", "inventory.checked"],
+  strategy: {
+    type: "correlate",
+    correlation: (events) =>
+      events.every(e => e.payload.orderId === events[0].payload.orderId),
+  },
+}
+```
 
-* **Arête linéaire** : Un nœud A pointe vers un unique nœud B.
-* **Arête conditionnelle** : Un nœud A peut pointer vers B **si** une condition est remplie, sinon vers C.
-* **Arête parallèle** : Un nœud A peut avoir plusieurs successeurs (B et C) exécutés (ou testés) en parallèle ou à la suite.
+### Émettre des événements
 
-#### Le contexte
+```typescript
+await workflow.emit("payment.received", {
+  orderId: "123",
+  amount: 100,
+});
+```
 
-Au cœur du framework, on utilise souvent un **contexte** global (ou local) qui stocke des données partagées entre les nœuds. Lorsqu’un nœud s’exécute, il peut :
+### Exemple complet
 
-* Lire et modifier ce contexte (ex. incrémenter un compteur).
-* Valider ou transformer les données avant de les transmettre au nœud suivant.
+```typescript
+import EventEmitter from "events";
+import { z } from "zod";
+import { GraphFlow } from "@ai.ntellect/core";
 
-***
+const OrderSchema = z.object({
+  orderId: z.string(),
+  status: z.string(),
+  amount: z.number(),
+});
 
-### Rôle du moteur GraphFlow
+const paymentNode = {
+  name: "payment",
+  when: {
+    events: ["payment.received"],
+    timeout: 30000,
+    strategy: { type: "single" },
+  },
+  execute: async (ctx, _, event) => {
+    ctx.orderId = event.payload.orderId;
+    ctx.amount = event.payload.amount;
+    ctx.status = "processing";
+  },
+  next: ["validation"],
+};
 
-#### Gestion de l’exécution
+const validationNode = {
+  name: "validation",
+  when: {
+    events: ["payment.validated", "inventory.checked"],
+    strategy: {
+      type: "correlate",
+      correlation: (events) =>
+        events.every(e => e.payload.orderId === events[0].payload.orderId),
+    },
+  },
+  execute: async (ctx) => {
+    ctx.status = "validated";
+  },
+};
 
-Le moteur **`GraphFlow`** orchestre la navigation d’un nœud à l’autre en tenant compte :
+const workflow = new GraphFlow({
+  name: "order",
+  schema: OrderSchema,
+  context: { orderId: "", status: "pending", amount: 0 },
+  nodes: [paymentNode, validationNode],
+  eventEmitter: new EventEmitter(),
+});
 
-* Des **conditions** éventuelles (si `condition(context) === true`).
-* Des **événements** (si un nœud est lié à un événement particulier).
-* Des **erreurs** (et potentiellement des mécanismes de retry ou de fallback).
+// Démarrer le workflow
+workflow.execute("payment");
 
-On peut donc dire qu’il exécute la “logique de flux” : en partant d’un nœud de départ (entry node), il va progresser dans le graphe en suivant les règles établies.
+// Émettre des événements
+setTimeout(() => {
+  workflow.emit("payment.received", { orderId: "123", amount: 100 });
+}, 100);
 
-#### Validation et introspection
+setTimeout(() => {
+  workflow.emit("inventory.checked", { orderId: "123" });
+  workflow.emit("payment.validated", { orderId: "123" });
+}, 200);
+```
 
-En plus de l’exécution, GraphFlow peut assurer :
+## Observation
 
-* **La validation** des données (inputs/outputs) via des schémas (ex. Zod).
-* **L’émission d’événements** pour suivre ce qui se passe (ex. `nodeStarted`, `nodeCompleted`, `nodeError`).
-* **Le stockage du contexte** tout au long du parcours.
+### Observer tout l'état
 
-#### Approche déclarative
+```typescript
+workflow
+  .observe()
+  .state()
+  .subscribe((ctx) => {
+    console.log("state:", ctx);
+  });
+```
 
-Grâce à cette structure en graph, on déclare **à l’avance** : “Voici mes nœuds, mes conditions, mes transitions possibles”. Le moteur se charge ensuite de naviguer et d’exécuter le code associé. C’est plus lisible et maintenable qu’un code procédural plein de `if/else` et de boucles imbriquées.
+### Observer une propriété
 
-***
+```typescript
+workflow
+  .observe()
+  .property("status")
+  .subscribe((status) => {
+    console.log("status:", status);
+  });
+```
 
-### Exemples concrets
+### Observer des événements
 
-1.  **Workflow de validation** : <br>
+```typescript
+workflow
+  .observe()
+  .event("payment.received")
+  .subscribe((event) => {
+    console.log("payment received:", event);
+  });
+```
 
-    <figure><img src="../.gitbook/assets/image (4).png" alt=""><figcaption><p>Workflow de validation</p></figcaption></figure>
+## Schéma
 
-    **Explication :**&#x20;
+Le schema Zod est utilisé pour valider le contexte:
 
-    * Un document arrive dans la file d’attente (nœud `NewDocument`).
-    * Le document est validé → `ValidateDocument`, puis en fonction d’un champ (`valid` ou `invalid`), on bascule vers → `PublishDocument` ou →`RejectDocument`.
-2.  **Chatbot conversationnel** : <br>
+```typescript
+const Schema = z.object({
+  userId: z.string(),
+  status: z.enum(["pending", "active", "completed"]),
+  data: z.record(z.any()),
+});
 
-    <figure><img src="../.gitbook/assets/image (3).png" alt=""><figcaption><p>Chatbot conversationnel</p></figcaption></figure>
+const workflow = new GraphFlow({
+  name: "my-workflow",
+  schema: Schema,
+  context: {
+    userId: "",
+    status: "pending",
+    data: {},
+  },
+  nodes: [/* ... */],
+});
+```
 
-    **Explication :**&#x20;
+## Référence API
 
-    * Détecter l’intention → `IntentDetection`.
-    * Choisir le LLM adaptée (→ `LLMNode1` ou → LLM`Node2`) selon la classification.
-    * Gérer la réponse → `SendReply`<br>
-3.  **Orchestration de microservices** : <br>
+### GraphFlow
 
-    <figure><img src="../.gitbook/assets/image (1).png" alt=""><figcaption><p>Orchestration de microservices</p></figcaption></figure>
+```typescript
+new GraphFlow(options: {
+  name: string;
+  schema: z.ZodType;
+  context: T;
+  nodes: GraphNodeConfig[];
+  eventEmitter?: EventEmitter;
+})
+```
 
-    **Explication :**&#x20;
+### Méthodes
 
-    * Appeler un service → `FetchDataFromServiceA`.
-    * Parallèlement, appeler un autre service → `FetchDataFromServiceB`.
-    * Fusionner les résultats → `CombineResults`.
-    * Si tout est bon → `NotifyUser`; sinon → `HandleError.`
+- `execute(nodeName: string, initialContext?: Partial<T>): Promise<T>`
+- `getContext(): T`
+- `emit(event: string, payload: any): Promise<void>`
+- `observe(): GraphObserver`
+- `getNodes(): GraphNode[]`
+- `getSchema(): z.ZodType`
 
-Dans chacun de ces cas, le graphe offre une vision claire des **étapes**, des **transitions** possibles et des **conditions** d’exécution.
+### GraphNodeConfig
 
-***
-
-### Bénéfices de l’approche graphe
-
-1. **Lisibilité** : On visualise aisément la séquence et les embranchements.
-2. **Modularité** : Chaque nœud est une brique autonome (une action, une condition).
-3. **Facilité d’évolution** : Ajouter un nouveau nœud ou une branche se fait sans casser la structure existante.
-4. **Debug et traçabilité** : On peut logguer l’entrée/sortie de chaque nœud, détecter où ça coince.
-5. **Réutilisation** : Un même nœud peut être réutilisé dans plusieurs flux (ex. `SendEmailNode`).
-
-***
-
-### Notions clés
-
-#### Condition vs. Événement
-
-* **Condition** : Vérifiée **au moment** où le flux atteint le nœud. Par exemple, `condition: (ctx) => ctx.value > 10`.
-* **Événement** : Permet de déclencher un nœud **de façon asynchrone** ou non linéaire. Par exemple, si un événement `UserConfirmed` est émis, on lance l’exécution du nœud `WaitUserConfirmation`.
-
-#### Nœuds enchaînés vs. nœuds parallèles
-
-* **Enchaînement linéaire** : Le nœud A mène à B, puis B mène à C.
-* **Branches parallèles** : Le nœud A peut enchaîner vers B et C simultanément, ou lancer B et C dans des contextes séparés puis fusionner les résultats.
-
-#### Retours en arrière et boucles
-
-* **Boucles** : On peut avoir un nœud D qui renvoie à A pour recommencer le cycle (sous certaines conditions).
-* **Gestion de l’infini** : On doit prévoir une condition de sortie pour ne pas rester bloqué dans une boucle infinie.
+```typescript
+{
+  name: string;
+  execute: (context: T, inputs?: any, event?: GraphEvent) => Promise<void>;
+  next?: string[] | ((context: T) => string[]);
+  when?: {
+    events: string[];
+    timeout?: number;
+    strategy: {
+      type: "single" | "all" | "correlate";
+      correlation?: (events: GraphEvent[]) => boolean;
+    };
+  };
+  retry?: {
+    maxAttempts: number;
+    delay: number;
+  };
+}
+```

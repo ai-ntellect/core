@@ -1,137 +1,68 @@
----
-description: >-
-  Configurez votre environnement et installez les dépendances nécessaires pour
-  utiliser GraphFlow. Découvrez les bases du framework et comment initialiser un
-  projet.
----
-
 # Pour commencer
 
-Avant d’utiliser **@ai.ntellect/core**, cette section vous guide à travers **l’installation des outils nécessaires** et la **configuration initiale du projet**.
-
-***
-
-### **Outils et prérequis**
-
-#### **Node.js et npm**
-
-**@ai.ntellect/core** fonctionne dans un environnement **Node.js**. Nous recommandons d’installer la version **LTS (Long Term Support)** pour assurer stabilité et compatibilité.
-
-**Vérifiez votre installation avec** :
+## Installation
 
 ```sh
-node -v
-npm -v
+pnpm add @ai.ntellect/core zod
 ```
 
-Si Node.js n’est pas installé, téléchargez-le depuis [nodejs.org](https://nodejs.org/).
+## Vérification
 
-***
+Créez `index.ts`:
 
-#### **TypeScript et Zod**
-
-**@ai.ntellect/core** utilise **TypeScript** pour garantir un code structuré et sécurisé, facilitant la gestion des types et l’intégration des workflows.
-
-Le framework repose également sur **Zod** pour la validation des données, assurant une cohérence stricte des structures de contexte et des interactions entre les nœuds d’exécution.
-
-***
-
-### **Installation du framework**
-
-#### **Création d’un projet Node.js**
-
-Commencez par créer un **nouveau projet Node.js** :
-
-```sh
-mkdir ai-ntellect-demo
-cd ai-ntellect-demo
-npm init -y
-```
-
-Ajoutez **TypeScript et les types Node.js** :
-
-```sh
-npm install --save-dev typescript @types/node
-npx tsc --init
-```
-
-***
-
-#### **Installation de @ai.ntellect/core**
-
-Ajoutez le framework et ses dépendances :
-
-```sh
-npm install @ai.ntellect/core zod
-```
-
-***
-
-### **Vérification de l’installation**
-
-Une fois l’installation terminée, vérifions que tout fonctionne correctement en créant un premier fichier de test.
-
-Dans le dossier de votre projet, créez un fichier `index.ts` :
-
-```sh
-touch index.ts
-```
-
-***
-
-#### **Ajout du code de vérification**
-
-Ajoutez le code suivant dans **`index.ts`** pour créer et exécuter un **GraphFlow simple** :
-
-```ts
-import { GraphFlow } from "@ai.ntellect/core";
+```typescript
 import { z } from "zod";
+import { GraphFlow } from "@ai.ntellect/core";
+import { GraphContext, GraphNodeConfig } from "@ai.ntellect/core/types";
 
-// Définition du schéma du contexte
-const ContextSchema = z.object({
+const Schema = z.object({
   message: z.string(),
 });
 
-type ContextSchema = typeof ContextSchema;
-
-// Création d’un GraphFlow simple
-const myGraph = new GraphFlow<ContextSchema>("TestGraph", {
-  name: "TestGraph",
-  context: { message: "Installation réussie !" },
-  schema: ContextSchema,
+const workflow = new GraphFlow({
+  name: "hello",
+  schema: Schema,
+  context: { message: "" },
   nodes: [
     {
-      name: "printMessage",
-      execute: async (context) => {
-        console.log(context.message);
+      name: "greet",
+      execute: async (ctx: GraphContext<typeof Schema>) => {
+        ctx.message = "Hello!";
+        console.log(ctx.message);
       },
-      next: [],
     },
   ],
 });
 
-// Exécution du graphe
-(async () => {
-  await myGraph.execute("printMessage");
-})();
+async function main() {
+  await workflow.execute("greet");
+}
+
+main();
 ```
 
-***
-
-### **Exécution du test**
-
-Exécutez le fichier avec la commande suivante :
+## Exécution
 
 ```sh
-npx ts-node index.ts
+pnpm ts-node index.ts
 ```
 
-#### **Sortie console attendue :**
-
+Sortie:
 ```
-Installation réussie !
+Hello!
 ```
 
-Si ce message s’affiche, cela signifie que **l’installation est réussie** et que votre environnement est prêt.
+## Exemples dans le repo
 
-Dans la prochaine section, nous verrons **comment créer un premier graphe d’exécution** et automatiser des workflows intelligents avec **@ai.ntellect/core**.
+```sh
+# Hello world
+pnpm run example:hello
+
+# Noeuds événementiels
+pnpm run example:events
+```
+
+## Prochaines étapes
+
+- [Créer un graphe simple](creer-un-graphe-simple.md)
+- [Créer un agent](creer-un-agent.md)
