@@ -20,7 +20,7 @@
 * [Agent avec mémoire](tutoriels/agent-avec-memoire.md)
 * [Agent qui enchaîne les actions](tutoriels/agent-action-chaining.md)
 * [Agent avec prise de décision](tutoriels/agent-prise-decision.md)
-* [Agent On-Chain](tutoriels/agent-on-chain.md)
+* [Créer un agent onchain](tutoriels/creer-agent-onchain.md)
 
 ## Liens
 
