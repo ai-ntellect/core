@@ -8,7 +8,7 @@ description: >-
 
 Dans ce tutoriel, nous allons apprendre **comment prendre des décisions dynamiques** dans un **GraphFlow**. Nous allons modifier notre graphe pour **choisir un chemin d'exécution** en fonction des données du contexte.
 
-Cela permet de :&#x20;
+Cela permet de :
 
 * **Modifier le flux d'exécution** en fonction des entrées.
 * **Créer des branches conditionnelles** (ex : Si `x > 10`, alors `A`, sinon `B`).
@@ -149,13 +149,3 @@ Texte transformé : HELLO GRAPHFLOW!
 Le texte est long : LONG: HELLO GRAPHFLOW!
 Résultat final : LONG: HELLO GRAPHFLOW!
 ```
-
-***
-
-### **Récapitulatif**
-
-Dans ce tutoriel, nous avons appris :&#x20;
-
-* **Comment ajouter des conditions dynamiques (`next`) dans un graphe**.
-* **Comment modifier le chemin d’exécution selon le contexte**.
-* **Comment gérer des cas différents avec des branches (`long` vs `short`)**.

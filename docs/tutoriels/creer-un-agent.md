@@ -14,7 +14,7 @@ pnpm add @ai.ntellect/core zod
 ollama pull gemma4:4b
 ```
 
-## Concept clé: Comment l'agent sait quoi faire
+## Comment l'agent sait quoi faire
 
 Un **LLM ne peut pas deviner** les actions disponibles. L'agent doit lui **fournir une liste structurée**.
 
@@ -29,7 +29,7 @@ Agent:
   3. Exécute et retourne le résultat
 ```
 
-## Exemple basique: Agent Calculatrice
+## Exemple basique
 
 ### 1. Définir les outils
 
@@ -84,9 +84,9 @@ await agent.process("Calcule 25 + 7");
 // -> Retourne: "Le résultat est 32"
 ```
 
----
+***
 
-## Exemple agentique: Multi-outils avec raisonnement
+## Multi-outils avec raisonnement
 
 Le vrai pouvoir d'un agent: **choisir le bon outil** selon la requête.
 
@@ -163,9 +163,9 @@ await agent.process("Lis le README.md");
 // -> Utilise read_file
 ```
 
----
+***
 
-## Exemple avancé: Agent avec historique
+## Agent avec historique
 
 **Problème:** Un LLM peut répéter la même action.
 
@@ -232,48 +232,7 @@ await agent.process("Cherche encore info sur Python");
 // -> Retourne: "J'ai déjà fait cette recherche"
 ```
 
----
-
-## Concept: generateActionSchema
-
-Comment l'agent sait quels outils existent?
-
-```typescript
-// L'agent utilise generateActionSchema pour créer:
-// ## AVAILABLE ACTIONS:
-// - calculator: {a: number, b: number, operation: "add"|"subtract"|...}
-// - web_search: {query: string}
-// - read_file: {path: string}
-
-// Le LLM voit cette liste et choisit l'outil adapté
-```
-
-Le schema Zod avec `.describe()` est **la clé**: le LLM lit les descriptions pour comprendre quand utiliser chaque outil.
-
----
-
-## Exemple: Agent qui enchaîne les actions
-
-```typescript
-const agent = new Agent({
-  role: "Assistant Recherche",
-  goal: "Rechercher puis résumer",
-  tools: [searchTool, calculator],  // <- Pas readFile ici
-  llmConfig: { provider: "ollama", model: "gemma4:4b" },
-});
-
-// Le LLM peut:
-// 1. Faire une recherche
-// 2. Voir qu'il faut compter les résultats
-// 3. Utiliser calculator pour le comptage
-await agent.process("Combien de résultats sur 'TypeScript'?");
-
-// Log interne:
-// [web_search] query="TypeScript" -> 5 résultats
-// [calculator] count=5 -> réponse: "5 résultats"
-```
-
----
+***
 
 ## Configuration LLM
 
@@ -294,7 +253,7 @@ function getLLMConfig() {
 }
 ```
 
----
+***
 
 ## Structure d'un agent
 
@@ -309,12 +268,13 @@ Agent
 ```
 
 **L'agentique c'est:**
-- Le LLM **rompt** entre les outils
-- L'historique **évite** les répétitions
-- La mémoire **contexte** les futures actions
-- Les tools sont des **choix**, pas des étapes fixes
 
----
+* Le LLM **rompt** entre les outils
+* L'historique **évite** les répétitions
+* La mémoire **contexte** les futures actions
+* Les tools sont des **choix**, pas des étapes fixes
+
+***
 
 ## Exécuter
 
@@ -325,8 +285,3 @@ pnpm run example:hello
 # Avec agent
 OLLAMA_MODEL=gemma4:4b pnpm ts-node examples/agent-tools.ts
 ```
-
-## Voir aussi
-
-- [Créer un agent onchain](creer-agent-onchain.md) — Agent avec blockchain, mémoire avancée
-- [Créer un agent avec décision](creer-agent-avec-decision.md) — Agent qui analyse avant d'agir

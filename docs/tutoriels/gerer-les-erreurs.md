@@ -123,14 +123,3 @@ const graph = new GraphFlow("SimpleGraph", graphDefinition);
 5. **Si la récupération des données échoue complètement**, `processData` et `logResult` s'exécutent mais affichent un avertissement.
 
 **Important** : Le graphe peut avoir **différents comportements** en fonction de si l'erreur est résolue ou non après les retries.
-
-***
-
-### **Récapitulatif**
-
-Dans ce tutoriel, nous avons appris :&#x20;
-
-* **Comment gérer les erreurs** dans un nœud.
-* **Comment ajouter des retries** avec un nombre maximum de tentatives.
-* **Comment continuer l'exécution** même après un échec.
-* **Comment gérer les cas où une donnée n'est pas disponible**.
