@@ -17,9 +17,10 @@
 * [Pour commencer](tutoriels/pour-commencer.md)
 * [Créer un graphe simple](tutoriels/creer-un-graphe-simple.md)
 * [Créer un agent basique](tutoriels/creer-un-agent.md)
+* [Agent avec mémoire](tutoriels/agent-avec-memoire.md)
+* [Agent qui enchaîne les actions](tutoriels/agent-action-chaining.md)
+* [Agent avec prise de décision](tutoriels/agent-prise-decision.md)
 * [Agent On-Chain](tutoriels/agent-on-chain.md)
-* [File Editor Workflow](tutoriels/file-editor-workflow.md)
-* [API Pipeline Workflow](tutoriels/api-pipeline-workflow.md)
 
 ## Liens
 
