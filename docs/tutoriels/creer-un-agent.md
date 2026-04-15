@@ -1,6 +1,6 @@
 # Créer un agent basique
 
-Un agent qui utilise un LLM pour choisir et exécuter des workflows.
+Un agent utilise un **LLM pour raisonner** et **choisir des actions**. Ce n'est pas juste des workflows isolés.
 
 ## Prérequis
 
@@ -11,49 +11,39 @@ pnpm add @ai.ntellect/core zod
 ### Ollama (recommandé)
 
 ```sh
-# https://ollama.com
 ollama pull gemma4:4b
 ```
 
-### OpenAI (alternative)
+## Concept clé: Comment l'agent sait quoi faire
 
-```sh
-export OPENAI_API_KEY=sk-...
-```
+Un **LLM ne peut pas deviner** les actions disponibles. L'agent doit lui **fournir une liste structurée**.
 
-## Concept
+C'est le rôle de **`generateActionSchema`**: générer dynamiquement la documentation des outils.
 
 ```
-Utilisateur -> "Calcule 25 + 7"
+Utilisateur: "Envoie 1 ETH à 0x123"
 
 Agent:
-  1. Envoie la requête + outils au LLM
-  2. LLM choisit: calculator, params: {a: 25, b: 7, operation: "add"}
-  3. Exécute le workflow
-  4. Retourne "Le résultat est 32"
+  1. Construit le prompt avec les outils disponibles
+  2. LLM choisit: prepareEvmTransaction avec {to: "0x123", value: "1"}
+  3. Exécute et retourne le résultat
 ```
 
-## Exemple: Calculatrice
+## Exemple basique: Agent Calculatrice
 
-### 1. Schema
+### 1. Définir les outils
 
 ```typescript
 import { z } from "zod";
+import { GraphFlow, Agent } from "@ai.ntellect/core";
+import { GraphContext } from "@ai.ntellect/core/types";
 
 const CalcSchema = z.object({
   a: z.number().describe("Premier nombre"),
   b: z.number().describe("Deuxième nombre"),
-  operation: z.enum(["add", "subtract", "multiply", "divide"])
-    .describe("Opération à effectuer"),
-  result: z.number().optional().describe("Résultat du calcul"),
+  operation: z.enum(["add", "subtract", "multiply", "divide"]),
+  result: z.number().optional(),
 });
-```
-
-### 2. Workflow (outil)
-
-```typescript
-import { GraphFlow } from "@ai.ntellect/core";
-import { GraphContext } from "@ai.ntellect/core/types";
 
 const calculator = new GraphFlow({
   name: "calculator",
@@ -69,14 +59,223 @@ const calculator = new GraphFlow({
           case "multiply": ctx.result = ctx.a * ctx.b; break;
           case "divide": ctx.result = ctx.b !== 0 ? ctx.a / ctx.b : 0; break;
         }
-        console.log(`=> ${ctx.a} ${ctx.operation} ${ctx.b} = ${ctx.result}`);
       },
     },
   ],
 });
 ```
 
-### 3. Configuration LLM
+### 2. Créer l'agent
+
+```typescript
+const agent = new Agent({
+  role: "Assistant Mathématique",
+  goal: "Aider avec les calculs",
+  tools: [calculator],
+  llmConfig: { provider: "ollama", model: "gemma4:4b" },
+});
+```
+
+### 3. Utiliser
+
+```typescript
+await agent.process("Calcule 25 + 7");
+// -> LLM choisit calculator avec les bons paramètres
+// -> Retourne: "Le résultat est 32"
+```
+
+---
+
+## Exemple agentique: Multi-outils avec raisonnement
+
+Le vrai pouvoir d'un agent: **choisir le bon outil** selon la requête.
+
+### Outils
+
+```typescript
+// Outil 1: Calculatrice
+const calculator = new GraphFlow({
+  name: "calculator",
+  schema: z.object({
+    a: z.number(), b: z.number(),
+    operation: z.enum(["add", "subtract", "multiply", "divide"]),
+    result: z.number().optional(),
+  }),
+  context: { a: 0, b: 0, operation: "add" },
+  nodes: [{ name: "calc", execute: async (ctx) => {
+    switch (ctx.operation) {
+      case "add": ctx.result = ctx.a + ctx.b; break;
+      case "subtract": ctx.result = ctx.a - ctx.b; break;
+      case "multiply": ctx.result = ctx.a * ctx.b; break;
+      case "divide": ctx.result = ctx.b !== 0 ? ctx.a / ctx.b : 0; break;
+    }
+  }}],
+});
+
+// Outil 2: Recherche web
+const searchTool = new GraphFlow({
+  name: "web_search",
+  schema: z.object({
+    query: z.string(),
+    results: z.array(z.string()).optional(),
+  }),
+  context: { query: "", results: undefined },
+  nodes: [{ name: "search", execute: async (ctx) => {
+    const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(ctx.query)}&format=json`);
+    const data = await res.json();
+    ctx.results = (data.RelatedTopics || []).slice(0, 5).map((r: any) => r.Text);
+  }}],
+});
+
+// Outil 3: Lire fichier
+const readFile = new GraphFlow({
+  name: "read_file",
+  schema: z.object({
+    path: z.string(),
+    content: z.string().optional(),
+  }),
+  context: { path: "", content: undefined },
+  nodes: [{ name: "read", execute: async (ctx) => {
+    const fs = await import("fs/promises");
+    ctx.content = await fs.readFile(ctx.path, "utf-8");
+  }}],
+});
+```
+
+### Agent multi-outils
+
+```typescript
+const agent = new Agent({
+  role: "Assistant Polyvalent",
+  goal: "Aider l'utilisateur avec diverses tâches",
+  tools: [calculator, searchTool, readFile],
+  llmConfig: { provider: "ollama", model: "gemma4:4b" },
+});
+
+// Le LLM choisit LE bon outil selon la requête
+await agent.process("Combien font 100 divisé par 4?");
+// -> Utilise calculator
+
+await agent.process("Cherche les dernières news sur Rust");
+// -> Utilise web_search
+
+await agent.process("Lis le README.md");
+// -> Utilise read_file
+```
+
+---
+
+## Exemple avancé: Agent avec historique
+
+**Problème:** Un LLM peut répéter la même action.
+
+**Solution:** Utiliser `executedGraphs` pour suivre ce qui a été fait.
+
+### Schema avec historique
+
+```typescript
+const AgentSchema = z.object({
+  input: z.string(),
+  actions: z.array(z.object({
+    name: z.string(),
+    params: z.record(z.any()),
+  })),
+  executed: z.array(z.string()),  // <- Historique
+  result: z.string().optional(),
+});
+
+// Outil avec vérification d'historique
+const smartSearch = new GraphFlow({
+  name: "web_search",
+  schema: AgentSchema,
+  context: { input: "", actions: [], executed: [], result: undefined },
+  nodes: [
+    {
+      name: "check_already_done",
+      execute: async (ctx) => {
+        // Ne pas répéter si déjà fait
+        if (ctx.executed.includes("web_search")) {
+          ctx.result = "(Déjà fait, je saute)";
+        }
+      },
+      next: (ctx) => ctx.result ? [] : ["do_search"],
+    },
+    {
+      name: "do_search",
+      execute: async (ctx) => {
+        const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(ctx.input)}&format=json`);
+        const data = await res.json();
+        ctx.result = JSON.stringify(data.RelatedTopics?.slice(0, 3));
+        ctx.executed.push("web_search");  // <- Marquer comme fait
+      },
+    },
+  ],
+});
+```
+
+### Agent intelligent
+
+```typescript
+const agent = new Agent({
+  role: "Assistant Mémoire",
+  goal: "Ne jamais répéter une action déjà faite",
+  tools: [smartSearch, calculator],
+  llmConfig: { provider: "ollama", model: "gemma4:4b" },
+  memory: true,  // <- Mémorise les actions
+});
+
+await agent.process("Cherche info sur Python");
+// -> Fait la recherche
+
+await agent.process("Cherche encore info sur Python");
+// -> LLM voit dans l'historique que c'est déjà fait
+// -> Retourne: "J'ai déjà fait cette recherche"
+```
+
+---
+
+## Concept: generateActionSchema
+
+Comment l'agent sait quels outils existent?
+
+```typescript
+// L'agent utilise generateActionSchema pour créer:
+// ## AVAILABLE ACTIONS:
+// - calculator: {a: number, b: number, operation: "add"|"subtract"|...}
+// - web_search: {query: string}
+// - read_file: {path: string}
+
+// Le LLM voit cette liste et choisit l'outil adapté
+```
+
+Le schema Zod avec `.describe()` est **la clé**: le LLM lit les descriptions pour comprendre quand utiliser chaque outil.
+
+---
+
+## Exemple: Agent qui enchaîne les actions
+
+```typescript
+const agent = new Agent({
+  role: "Assistant Recherche",
+  goal: "Rechercher puis résumer",
+  tools: [searchTool, calculator],  // <- Pas readFile ici
+  llmConfig: { provider: "ollama", model: "gemma4:4b" },
+});
+
+// Le LLM peut:
+// 1. Faire une recherche
+// 2. Voir qu'il faut compter les résultats
+// 3. Utiliser calculator pour le comptage
+await agent.process("Combien de résultats sur 'TypeScript'?");
+
+// Log interne:
+// [web_search] query="TypeScript" -> 5 résultats
+// [calculator] count=5 -> réponse: "5 résultats"
+```
+
+---
+
+## Configuration LLM
 
 ```typescript
 function getLLMConfig() {
@@ -95,167 +294,40 @@ function getLLMConfig() {
 }
 ```
 
-### 4. Créer l'agent
+---
 
-```typescript
-import { Agent } from "@ai.ntellect/core";
-
-const agent = new Agent({
-  role: "Assistant Calcul",
-  goal: "Aider avec les calculs",
-  backstory: "Tu es un assistant mathématique",
-  tools: [calculator],
-  llmConfig: getLLMConfig(),
-  verbose: true,
-});
-```
-
-### 5. Utiliser
-
-```typescript
-// Le LLM choisit automatiquement le bon outil
-const result = await agent.process("Calcule 25 + 7");
-console.log(result.response);
-```
-
-## Exemple: File Reader
-
-```typescript
-const ReadSchema = z.object({
-  path: z.string().describe("Chemin du fichier"),
-  content: z.string().optional(),
-});
-
-const readFileFlow = new GraphFlow({
-  name: "read_file",
-  schema: ReadSchema,
-  context: { path: "", content: undefined },
-  nodes: [
-    {
-      name: "read",
-      execute: async (ctx: GraphContext<typeof ReadSchema>) => {
-        const fs = await import("fs/promises");
-        ctx.content = await fs.readFile(ctx.path, "utf-8");
-      },
-    },
-  ],
-});
-
-const agent = new Agent({
-  role: "File Assistant",
-  goal: "Lire des fichiers",
-  tools: [readFileFlow],
-  llmConfig: getLLMConfig(),
-});
-
-await agent.process("Lis le fichier package.json");
-```
-
-## Agent multi-outils
-
-```typescript
-const agent = new Agent({
-  role: "Assistant Polyvalent",
-  goal: "Aider avec calculs et fichiers",
-  tools: [calculator, readFileFlow],
-  llmConfig: getLLMConfig(),
-  verbose: true,
-});
-
-// Le LLM choisit l'outil selon la demande
-await agent.process("Calcule 100 / 4");
-await agent.process("Lis README.md");
-```
-
-## Exemple: HTTP Fetcher
-
-```typescript
-const FetchSchema = z.object({
-  url: z.string().describe("URL à requêter"),
-  response: z.string().optional(),
-  status: z.number().optional(),
-});
-
-const fetchFlow = new GraphFlow({
-  name: "fetch_url",
-  schema: FetchSchema,
-  context: { url: "" },
-  nodes: [
-    {
-      name: "fetch",
-      execute: async (ctx: GraphContext<typeof FetchSchema>) => {
-        const res = await fetch(ctx.url);
-        ctx.status = res.status;
-        ctx.response = await res.text();
-      },
-    },
-  ],
-});
-
-const agent = new Agent({
-  tools: [fetchFlow],
-  llmConfig: getLLMConfig(),
-});
-
-await agent.process("Fetch https://jsonplaceholder.typicode.com/users/1");
-```
-
-## Structure d'un outil
-
-```typescript
-const monOutil = new GraphFlow({
-  name: "nom_outil",       // Identifiant unique (le LLM l'utilise)
-  schema: MonSchema,        // Zod schema avec .describe()
-  context: { /* état */ },
-  nodes: [
-    {
-      name: "execute",      // Premier noeud
-      execute: async (ctx) => {
-        // Logique de l'outil
-      },
-    },
-  ],
-});
-```
-
-**Important:** Le `.describe()` dans le schema Zod guide le LLM pour comprendre les paramètres.
-
-## Comment le LLM choisit
-
-Le LLM reçoit un prompt structuré:
+## Structure d'un agent
 
 ```
-## RÔLE
-Assistant Calcul
-
-## OUTILS DISPONIBLES
-- calculator: {a: number, b: number, operation: "add"|"subtract"|...}
-
-## INSTRUCTIONS
-Réponds avec JSON: {actions: [...], response: "..."}
+Agent
+├── role: "Ce que tu es"
+├── goal: "Ton objectif"
+├── tools: [Outil1, Outil2, ...]  <- Les actions disponibles
+├── llmConfig: {...}               <- Le modèle utilisé
+├── memory: true/false             <- Mémoire des interactions
+└── verbose: true/false            <- Logs
 ```
 
-Le LLM retourne:
-```json
-{
-  "actions": [{"name": "calculator", "parameters": {"a": 25, "b": 7, "operation": "add"}}],
-  "response": "Le résultat est 32"
-}
-```
+**L'agentique c'est:**
+- Le LLM **rompt** entre les outils
+- L'historique **évite** les répétitions
+- La mémoire **contexte** les futures actions
+- Les tools sont des **choix**, pas des étapes fixes
+
+---
 
 ## Exécuter
 
 ```sh
-# Test sans LLM (appel direct)
-pnpm ts-node examples/test-tools.ts
+# Test rapide sans LLM
+pnpm run example:hello
 
-# Avec Ollama
+# Avec agent
 OLLAMA_MODEL=gemma4:4b pnpm ts-node examples/agent-tools.ts
-
-# Avec OpenAI
-OPENAI_API_KEY=sk-... pnpm ts-node examples/agent-tools.ts
 ```
 
 ## Voir aussi
 
-- [Agent On-Chain](agent-on-chain.md) — Agent avec mémoire, historique, et transactions blockchain
+- [Agent On-Chain](agent-on-chain.md) — Agent avec blockchain, mémoire avancée
+- [File Editor Workflow](file-editor-workflow.md) — Workflow multi-étapes
+- [API Pipeline](api-pipeline-workflow.md) — Workflow avec cache
