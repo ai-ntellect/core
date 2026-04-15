@@ -88,8 +88,7 @@ export class MeilisearchAdapter implements IMemoryAdapter {
         method: "PATCH",
         body: JSON.stringify({
           searchableAttributes: this.config.searchableAttributes || [
-            "data",
-            "query",
+            "content",
           ],
           sortableAttributes: this.config.sortableAttributes || ["createdAt"],
         }),
@@ -183,7 +182,8 @@ export class MeilisearchAdapter implements IMemoryAdapter {
     return searchResults.hits.map((hit: any) => ({
       document: {
         id: hit.id,
-        data: hit.data,
+        content: hit.content ?? hit.data,
+        metadata: hit.metadata,
         embedding: hit.embedding,
         roomId: hit.roomId,
         createdAt: hit.createdAt,
@@ -294,7 +294,8 @@ export class MeilisearchAdapter implements IMemoryAdapter {
 
     return results.results.map((doc: any) => ({
       id: doc.id,
-      data: doc.data,
+      content: doc.content ?? doc.data,
+      metadata: doc.metadata,
       embedding: doc.embedding,
       roomId: doc.roomId,
       createdAt: doc.createdAt,

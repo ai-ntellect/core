@@ -1,9 +1,6 @@
 import { expect } from "chai";
-import dotenv from "dotenv";
 import { MeilisearchAdapter } from "../../../../modules/memory/adapters/meilisearch";
 import { BaseMemoryType } from "../../../../types";
-// Load environment variables
-dotenv.config();
 
 describe("MeilisearchAdapter", () => {
   let meilisearchAdapter: MeilisearchAdapter;
@@ -11,7 +8,7 @@ describe("MeilisearchAdapter", () => {
 
   const testMemory: BaseMemoryType = {
     id: "test-id",
-    data: "test data",
+    content: "test data",
     roomId: "test-room",
     createdAt: new Date(),
   };
@@ -135,7 +132,7 @@ describe("MeilisearchAdapter", () => {
       const input = {
         id: "test-id",
         roomId: "test-room",
-        data: "test data",
+        content: "test data",
       };
 
       const result = await meilisearchAdapter.createMemory(input);
@@ -164,7 +161,7 @@ describe("MeilisearchAdapter", () => {
       const mockData = {
         id: "test-id",
         roomId: "test-room",
-        data: "test data",
+        content: "test data",
         createdAt: testDate.toISOString(),
         embedding: undefined,
       };
@@ -184,7 +181,7 @@ describe("MeilisearchAdapter", () => {
 
       expect(result?.id).to.equal(mockData.id);
       expect(result?.roomId).to.equal(mockData.roomId);
-      expect(result?.data).to.equal(mockData.data);
+      expect(result?.content).to.equal(mockData.content);
       expect(result?.createdAt).to.equal(mockData.createdAt); // Compare directement les strings
       expect(result?.embedding).to.be.undefined;
     });
@@ -212,7 +209,7 @@ describe("MeilisearchAdapter", () => {
       const firstMemoryId = "test-memory-id";
       const mockMemory = {
         id: firstMemoryId,
-        data: "test data",
+        content: "test data",
         roomId: TEST_ROOM_ID,
         embedding: null,
         createdAt: new Date().toISOString(),
@@ -245,17 +242,17 @@ describe("MeilisearchAdapter", () => {
       };
 
       const firstMemory = await meilisearchAdapter.createMemory({
-        data: "test data",
+        content: "test data",
         roomId: TEST_ROOM_ID,
       });
 
       const secondMemory = await meilisearchAdapter.createMemory({
-        data: "test data",
+        content: "test data",
         roomId: TEST_ROOM_ID,
       });
 
       expect(secondMemory?.id).to.equal(firstMemory?.id);
-      expect(secondMemory?.data).to.equal(firstMemory?.data);
+      expect(secondMemory?.content).to.equal(firstMemory?.content);
       expect(secondMemory?.roomId).to.equal(firstMemory?.roomId);
     });
 

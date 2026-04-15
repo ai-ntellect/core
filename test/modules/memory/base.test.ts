@@ -24,7 +24,7 @@ describe("Memory", () => {
    */
   const testMemory: BaseMemoryType = {
     id: "test-id",
-    data: "test data",
+    content: "test data",
     embedding: [0.1, 0.2, 0.3],
     roomId: TEST_ROOM_ID,
     createdAt: new Date(),
@@ -40,7 +40,7 @@ describe("Memory", () => {
       init: async () => Promise.resolve(),
       createMemory: async (input: CreateMemoryInput) => ({
         ...testMemory,
-        data: input.data,
+        content: input.content,
         embedding: input.embedding,
       }),
       getMemoryById: async () => testMemory,
@@ -80,7 +80,7 @@ describe("Memory", () => {
      */
     it("should create a new memory entry", async () => {
       const input = {
-        data: "test data",
+        content: "test data",
         roomId: TEST_ROOM_ID,
       };
 
@@ -93,7 +93,7 @@ describe("Memory", () => {
      */
     it("should create a memory entry with embedding", async () => {
       const input = {
-        data: "test data",
+        content: "test data",
         roomId: TEST_ROOM_ID,
         embedding: [0.1, 0.2, 0.3],
       };
@@ -173,7 +173,7 @@ describe("Memory", () => {
 
       try {
         await memory.createMemory({
-          data: "test",
+          content: "test",
           roomId: TEST_ROOM_ID,
         });
         expect.fail("Should have thrown an error");
@@ -203,7 +203,7 @@ describe("Memory", () => {
       const input = {
         id: "test-id",
         roomId: "test-room",
-        data: "test data",
+        content: "test data",
         embedding: undefined,
       };
 

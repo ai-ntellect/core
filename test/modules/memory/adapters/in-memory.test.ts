@@ -9,7 +9,7 @@ describe("InMemoryAdapter", () => {
 
   const testMemory: BaseMemoryType = {
     id: "test-id",
-    data: "test data",
+    content: "test data",
     roomId: TEST_ROOM_ID,
     createdAt: fixedDate,
   };
@@ -30,28 +30,28 @@ describe("InMemoryAdapter", () => {
   describe("Memory Operations", () => {
     it("should create memory", async () => {
       const memory = await inMemoryAdapter.createMemory({
-        data: "test data",
+        content: "test data",
         roomId: TEST_ROOM_ID,
         id: "test-id",
         embedding: [0.1, 0.2, 0.3],
       });
 
       expect(memory).to.have.property("id");
-      expect(memory?.data).to.equal("test data");
+      expect(memory?.content).to.equal("test data");
       expect(memory?.roomId).to.equal(TEST_ROOM_ID);
     });
 
     it("should not create duplicate memory", async () => {
       // Create first memory
       const memory1 = await inMemoryAdapter.createMemory({
-        data: "test data",
+        content: "test data",
         roomId: TEST_ROOM_ID,
         id: "test-id",
       });
 
       // Try to create duplicate
       const memory2 = await inMemoryAdapter.createMemory({
-        data: "test data",
+        content: "test data",
         roomId: TEST_ROOM_ID,
         id: "another-id",
       });
@@ -61,7 +61,7 @@ describe("InMemoryAdapter", () => {
 
     it("should get memory by ID", async () => {
       await inMemoryAdapter.createMemory({
-        data: testMemory.data,
+        content: testMemory.content,
         roomId: testMemory.roomId,
         id: testMemory.id,
         embedding: testMemory.embedding,
@@ -77,12 +77,12 @@ describe("InMemoryAdapter", () => {
     it("should get memories by index", async () => {
       // Create test memories
       await inMemoryAdapter.createMemory({
-        data: "test data one",
+        content: "test data one",
         roomId: TEST_ROOM_ID,
         id: "test-id-1",
       });
       await inMemoryAdapter.createMemory({
-        data: "test data two",
+        content: "test data two",
         roomId: TEST_ROOM_ID,
         id: "test-id-2",
       });
@@ -94,18 +94,18 @@ describe("InMemoryAdapter", () => {
 
       expect(results).to.be.an("array");
       expect(results).to.have.lengthOf(1);
-      expect(results[0].data).to.include("one");
+      expect(results[0].content).to.include("one");
     });
 
     it("should get all memories", async () => {
       // Create multiple memories
       await inMemoryAdapter.createMemory({
-        data: "test data 1",
+        content: "test data 1",
         roomId: TEST_ROOM_ID,
         id: "test-id-1",
       });
       await inMemoryAdapter.createMemory({
-        data: "test data 2",
+        content: "test data 2",
         roomId: TEST_ROOM_ID,
         id: "test-id-2",
       });
@@ -118,7 +118,7 @@ describe("InMemoryAdapter", () => {
     it("should clear memory by ID", async () => {
       // Create a memory
       await inMemoryAdapter.createMemory({
-        data: "test data",
+        content: "test data",
         roomId: TEST_ROOM_ID,
         id: "test-id",
       });
@@ -134,12 +134,12 @@ describe("InMemoryAdapter", () => {
     it("should clear all memories", async () => {
       // Create multiple memories
       await inMemoryAdapter.createMemory({
-        data: "test data 1",
+        content: "test data 1",
         roomId: TEST_ROOM_ID,
         id: "test-id-1",
       });
       await inMemoryAdapter.createMemory({
-        data: "test data 2",
+        content: "test data 2",
         roomId: TEST_ROOM_ID,
         id: "test-id-2",
       });
