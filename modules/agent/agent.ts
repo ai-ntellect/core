@@ -43,7 +43,10 @@ export class Agent {
     this.executor = new GenericExecutor(agent, config.tools, {
       llmConfig: config.llmConfig,
       verbose: config.verbose,
-    }, this.logger);
+    }, this.logger, {
+      dynamicGoal: config.dynamicGoal,
+      dynamicGoalPrompt: config.dynamicGoalPrompt,
+    });
     this.executor.setLogger(this.logger);
 
     this.workflow = this.setupWorkflow();
@@ -67,6 +70,14 @@ export class Agent {
         executedActions: [],
       },
       nodes: [
+        {
+          name: "defineGoal",
+          execute: async (context: GraphContext<typeof AgentContextSchema>) => {
+            const agentContext = context as unknown as AgentContext;
+            await this.executor.updateDynamicGoal(agentContext);
+          },
+          next: () => ["think"],
+        },
         {
           name: "think",
           execute: async (context: GraphContext<typeof AgentContextSchema>) => {
@@ -146,7 +157,7 @@ export class Agent {
               return ["execute"];
             }
             if (iteration < this.maxIterations) {
-              return ["think"];
+              return ["defineGoal"];
             }
             return [];
           },
@@ -161,7 +172,7 @@ export class Agent {
    * @returns {Promise<AgentContext>} The resulting context after processing
    */
   public async process(input: string): Promise<AgentContext> {
-    await this.workflow.execute("think", {
+    await this.workflow.execute("defineGoal", {
       input: { raw: input },
       cwd: process.cwd(),
       actions: [],

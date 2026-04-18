@@ -118,6 +118,8 @@ export type AgentConfig = {
   verbose?: boolean;
   maxIterations?: number;
   llmConfig: ExecutorConfig["llmConfig"];
+  dynamicGoal?: boolean;
+  dynamicGoalPrompt?: string;
 };
 
 /**

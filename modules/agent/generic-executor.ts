@@ -13,21 +13,48 @@ import { LLMFactory } from "./llm-factory";
 import { PromptBuilder } from "./prompt-builder";
 import { AgentLogger, LogLevel } from "./tools/logger";
 
+const DEFAULT_DYNAMIC_GOAL_PROMPT = `Contexte actuel:
+- Input utilisateur: {input}
+- Actions déjà exécutées: {executedActions}
+- Résultats disponibles: {results}
+- Goal original: {originalGoal}
+
+Réponds uniquement avec le format JSON: {"goal": "votre sous-goal en 1-2 phrases"}
+Le sous-goal doit être la prochaine étape à accomplir.`;
+
 export class GenericExecutor extends AgentExecutor {
   private verbose: boolean;
   private llm: ReturnType<typeof LLMFactory.createLLM>;
   private logger: AgentLogger;
+  private dynamicGoal: boolean;
+  private dynamicGoalPrompt: string;
+  private currentDynamicGoal: string;
 
   constructor(
     agent: BaseAgent,
     graphs: GraphFlow<any>[],
     config: ExecutorConfig,
-    logger?: AgentLogger
+    logger?: AgentLogger,
+    options?: { dynamicGoal?: boolean; dynamicGoalPrompt?: string }
   ) {
     super(agent, graphs);
     this.verbose = config.verbose ?? true;
     this.llm = LLMFactory.createLLM(config.llmConfig);
     this.logger = logger || new AgentLogger(this.verbose);
+    this.dynamicGoal = options?.dynamicGoal ?? false;
+    this.dynamicGoalPrompt = options?.dynamicGoalPrompt ?? DEFAULT_DYNAMIC_GOAL_PROMPT;
+    this.currentDynamicGoal = agent.getGoal();
+  }
+
+  setDynamicGoal(enabled: boolean, customPrompt?: string) {
+    this.dynamicGoal = enabled;
+    if (customPrompt) {
+      this.dynamicGoalPrompt = customPrompt;
+    }
+  }
+
+  getCurrentGoal(): string {
+    return this.currentDynamicGoal;
   }
 
   setLogger(logger: AgentLogger) {
@@ -117,7 +144,7 @@ ${schemaDescription}
     
     return new PromptBuilder()
       .addSection("ROLE", this.agent.getRole())
-      .addSection("GOAL", this.agent.getGoal())
+      .addSection("GOAL", this.currentDynamicGoal)
       .addSection("BACKSTORY", this.agent.getBackstory())
       .addSection("ENVIRONMENT", `Current directory: ${cwd}`)
       .addSection("TOOLS", availableToolNames)
@@ -133,6 +160,61 @@ ${schemaDescription}
 3. NEVER call a tool listed in STATUS as "ALREADY DONE"`
       )
       .build(context);
+  }
+
+  /**
+   * Computes a dynamic goal using the LLM as a meta-agent
+   * @param {AgentContext} context - The current context
+   * @returns {Promise<string>} The dynamic goal
+   */
+  private async computeDynamicGoal(context: AgentContext): Promise<string> {
+    if (!this.dynamicGoal) {
+      return this.agent.getGoal();
+    }
+
+    this.log("thinking", chalk.dim("Computing dynamic goal..."));
+
+    const executedTools = context.executedActions.map(a => a.name);
+    const results = context.executedActions
+      .map(a => `${a.name}: ${JSON.stringify(a.result)}`)
+      .join("\n");
+
+    const prompt = this.dynamicGoalPrompt
+      .replace("{input}", context.input.raw)
+      .replace("{executedActions}", executedTools.join(", ") || "Aucune")
+      .replace("{results}", results || "Aucun résultat")
+      .replace("{originalGoal}", this.agent.getGoal());
+
+    try {
+      const result = await this.llm.generate(
+        {
+          system: "Tu dois répondre au format JSON exact: {\"goal\": \"votre texte\"}. Sois concis.",
+          user: prompt,
+        },
+        z.object({
+          goal: z.string(),
+        }).transform(v => ({ goal: v.goal || "Accomplir la tâche" }))
+      );
+
+      const computedGoal = result.object?.goal || this.agent.getGoal();
+      this.currentDynamicGoal = computedGoal;
+      this.log("info", chalk.dim(`Dynamic goal: ${computedGoal}`));
+      return computedGoal;
+    } catch (error) {
+      this.log("warning", chalk.yellow(`Failed to compute dynamic goal: ${error}, falling back to original`));
+      return this.agent.getGoal();
+    }
+  }
+
+  /**
+   * Computes and updates the dynamic goal for the current iteration
+   * Can be called from the workflow before makeDecision
+   * @param {AgentContext} context - The current context
+   * @returns {Promise<string>} The computed dynamic goal
+   */
+  async updateDynamicGoal(context: AgentContext): Promise<string> {
+    const goal = await this.computeDynamicGoal(context);
+    return goal;
   }
 
   /**
