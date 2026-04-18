@@ -21,6 +21,7 @@ const DEFAULT_MODEL: Record<LLMProvider, string> = {
   openai: "gpt-4o-mini",
   anthropic: "claude-3-haiku-20240307",
   ollama: "qwen3.5:4b",
+  groq: "llama-3.1-8b-instant",
   custom: "custom",
 };
 

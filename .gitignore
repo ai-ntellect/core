@@ -10,3 +10,6 @@ coverage/
 app/
 .claude/
 *.txt
+.github/
+.github/
+docs/
