@@ -1,3 +1,4 @@
+import chalk from "chalk";
 import { LLMConfig, PromptInput } from "@/types/agent";
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
@@ -63,21 +64,57 @@ export class LLMFactory {
 
             const data = await response.json();
             let content = data.message?.content || "";
+            
+            if (data.message?.thinking) {
+              console.log(chalk.cyan('\n[REASONING] ') + data.message.thinking.substring(0, 500) + '...\n');
+            }
 
             let parsed: any;
-            try {
-              parsed = JSON.parse(content);
-            } catch {
-              const jsonMatch = content.match(/\{[\s\S]*\}/);
-              if (jsonMatch) {
+            const firstBrace = content.indexOf('{');
+            
+            if (firstBrace !== -1) {
+              let endBrace = -1;
+              let braceCount = 0;
+              for (let i = firstBrace; i < content.length; i++) {
+                if (content[i] === '{') braceCount++;
+                else if (content[i] === '}') {
+                  braceCount--;
+                  if (braceCount === 0) {
+                    endBrace = i;
+                    break;
+                  }
+                }
+              }
+              
+              if (endBrace !== -1) {
+                const jsonStr = content.substring(firstBrace, endBrace + 1);
                 try {
-                  parsed = JSON.parse(jsonMatch[0]);
-                } catch {
-                  throw new Error(`Failed to parse JSON from LLM response: ${content.substring(0, 200)}`);
+                  parsed = JSON.parse(jsonStr);
+                } catch (e: any) {
+                  console.log(chalk.yellow('[WARN] Truncated JSON, attempting repair...'));
+                  const repaired = jsonStr.replace(/,(\s*[}\]])/g, '$1').replace(/([}\]])(\s*[,\n])/g, '$1$2');
+                  try {
+                    parsed = JSON.parse(repaired);
+                  } catch {
+                    console.log(chalk.yellow('[WARN] Repair failed, extracting partial actions...'));
+                    const actionMatches = jsonStr.matchAll(/"name"\s*:\s*"([^"]+)"/g);
+                    const actions = [];
+                    for (const match of actionMatches) {
+                      actions.push({ name: match[1], parameters: {} });
+                    }
+                    if (actions.length > 0) {
+                      parsed = { actions, response: "Partial response" };
+                    } else {
+                      return { object: { actions: [], response: content.substring(0, 200) } };
+                    }
+                  }
                 }
               } else {
-                throw new Error(`No JSON found in LLM response: ${content.substring(0, 200)}`);
+                console.log(chalk.yellow('[WARN] Incomplete JSON, returning empty response'));
+                return { object: { actions: [], response: content.substring(0, 100) } };
               }
+            } else {
+              return { object: { actions: [], response: content.substring(0, 200) } };
             }
 
             const validated = schema.parse(parsed);
