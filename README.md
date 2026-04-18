@@ -8,7 +8,7 @@ You build applications that need to coordinate multiple steps with shared state.
 
 ## What this is NOT
 
-This is not a distributed orchestration system. It doesn't replay workflows across crashes, doesn'tpersist to a database by default, and doesn't scale across machines. For those needs, use Temporal or Inngest.
+This is not a distributed orchestration system. It doesn't replay workflows across crashes, doesn't persist to a database by default, and doesn't scale across machines. For those needs, use Temporal or Inngest.
 
 This is not an agent framework like LangGraph or Mastra. It provides the primitives (graphs, events, observable state) but doesn't dictate how you build AI agents. You can layer an agent on top if you want, but the core is generic.
 
