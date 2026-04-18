@@ -11,5 +11,7 @@ app/
 .claude/
 *.txt
 .github/
-.github/
 docs/
+scheduled-tasks.json
+agent-memory.json
+memory/
