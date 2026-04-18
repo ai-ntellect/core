@@ -20,7 +20,8 @@ describe("GenericExecutor", () => {
 
   function createExecutor(
     tools: GraphFlow<any>[] = [],
-    customCall?: typeof llmConfig.customCall
+    customCall?: typeof llmConfig.customCall,
+    options?: { dynamicGoal?: boolean; dynamicGoalPrompt?: string }
   ) {
     const agent = new BaseAgent({
       role: "Tester",
@@ -34,7 +35,7 @@ describe("GenericExecutor", () => {
     return new GenericExecutor(agent, tools, {
       llmConfig: customCall ? { ...llmConfig, customCall } : llmConfig,
       verbose: false,
-    });
+    }, undefined, options);
   }
 
   it("makeDecision returns response and actions from customCall", async () => {
@@ -114,5 +115,116 @@ describe("GenericExecutor", () => {
 
     expect(context.executedActions).to.have.lengthOf(1);
     expect(context.executedActions[0].name).to.equal("counterTool");
+  });
+
+  describe("Dynamic Goal", () => {
+    it("should use static goal when dynamicGoal is disabled", async () => {
+      const executor = createExecutor([], undefined, { dynamicGoal: false });
+      
+      const context: AgentContext = {
+        input: { raw: "test input" },
+        actions: [],
+        response: "",
+        executedActions: [],
+      };
+
+      const goal = executor.getCurrentGoal();
+      expect(goal).to.equal("Run tests");
+    });
+
+    it("should update dynamic goal via updateDynamicGoal method", async () => {
+      let goalCallCount = 0;
+      const goalLlmConfig = {
+        provider: "custom" as const,
+        model: "mock",
+        apiKey: "unused",
+        customCall: async () => {
+          goalCallCount++;
+          return {
+            object: {
+              goal: goalCallCount === 1 ? "Step 1: Initialize" : "Step 2: Execute",
+            },
+          };
+        },
+      };
+
+      const agent = new BaseAgent({
+        role: "Tester",
+        goal: "Run tests",
+        backstory: "Concise",
+        tools: [],
+        llmConfig: goalLlmConfig,
+      });
+
+      const executor = new GenericExecutor(agent, [], {
+        llmConfig: goalLlmConfig,
+        verbose: false,
+      }, undefined, { dynamicGoal: true });
+
+      const context1: AgentContext = {
+        input: { raw: "test input" },
+        actions: [],
+        response: "",
+        executedActions: [],
+      };
+
+      await executor.updateDynamicGoal(context1);
+      expect(executor.getCurrentGoal()).to.equal("Step 1: Initialize");
+
+      const context2: AgentContext = {
+        input: { raw: "test input" },
+        actions: [],
+        response: "",
+        executedActions: [{ name: "tool1", result: { success: true }, isExecuted: true, timestamp: new Date().toISOString() }],
+      };
+
+      await executor.updateDynamicGoal(context2);
+      expect(executor.getCurrentGoal()).to.equal("Step 2: Execute");
+    });
+
+    it("should call LLM when dynamicGoal is enabled", async () => {
+      let callCount = 0;
+
+      const sharedLlmConfig = {
+        provider: "custom" as const,
+        model: "mock",
+        apiKey: "unused",
+        customCall: async () => {
+          callCount++;
+          return {
+            object: {
+              goal: `Dynamic goal`,
+              actions: [],
+              response: `Agent response`,
+            },
+          };
+        },
+      };
+
+      const agent = new BaseAgent({
+        role: "Tester",
+        goal: "Run tests",
+        backstory: "Concise",
+        tools: [],
+        llmConfig: sharedLlmConfig,
+      });
+
+      const executor = new GenericExecutor(agent, [], {
+        llmConfig: sharedLlmConfig,
+        verbose: false,
+      }, undefined, { dynamicGoal: true });
+
+      const context: AgentContext = {
+        input: { raw: "test input" },
+        actions: [],
+        response: "",
+        executedActions: [],
+      };
+
+      await executor.updateDynamicGoal(context);
+      await executor.makeDecision(context);
+      
+      expect(callCount).to.equal(2);
+    });
   });
 });
