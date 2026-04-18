@@ -226,7 +226,7 @@ const llmConfig = {
 // Ollama (running locally)
 const llmConfig = {
   provider: "ollama",
-  model: "gemma4:4b",
+  model: "gemma4:e4b",
   baseUrl: "http://localhost:11434",
 };
 ```
@@ -238,7 +238,10 @@ const llmConfig = {
 You create an Agent with a role (what it is), a goal (what it should do), and a list of tools (GraphFlows that it can call). The role and goal guide the LLM's behavior. You can also set `maxIterations` to limit how many think-execute cycles the agent runs.
 
 ```typescript
-// First, define a tool as a GraphFlow
+import { z } from "zod";
+import { GraphFlow, Agent } from "@ai.ntellect/core";
+
+// Define the calculator tool as a GraphFlow
 const CalcSchema = z.object({
   a: z.number().describe("First number"),
   b: z.number().describe("Second number"),
@@ -246,15 +249,27 @@ const CalcSchema = z.object({
   result: z.number().optional(),
 });
 
-// Then wrap it in an Agent
+const calculator = new GraphFlow({
+  name: "calculator",
+  schema: CalcSchema,
+  context: { a: 0, b: 0, operation: "add" },
+  nodes: [{
+    name: "calculate",
+    execute: async (ctx) => {
+      ctx.result = ctx.operation === "add" ? ctx.a + ctx.b : ctx.a - ctx.b;
+    },
+  }],
+});
+
+// Create the agent with the tool
 const agent = new Agent({
   role: "Math Assistant",
   goal: "Help with calculations",
   tools: [calculator],
-  maxIterations: 3, // limit think-execute cycles
+  maxIterations: 3,
   llmConfig: {
     provider: "ollama",
-    model: "gemma4:4b",
+    model: "gemma4:e4b",
   },
   verbose: true,
 });
@@ -377,7 +392,7 @@ pnpm run test:watch
 Run agents interactively from the terminal. The CLI includes built-in tools for file operations, command execution, and environment inspection:
 
 ```sh
-pnpm cli --provider ollama --model gemma4:4b --role "Assistant"
+pnpm cli --provider ollama --model gemma4:e4b --role "Assistant"
 pnpm cli --provider openai --api-key sk-xxx "Coding Assistant"
 ```
 
