@@ -287,7 +287,7 @@ The `.describe()` calls in your Zod schema become the tool descriptions that the
 ```sh
 pnpm run example:hello           # Simple workflow
 pnpm run example:events         # Event-driven workflow
-pnpm run example:agent        # Agent with tools
+pnpm run example:agent         # Agent with tools
 pnpm run example:agent-project  # Agent that creates files on disk
 pnpm run example:native-tools  # Agent with native Node.js tools
 ```
@@ -379,13 +379,12 @@ Run agents interactively from the terminal. The CLI includes built-in tools for 
 ```sh
 pnpm cli --provider ollama --model gemma4:4b --role "Assistant"
 pnpm cli --provider openai --api-key sk-xxx "Coding Assistant"
-pnpm cli --provider anthropic --api-key sk-ant-xxx "Analysis Helper"
 ```
 
-Supported providers: `openai`, `ollama`, `anthropic`. Default models vary by provider.
+Supported providers: `openai`, `ollama`. Default models vary by provider.
 
 Options:
-- `-p, --provider` — LLM provider (openai, ollama, anthropic)
+- `-p, --provider` — LLM provider (openai, ollama)
 - `-m, --model` — model name
 - `-b, --base-url` — API base URL
 - `--api-key` — API key
