@@ -235,7 +235,7 @@ const llmConfig = {
 
 ### Creating an Agent
 
-You create an Agent with a role (what it is), a goal (what it should do), and a list of tools (GraphFlows that it can call). The role and goal guide the LLM's behavior.
+You create an Agent with a role (what it is), a goal (what it should do), and a list of tools (GraphFlows that it can call). The role and goal guide the LLM's behavior. You can also set `maxIterations` to limit how many think-execute cycles the agent runs.
 
 ```typescript
 // First, define a tool as a GraphFlow
@@ -246,36 +246,37 @@ const CalcSchema = z.object({
   result: z.number().optional(),
 });
 
-const calculator = new GraphFlow({
-  name: "calculator",
-  schema: CalcSchema,
-  context: { a: 0, b: 0, operation: "add" },
-  nodes: [{
-    name: "calculate",
-    execute: async (ctx) => {
-      ctx.result = ctx.operation === "add"
-        ? ctx.a + ctx.b
-        : ctx.a - ctx.b;
-    },
-  }],
-});
-
 // Then wrap it in an Agent
 const agent = new Agent({
   role: "Math Assistant",
   goal: "Help with calculations",
   tools: [calculator],
+  maxIterations: 3, // limit think-execute cycles
   llmConfig: {
     provider: "ollama",
     model: "gemma4:4b",
   },
   verbose: true,
 });
-
-// Send a prompt
-const result = await agent.process("What is 25 plus 7?");
-console.log(result.response);
 ```
+
+### How the Agent works
+
+The Agent runs in a continuous loop: **think** → **execute** → **think** → **execute** until either there are no more actions to execute or `maxIterations` is reached (default: 5).
+
+1. **Think** — The LLM decides which tools to call and with what parameters
+2. **Execute** — The tools run and return results
+3. Repeat
+
+The agent tracks `executedActions` to avoid re-running the same tool call twice. You can access the full result:
+
+```typescript
+const result = await agent.process("What is 25 plus 7?");
+console.log(result.response);     // The agent's final response
+console.log(result.executedActions); // Array of { name, parameters, result }
+```
+
+Enable verbose mode to see the internal thinking in the console—useful for debugging.
 
 The Agent handles the full round-trip: receiving the prompt, detecting intent, calling the tool with parameters, returning the result. You only define the tools, the LLM figures out how to use them.
 
@@ -284,15 +285,14 @@ The `.describe()` calls in your Zod schema become the tool descriptions that the
 ### Running examples
 
 ```sh
-# Simple workflow
-pnpm run example:hello
-
-# Event-driven workflow
-pnpm run example:events
-
-# Agent with tools (requires Ollama or OPENAI_API_KEY)
-OLLAMA_MODEL=gemma4:4b pnpm ts-node examples/agent-tools.ts
+pnpm run example:hello           # Simple workflow
+pnpm run example:events         # Event-driven workflow
+pnpm run example:agent        # Agent with tools
+pnpm run example:agent-project  # Agent that creates files on disk
+pnpm run example:native-tools  # Agent with native Node.js tools
 ```
+
+All examples require either Ollama running locally or `OPENAI_API_KEY` set.
 
 ## Optional Modules
 
@@ -374,19 +374,22 @@ pnpm run test:watch
 
 ### CLI
 
-Run agents directly from the terminal:
+Run agents interactively from the terminal. The CLI includes built-in tools for file operations, command execution, and environment inspection:
 
 ```sh
 pnpm cli --provider ollama --model gemma4:4b --role "Assistant"
-pnpm cli --provider openai --api-key sk-xxx "Your prompt here"
+pnpm cli --provider openai --api-key sk-xxx "Coding Assistant"
+pnpm cli --provider anthropic --api-key sk-ant-xxx "Analysis Helper"
 ```
 
+Supported providers: `openai`, `ollama`, `anthropic`. Default models vary by provider.
+
 Options:
-- `-p, --provider` — LLM provider
+- `-p, --provider` — LLM provider (openai, ollama, anthropic)
 - `-m, --model` — model name
 - `-b, --base-url` — API base URL
 - `--api-key` — API key
-- `-r, --role` — agent role description
+- `-r, --role` — agent role
 - `-g, --goal` — agent goal
 - `-v, --verbose` — verbose output
 

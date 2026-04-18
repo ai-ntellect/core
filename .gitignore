@@ -8,3 +8,5 @@ examples/
 coverage/
 .nyc_output/
 app/
+.claude/
+*.txt
