@@ -86,7 +86,7 @@ export type PromptSection = {
 /**
  * Supported LLM providers
  */
-export type LLMProvider = "openai" | "anthropic" | "ollama" | "custom";
+export type LLMProvider = "openai" | "anthropic" | "ollama" | "groq" | "custom";
 
 /**
  * Supported LLM models
@@ -120,6 +120,10 @@ export type AgentConfig = {
   llmConfig: ExecutorConfig["llmConfig"];
   dynamicGoal?: boolean;
   dynamicGoalPrompt?: string;
+  dynamicNext?: boolean;
+  dynamicNextPrompt?: string;
+  enableSchedule?: boolean;
+  agenda?: any;
 };
 
 /**

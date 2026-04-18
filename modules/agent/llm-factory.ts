@@ -1,8 +1,127 @@
 import chalk from "chalk";
-import { LLMConfig, PromptInput } from "@/types/agent";
+import { LLMConfig, LLMProvider, PromptInput } from "@/types/agent";
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
+
+const DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant";
+
+const GROQ_FALLBACK_MODELS = [
+  "allam-2-7b",
+  "groq/compound-mini", 
+  "groq/compound",
+  "qwen/qwen3-32b",
+  "llama-3.3-70b-versatile",
+  "meta-llama/llama-4-scout-17b-16e-instruct",
+];
+
+const DEFAULT_FALLBACK_MODEL = "llama-3.1-8b-instant";
+
+interface LLMInstance {
+  generate: (prompt: string | PromptInput, schema: z.ZodType<any>) => Promise<any>;
+}
+
+function createOpenAICompatibleLLM(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  providerName: string
+): LLMInstance {
+  return {
+    generate: async (
+      prompt: string | PromptInput,
+      schema: z.ZodType<any>
+    ) => {
+      const userPrompt = typeof prompt === "string" ? prompt : prompt.user;
+      const systemPrompt = typeof prompt === "string" ? undefined : prompt.system;
+
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.7,
+          max_tokens: 4096,
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`${providerName} API error (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json();
+      let content = data.choices?.[0]?.message?.content || "";
+
+      try {
+        const parsed = JSON.parse(content);
+        const validated = schema.parse(parsed);
+        return { object: validated };
+      } catch (e: any) {
+        console.log(chalk.yellow(`[WARN] ${providerName} JSON parse error: ${e.message}`));
+        return { object: { actions: [], response: content.substring(0, 200) } };
+      }
+    },
+  };
+}
+
+function createLLMWithFallback(
+  baseUrl: string,
+  apiKey: string,
+  primaryModel: string,
+  fallbackModels: string[],
+  providerName: string
+): LLMInstance {
+  const allModels = [primaryModel, ...fallbackModels];
+  let currentModelIndex = 0;
+
+  return {
+    generate: async (prompt: string | PromptInput, schema: z.ZodType<any>) => {
+      let lastError: Error | null = null;
+
+      for (const model of allModels.slice(currentModelIndex)) {
+        try {
+          console.log(chalk.blue(`[INFO] Trying ${providerName} model: ${model}`));
+          const llm = createOpenAICompatibleLLM(baseUrl, apiKey, model, providerName);
+          const result = await llm.generate(prompt, schema);
+          
+          if (result?.object) {
+            currentModelIndex = allModels.indexOf(model);
+            return result;
+          }
+        } catch (error: any) {
+          lastError = error;
+          
+          const isRateLimit = error.message?.includes("429") || 
+                           error.message?.includes("rate limit");
+          
+          if (isRateLimit) {
+            console.log(chalk.yellow(`[WARN] Rate limit for ${model}, trying fallback...`));
+            continue;
+          }
+          
+          console.log(chalk.yellow(`[WARN] ${providerName} error: ${error.message}`));
+          
+          if (error.message?.includes("500") || error.message?.includes("502") || error.message?.includes("503")) {
+            continue;
+          }
+          
+          throw error;
+        }
+      }
+
+      throw lastError || new Error(`All ${providerName} models failed`);
+    },
+  };
+}
 
 /**
  * Factory class for creating Language Model instances based on configuration
@@ -121,6 +240,14 @@ export class LLMFactory {
             return { object: validated };
           },
         };
+      case "groq":
+        return createLLMWithFallback(
+          "https://api.groq.com/openai/v1",
+          config.apiKey || "",
+          config.model || DEFAULT_GROQ_MODEL,
+          GROQ_FALLBACK_MODELS,
+          "Groq"
+        );
       case "custom":
         if (!config.customCall) {
           throw new Error("Custom LLM provider requires a customCall function");

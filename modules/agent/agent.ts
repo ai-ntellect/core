@@ -46,6 +46,10 @@ export class Agent {
     }, this.logger, {
       dynamicGoal: config.dynamicGoal,
       dynamicGoalPrompt: config.dynamicGoalPrompt,
+      dynamicNext: config.dynamicNext,
+      dynamicNextPrompt: config.dynamicNextPrompt,
+      enableSchedule: config.enableSchedule,
+      agenda: config.agenda,
     });
     this.executor.setLogger(this.logger);
 
@@ -59,6 +63,8 @@ export class Agent {
    */
   private setupWorkflow(): GraphFlow<typeof AgentContextSchema> {
     let iteration = 0;
+
+    const executor = this.executor as any;
 
     return new GraphFlow({
       name: "assistant",
@@ -75,8 +81,14 @@ export class Agent {
           execute: async (context: GraphContext<typeof AgentContextSchema>) => {
             const agentContext = context as unknown as AgentContext;
             await this.executor.updateDynamicGoal(agentContext);
+            executor.setCurrentState?.("defineGoal");
           },
-          next: () => ["think"],
+          next: (context: GraphContext<typeof AgentContextSchema>): any => {
+            if (executor.dynamicNext) {
+              return "think";
+            }
+            return ["think"];
+          },
         },
         {
           name: "think",
@@ -94,9 +106,12 @@ export class Agent {
             context.response = decision.response;
             this.logger.think("think", `Decision: ${decision.actions.length} actions`, decision.response);
           },
-          next: (context: GraphContext<typeof AgentContextSchema>) => {
+          next: (context: GraphContext<typeof AgentContextSchema>): any => {
+            if (executor.dynamicNext && context.actions.length > 0) {
+              return "execute";
+            }
             if (context.actions.length === 0 || iteration >= this.maxIterations) {
-              return [];
+              return ["reply"];
             }
             return ["execute"];
           },
@@ -152,14 +167,63 @@ export class Agent {
             
             context.actions = [];
           },
-          next: (context: GraphContext<typeof AgentContextSchema>) => {
+          next: (context: GraphContext<typeof AgentContextSchema>): any => {
             if (context.actions.length > 0) {
               return ["execute"];
             }
-            if (iteration < this.maxIterations) {
-              return ["defineGoal"];
+            if (iteration >= this.maxIterations) {
+              return ["reply"];
             }
+            if ((context.executedActions || []).length > 0) {
+              return ["reply"];
+            }
+            return ["think"];
+          },
+        },
+        {
+          name: "plan",
+          execute: async (context: GraphContext<typeof AgentContextSchema>) => {
+            this.logger.info("plan", "Planning next steps...");
+            context.response = context.response || "Je planifie les étapes suivantes...";
+          },
+          next: (context: GraphContext<typeof AgentContextSchema>): any => {
+            return ["think"];
+          },
+        },
+        {
+          name: "schedule",
+          execute: async (context: GraphContext<typeof AgentContextSchema>) => {
+            this.logger.info("schedule", "Scheduling a task...");
+            
+            const scheduledTask = (context as any).scheduledTask;
+            if (scheduledTask?.cronExpression && scheduledTask?.request) {
+              await executor.scheduleTask?.(scheduledTask.cronExpression, scheduledTask.request);
+              context.response = "Tâche planifiée avec succès.";
+            } else {
+              context.response = "Pas de tâche à planifier.";
+            }
+          },
+          next: (context: GraphContext<typeof AgentContextSchema>): any => {
+            return ["think"];
+          },
+        },
+        {
+          name: "reply",
+          execute: async (context: GraphContext<typeof AgentContextSchema>) => {
+            this.logger.info("reply", `Response: ${context.response?.substring(0, 50)}...`);
+          },
+          next: (): any => {
             return [];
+          },
+        },
+        {
+          name: "ask",
+          execute: async (context: GraphContext<typeof AgentContextSchema>) => {
+            this.logger.info("ask", "Asking clarification question...");
+            context.response = context.response || "Avez-vous besoin de précisions ?";
+          },
+          next: (context: GraphContext<typeof AgentContextSchema>): any => {
+            return ["think"];
           },
         },
       ],
