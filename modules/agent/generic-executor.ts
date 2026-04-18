@@ -22,6 +22,29 @@ const DEFAULT_DYNAMIC_GOAL_PROMPT = `Contexte actuel:
 Réponds uniquement avec le format JSON: {"goal": "votre sous-goal en 1-2 phrases"}
 Le sous-goal doit être la prochaine étape à accomplir.`;
 
+const DEFAULT_DYNAMIC_NEXT_PROMPT = `Contexte actuel:
+- État actuel: {currentState}
+- Input utilisateur: {input}
+- Goal: {goal}
+- Actions exécutées: {executedActions}
+- Résultats disponibles: {results}
+- Nombre d'itérations: {iteration}
+
+Nodes cognitifs disponibles:
+- defineGoal: Déterminer le goal dynamique
+- think: Analyser le contexte et décider des actions
+- execute: Exécuter les outils/actions
+- plan: Planifier les étapes suivantes
+- schedule: Planifier une tâche pour plus tard (utilise le module Agenda)
+- reply: Répondre à l'utilisateur
+- ask: Poser une question clarificatrice
+- end: Terminer le workflow
+
+Choisis le prochain node le plus approprié.
+Réponds uniquement: {"next": "nom_du_node", "reason": "explication courte"}`;
+
+const COGNITIVE_NODES = ["defineGoal", "think", "execute", "plan", "schedule", "reply", "ask", "end"];
+
 export class GenericExecutor extends AgentExecutor {
   private verbose: boolean;
   private llm: ReturnType<typeof LLMFactory.createLLM>;
@@ -29,13 +52,25 @@ export class GenericExecutor extends AgentExecutor {
   private dynamicGoal: boolean;
   private dynamicGoalPrompt: string;
   private currentDynamicGoal: string;
+  private dynamicNext: boolean;
+  private dynamicNextPrompt: string;
+  private currentState: string;
+  private enableSchedule: boolean;
+  private agenda: any;
 
   constructor(
     agent: BaseAgent,
     graphs: GraphFlow<any>[],
     config: ExecutorConfig,
     logger?: AgentLogger,
-    options?: { dynamicGoal?: boolean; dynamicGoalPrompt?: string }
+    options?: { 
+      dynamicGoal?: boolean; 
+      dynamicGoalPrompt?: string;
+      dynamicNext?: boolean;
+      dynamicNextPrompt?: string;
+      enableSchedule?: boolean;
+      agenda?: any;
+    }
   ) {
     super(agent, graphs);
     this.verbose = config.verbose ?? true;
@@ -44,6 +79,11 @@ export class GenericExecutor extends AgentExecutor {
     this.dynamicGoal = options?.dynamicGoal ?? false;
     this.dynamicGoalPrompt = options?.dynamicGoalPrompt ?? DEFAULT_DYNAMIC_GOAL_PROMPT;
     this.currentDynamicGoal = agent.getGoal();
+    this.dynamicNext = options?.dynamicNext ?? false;
+    this.dynamicNextPrompt = options?.dynamicNextPrompt ?? DEFAULT_DYNAMIC_NEXT_PROMPT;
+    this.currentState = "defineGoal";
+    this.enableSchedule = options?.enableSchedule ?? false;
+    this.agenda = options?.agenda;
   }
 
   setDynamicGoal(enabled: boolean, customPrompt?: string) {
@@ -57,8 +97,120 @@ export class GenericExecutor extends AgentExecutor {
     return this.currentDynamicGoal;
   }
 
+  getCurrentState(): string {
+    return this.currentState;
+  }
+
+  setCurrentState(state: string) {
+    if (COGNITIVE_NODES.includes(state)) {
+      this.currentState = state;
+    }
+  }
+
+  getAvailableNodes(): string[] {
+    return COGNITIVE_NODES;
+  }
+
   setLogger(logger: AgentLogger) {
     this.logger = logger;
+  }
+
+  /**
+   * Computes the next cognitive state using LLM
+   * @param context - Current agent context
+   * @param currentState - Current cognitive state
+   * @param iteration - Current iteration number
+   * @returns The next state or fallback
+   */
+  async computeNextState(context: AgentContext, currentState: string, iteration: number): Promise<string> {
+    if (!this.dynamicNext) {
+      return this.getDefaultNextState(currentState, context);
+    }
+
+    this.log("thinking", chalk.dim(`Computing next state from "${currentState}"...`));
+
+    const executedTools = context.executedActions.map(a => a.name);
+    const results = context.executedActions
+      .map(a => `${a.name}: ${JSON.stringify(a.result)}`)
+      .join("\n");
+
+    const prompt = this.dynamicNextPrompt
+      .replace("{currentState}", currentState)
+      .replace("{input}", context.input.raw)
+      .replace("{goal}", this.currentDynamicGoal)
+      .replace("{executedActions}", executedTools.join(", ") || "Aucune")
+      .replace("{results}", results || "Aucun résultat")
+      .replace("{iteration}", String(iteration));
+
+    try {
+      const result = await this.llm.generate(
+        {
+          system: "Tu es un assistant qui détermine le prochain état cognitif. Réponds uniquement en JSON.",
+          user: prompt,
+        },
+        z.object({
+          next: z.string(),
+          reason: z.string().optional(),
+        }).transform(v => ({ 
+          next: COGNITIVE_NODES.includes(v.next) ? v.next : "think",
+          reason: v.reason 
+        }))
+      );
+
+      const nextState = result.object.next;
+      this.currentState = nextState;
+      this.log("info", chalk.dim(`Next state: ${nextState}${result.object.reason ? ` (${result.object.reason})` : ''}`));
+      return nextState;
+    } catch (error) {
+      this.log("warning", chalk.yellow(`Failed to compute next state: ${error}, using default`));
+      return this.getDefaultNextState(currentState, context);
+    }
+  }
+
+  /**
+   * Returns default next state based on current state and context
+   */
+  private getDefaultNextState(currentState: string, context: AgentContext): string {
+    switch (currentState) {
+      case "defineGoal":
+        return "think";
+      case "think":
+        return context.actions && context.actions.length > 0 ? "execute" : "reply";
+      case "execute":
+        return context.executedActions && context.executedActions.length > 0 ? "think" : "reply";
+      case "plan":
+        return "think";
+      case "schedule":
+        return "think";
+      case "reply":
+        return "end";
+      case "ask":
+        return "think";
+      default:
+        return "think";
+    }
+  }
+
+  /**
+   * Schedule a task using the Agenda module
+   */
+  async scheduleTask(cronExpression: string, request: string): Promise<string | null> {
+    if (!this.enableSchedule || !this.agenda) {
+      this.log("warning", chalk.yellow("Schedule not enabled or Agenda not configured"));
+      return null;
+    }
+
+    try {
+      const id = await this.agenda.scheduleRequest({
+        originalRequest: request,
+        cronExpression,
+      });
+      this.log("success", chalk.green(`Scheduled task: ${id} (${cronExpression})`));
+      return id;
+    } catch (error) {
+      this.log("error", chalk.red(`Failed to schedule task: ${error}`));
+      return null;
+    }
   }
 
   private log(
@@ -75,16 +227,7 @@ export class GenericExecutor extends AgentExecutor {
       thinking: "info",
     };
 
-    const prefix = {
-      info: chalk.blue("ℹ"),
-      success: chalk.green("✓"),
-      warning: chalk.yellow("⚠"),
-      error: chalk.red("✖"),
-      thinking: chalk.magenta("🤔"),
-    }[type];
-
     this.logger.log(levelMap[type], "executor", message);
-    console.log(`${prefix} ${message}`);
   }
 
   /**
@@ -123,7 +266,7 @@ ${schemaDescription}
   private async buildSystemPrompt(context: AgentContext): Promise<string> {
     const executedTools = context.executedActions.map(a => a.name);
     const alreadyExecuted = executedTools.length > 0 
-      ? `ALREADY DONE: ${executedTools.join(", ")}`
+      ? `ALREADY DONE (DO NOT RE-EXECUTE THESE): ${executedTools.join(", ")}`
       : "No tools executed yet.";
     
     const availableToolNames = Array.from(this.availableGraphs.keys()).join(", ");
@@ -131,7 +274,7 @@ ${schemaDescription}
     
     let variables = "";
     if (executedTools.length > 0) {
-      variables = "Use these exact variable names:\n";
+      variables = "IMPORTANT - Use these exact variable names for READ-ONLY reference:\n";
       for (const action of context.executedActions) {
         const resultVal = typeof action.result === 'object' && action.result !== null
           ? JSON.stringify(action.result)
@@ -153,11 +296,13 @@ ${schemaDescription}
       .addSection("STATUS", alreadyExecuted)
       .addSection(
         "RULES",
-        `JSON format: {"actions":[{"name":"TOOL_NAME","parameters":{...}}],"response":"text"}
+        `JSON format EXACT: {"actions":[{"name":"TOOL_NAME","parameters":{"param1":"value1"}}],"response":"votre réponse"}
 
-1. If you need a previous result, use the EXACT variable name from VARIABLES section
-2. If ALL needed tools have been executed, set actions to [] and respond
-3. NEVER call a tool listed in STATUS as "ALREADY DONE"`
+TRES IMPORTANT - Pas de reasoning, pas de texte supplémentaire. Sortie JSON uniquement:
+- "actions": tableau d'actions à exécuter (chaque tool une seule fois)
+- "response": texte court (1-2 phrases max) décrivant ce qui sera fait
+
+NE PAS inclure de reasoning, commentaires, ou texte hors JSON.`
       )
       .build(context);
   }
@@ -252,15 +397,7 @@ ${schemaDescription}
             ]).optional().catch(() => ({})),
           }).passthrough().catch(() => ({ name: "", parameters: {} }))
         ).default([]),
-        response: z.any().transform(v => {
-          if (typeof v === 'string') return v;
-          if (v && typeof v === 'object') {
-            if (v.message) return String(v.message);
-            if (v.text) return String(v.text);
-            return JSON.stringify(v);
-          }
-          return String(v);
-        }),
+        response: z.string().default("Action complétée"),
       })
     );
     
@@ -275,21 +412,14 @@ ${schemaDescription}
           name: string;
           parameters: Array<{ name: string; value: any }> | Record<string, any>;
         }) => {
-          this.log("info", chalk.cyan(`Action: ${action.name}`));
           const params = action.parameters || {};
           if (Array.isArray(params)) {
             params.forEach((param: { name: string; value: any }) => {
-              this.log(
-                "info",
-                chalk.dim(`  - ${param.name}: ${JSON.stringify(param.value)}`)
-              );
+              this.log("info", chalk.cyan(`  → ${action.name}(${param.name}=${JSON.stringify(param.value)})`));
             });
           } else {
             Object.entries(params).forEach(([key, value]) => {
-              this.log(
-                "info",
-                chalk.dim(`  - ${key}: ${JSON.stringify(value)}`)
-              );
+              this.log("info", chalk.cyan(`  → ${action.name}(${key}=${JSON.stringify(value)})`));
             });
           }
         }
@@ -298,7 +428,7 @@ ${schemaDescription}
       this.log("info", chalk.yellow("No actions needed"));
     }
 
-    this.log("success", chalk.green(`Response: ${result.object.response}`));
+    this.log("info", chalk.dim(`LLM Response: ${result.object.response}`));
 
     return {
       actions: validActions as unknown as ActionSchema[],
@@ -363,10 +493,16 @@ ${schemaDescription}
               const fallback = context.executedActions.find(a => `${a.name}_result` === varPath);
               if (fallback) varValue = fallback.result;
             }
+            if (varValue === undefined) {
+              const lastResult = context.executedActions[context.executedActions.length - 1]?.result;
+              if (lastResult !== undefined) varValue = lastResult;
+            }
           }
           
           if (varValue !== undefined) {
-            const extracted = varValue?.result !== undefined && !varPath.includes('.result') ? varValue.result : varValue;
+            const extracted = typeof varValue === 'object' && varValue?.result !== undefined && !varPath.includes('.result') 
+              ? varValue.result 
+              : varValue;
             this.log("info", chalk.dim(`  Resolved \$${varPath} = ${JSON.stringify(extracted)}`));
             resolvedInput[key] = extracted;
             continue;
@@ -394,7 +530,18 @@ ${schemaDescription}
               continue;
             }
             if (innerType === 'ZodString') {
-              coercedInput[key] = String(value);
+              if (typeof value === 'object' && value !== null) {
+                coercedInput[key] = JSON.stringify(value);
+              } else {
+                coercedInput[key] = String(value);
+              }
+              continue;
+            }
+            if (innerType === 'ZodEnum') {
+              const options = inner._def.values || [];
+              const lowerOptions = options.map((o: string) => o.toLowerCase());
+              const matchIdx = lowerOptions.indexOf(String(value).toLowerCase());
+              coercedInput[key] = matchIdx >= 0 ? options[matchIdx] : value;
               continue;
             }
           }
@@ -403,7 +550,26 @@ ${schemaDescription}
             continue;
           }
           if (typeName === 'ZodString') {
-            coercedInput[key] = String(value);
+            if (typeof value === 'object' && value !== null) {
+              coercedInput[key] = JSON.stringify(value);
+            } else {
+              coercedInput[key] = String(value);
+            }
+            continue;
+          }
+          if (typeName === 'ZodBoolean') {
+            if (typeof value === 'string') {
+              coercedInput[key] = value.toLowerCase() === 'true' || value === '1' || value === 'yes';
+            } else {
+              coercedInput[key] = Boolean(value) && value !== null && value !== undefined;
+            }
+            continue;
+          }
+          if (typeName === 'ZodEnum') {
+            const options = (fieldSchema as any)._def.values || [];
+            const lowerOptions = options.map((o: string) => o.toLowerCase());
+            const matchIdx = lowerOptions.indexOf(String(value).toLowerCase());
+            coercedInput[key] = matchIdx >= 0 ? options[matchIdx] : value;
             continue;
           }
         }
