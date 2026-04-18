@@ -46,26 +46,27 @@ describe("Agent", () => {
       ],
     });
 
-    let decisionRound = 0;
+    let callCount = 0;
     const agent = new Agent({
       role: "Writer",
       goal: "Use tool",
       backstory: "Test",
       tools: [tool],
       verbose: false,
+      maxIterations: 3,
       llmConfig: {
         provider: "custom",
         model: "mock",
         apiKey: "unused",
         customCall: async () => {
-          decisionRound += 1;
-          if (decisionRound === 1) {
+          callCount++;
+          if (callCount === 1) {
             return {
               object: {
                 actions: [
                   {
                     name: "setMessage",
-                    parameters: [{ name: "message", value: "ignored" }],
+                    parameters: { message: "ignored" },
                   },
                 ],
                 response: "Used tool.",
@@ -73,14 +74,19 @@ describe("Agent", () => {
             };
           }
           return {
-            object: { actions: [], response: "Finished after tool." },
+            object: {
+              actions: [],
+              response: "Done.",
+            },
           };
         },
       },
     });
 
     const ctx = await agent.process("run tool");
-    expect(ctx.response).to.equal("Finished after tool.");
-    expect(ctx.knowledge).to.be.a("string").that.includes("setMessage");
+    expect(ctx.response).to.equal("Done.");
+    expect(ctx.knowledge).to.be.a("string");
+    expect(ctx.executedActions).to.have.length(1);
+    expect(ctx.executedActions[0].name).to.equal("setMessage");
   });
 });
