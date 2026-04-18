@@ -229,9 +229,19 @@ const llmConfig = {
   model: "gemma4:e4b",
   baseUrl: "http://localhost:11434",
 };
+
+// Groq (fast inference)
+const llmConfig = {
+  provider: "groq",
+  model: "llama-3.1-8b-instant",
+  apiKey: process.env.GROQ_API_KEY,
+};
 ```
 
-`openai` and `ollama` are supported. The model string depends on your provider—Ollama model names are whatever you have installed locally, OpenAI model names are standard (`gpt-4o-mini`, `gpt-4o`, etc.).
+`openai`, `ollama`, and `groq` are supported. The model string depends on your provider—Ollama model names are whatever you have installed locally, OpenAI model names are standard (`gpt-4o-mini`, `gpt-4o`, etc.), Groq models include `llama-3.1-8b-instant`, `mixtral-8x7b-32768`, `allam-2-7b`.
+
+**Groq fallback**: When rate-limited, Groq automatically tries fallback models in order:
+1. `llama-3.1-8b-instant` → 2. `llama-3.1-70b-versatile` → 3. `mixtral-8x7b-32768` → 4. `allam-2-7b` → 5. `llama-3-70b-reasoner` → 6. `llama-3-8b-8192`
 
 ### Creating an Agent
 
@@ -296,6 +306,38 @@ Enable verbose mode to see the internal thinking in the console—useful for deb
 The Agent handles the full round-trip: receiving the prompt, detecting intent, calling the tool with parameters, returning the result. You only define the tools, the LLM figures out how to use them.
 
 The `.describe()` calls in your Zod schema become the tool descriptions that the LLM sees. Make them clear—`"First number"` is better than `"a"`.
+
+### Dynamic Goal
+
+Enable `dynamicGoal: true` to have the LLM compute a sub-goal at each iteration. The meta-agent analyzes the original goal, what's been done, and what's left to decide the next step:
+
+```typescript
+const agent = new Agent({
+  role: "Assistant",
+  goal: "Write code, analyze, create report",
+  dynamicGoal: true, // Enable dynamic goal computation
+  // ...
+});
+```
+
+### Dynamic Next (coming soon)
+
+Enable `dynamicNext: true` to have the LLM determine which cognitive node to use next (think, execute, plan, schedule, reply, ask, end). This creates a fully autonomous agent that decides its own workflow.
+
+### Scheduler with Cron Wake-up
+
+The agent can schedule tasks that wake it up later. When the cron expression matches, the agent processes the scheduled request:
+
+```typescript
+const agent = new Agent({
+  role: "Assistant",
+  enableSchedule: true,
+  agenda: /* Agenda instance */,
+  // ...
+});
+```
+
+The scheduler tool accepts a cron expression and input prompt. When triggered, the agent processes the saved request as if the user had sent it.
 
 ### Running examples
 
