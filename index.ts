@@ -30,3 +30,5 @@ export * from "./types";
 
 export * from "./utils/generate-action-schema";
 export * from "./utils/header-builder";
+
+export { startCLI, runCLI, type CLIConfig } from "./modules/cli";

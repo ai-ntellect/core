@@ -45,6 +45,7 @@ export const AgentContextSchema = z.object({
     raw: z.string(),
     embedding: z.array(z.number()).optional(),
   }),
+  cwd: z.string().optional(),
   actions: z.array(
     z.object({
       name: z.string(),
@@ -115,6 +116,7 @@ export type AgentConfig = {
   tools: GraphFlow<any>[];
   memory?: any;
   verbose?: boolean;
+  maxIterations?: number;
   llmConfig: ExecutorConfig["llmConfig"];
 };
 
