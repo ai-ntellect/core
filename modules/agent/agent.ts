@@ -1,5 +1,6 @@
-import { GraphContext } from "@/types";
-import { GraphFlow } from "../../graph/index";
+import { Checkpoint, CheckpointConfig, GraphContext } from "@/types";
+import { CheckpointAwaitApprovalError, CheckpointInterruptError, GraphFlow } from "../../graph/index";
+import { ICheckpointAdapter } from "../../interfaces";
 import {
   AgentConfig,
   AgentContext,
@@ -244,5 +245,54 @@ export class Agent {
     });
 
     return this.workflow.getContext() as unknown as AgentContext;
+  }
+
+  public getWorkflow(): GraphFlow<typeof AgentContextSchema> {
+    return this.workflow;
+  }
+
+  public async processWithCheckpoint(
+    input: string,
+    adapter: ICheckpointAdapter,
+    config: CheckpointConfig = {}
+  ): Promise<{ context: AgentContext; checkpointId: string }> {
+    const result = await this.workflow.executeWithCheckpoint(
+      "defineGoal",
+      adapter,
+      {
+        ...config,
+        breakpoints: config.breakpoints || ["think"],
+      }
+    );
+    return {
+      context: result.context as unknown as AgentContext,
+      checkpointId: result.checkpointId,
+    };
+  }
+
+  public async resumeFromCheckpoint(
+    checkpointId: string,
+    adapter: ICheckpointAdapter,
+    contextModifications?: Record<string, any>
+  ): Promise<AgentContext> {
+    const result = await this.workflow.resumeFromCheckpoint(
+      checkpointId,
+      adapter,
+      contextModifications
+    );
+    return result as unknown as AgentContext;
+  }
+
+  public async listCheckpoints(
+    adapter: ICheckpointAdapter
+  ): Promise<Checkpoint<typeof AgentContextSchema>[]> {
+    return this.workflow.listCheckpoints(adapter);
+  }
+
+  public async getCheckpointHistory(
+    runId: string,
+    adapter: ICheckpointAdapter
+  ): Promise<Checkpoint<typeof AgentContextSchema>[]> {
+    return this.workflow.getCheckpointHistory(runId, adapter);
   }
 }

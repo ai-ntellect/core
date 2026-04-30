@@ -199,7 +199,6 @@ export class NLPEngine {
     const result = await this.manager.process("en", input);
     console.log("NLP Engine Result:", result);
 
-    // Si une action est définie, exécuter le handler
     if (result.intent) {
       const handler = this.intentHandlers[result.intent.split(".")[1]];
       if (handler) {
