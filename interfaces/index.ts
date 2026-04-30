@@ -2,6 +2,7 @@ import { Observable } from "rxjs";
 import { ZodSchema } from "zod";
 import {
   BaseMemoryType,
+  Checkpoint,
   CreateMemoryInput,
   GraphContext,
   GraphEvent,
@@ -557,4 +558,17 @@ export interface NLPNodeConfig<T extends ZodSchema>
     language?: string;
   };
   intentHandlers?: Record<string, (data: any) => Promise<any>>;
+}
+
+/* ======================== CHECKPOINT ======================== */
+
+/**
+ * Interface for checkpoint persistence adapters
+ */
+export interface ICheckpointAdapter {
+  save(checkpoint: Checkpoint): Promise<void>;
+  load(id: string): Promise<Checkpoint | null>;
+  list(graphName: string): Promise<Checkpoint[]>;
+  delete(id: string): Promise<void>;
+  clear(graphName?: string): Promise<void>;
 }

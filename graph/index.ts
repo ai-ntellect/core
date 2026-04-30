@@ -1,9 +1,11 @@
 import { EventEmitter } from "events";
 import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
-import { GraphObservable, IEventEmitter } from "../interfaces";
+import { GraphObservable, ICheckpointAdapter, IEventEmitter } from "../interfaces";
 import { NLPNode } from "../modules/nlp";
 import {
+  Checkpoint,
+  CheckpointConfig,
   GraphConfig,
   GraphContext,
   GraphEvent,
@@ -11,7 +13,7 @@ import {
 } from "../types";
 import { GraphEventManager } from "./event-manager";
 import { GraphLogger } from "./logger";
-import { GraphNode } from "./node";
+import { GraphNode, NodeExecutionHooks } from "./node";
 import { GraphObserver } from "./observer";
 import { GraphVisualizer } from "./visualizer";
 
@@ -49,6 +51,11 @@ export class GraphFlow<T extends ZodSchema> {
   private nodeExecutor: GraphNode<T>;
 
   private nlpNodes: Map<string, NLPNode<T>> = new Map();
+
+  private _interrupted = false;
+  private _interruptCheckpoint: Checkpoint | null = null;
+  private _checkpointCounter = 0;
+  private _breakpoints: Set<string> = new Set();
 
   /**
    * Creates a new instance of GraphFlow
@@ -226,7 +233,6 @@ export class GraphFlow<T extends ZodSchema> {
     context?: Partial<GraphContext<T>>
   ): Promise<GraphContext<T>> {
     try {
-      // Validate and merge context if provided
       if (context) {
         const mergedContext = { ...this.context, ...context };
         const validationResult = this.validator?.safeParse(mergedContext);
@@ -257,6 +263,323 @@ export class GraphFlow<T extends ZodSchema> {
       this.globalErrorHandler?.(error as Error, this.context);
       throw error;
     }
+  }
+
+  /**
+   * Executes the graph flow with automatic checkpointing at each node
+   * @param startNode - Name of the node to start execution from
+   * @param adapter - Checkpoint persistence adapter
+   * @param config - Checkpoint configuration options
+   * @returns Execution result with final context and checkpoint ID
+   */
+  public async executeWithCheckpoint(
+    startNode: string,
+    adapter: ICheckpointAdapter,
+    config: CheckpointConfig = {}
+  ): Promise<{ context: GraphContext<T>; checkpointId: string }> {
+    const {
+      saveEveryNode = true,
+      saveOnComplete = true,
+      checkpointId = crypto.randomUUID(),
+      breakpoints = [],
+      runId,
+    } = config;
+
+    this._interrupted = false;
+    this._interruptCheckpoint = null;
+    this._checkpointCounter = 0;
+    this._breakpoints = new Set(breakpoints);
+
+    if (this.context) {
+      const validationResult = this.validator?.safeParse(this.context);
+      if (!validationResult?.success) {
+        const errors = validationResult?.error?.errors.map(
+          (err) => `${err.path.join(".")}: ${err.message}`
+        );
+        throw new Error(`Context validation failed: ${errors?.join(", ")}`);
+      }
+    }
+
+    this.eventEmitter.emit("graphStarted", { name: this.name });
+
+    const runIdResolved = runId || crypto.randomUUID();
+
+    let hooks: NodeExecutionHooks<T> | undefined;
+    if (saveEveryNode) {
+      hooks = {
+        onBeforeExecute: async (nodeName, ctx) => {
+          const isBreakpoint = this._breakpoints.has(nodeName);
+          if (isBreakpoint) {
+            const cpId = `${checkpointId}-${++this._checkpointCounter}`;
+            const cp: Checkpoint<T> = {
+              id: cpId,
+              graphName: this.name,
+              runId: runIdResolved,
+              nodeName,
+              nextNodes: [nodeName],
+              context: structuredClone(ctx),
+              metadata: {
+                createdAt: Date.now(),
+                awaitingApproval: true,
+              },
+            };
+            this._interruptCheckpoint = cp;
+            await adapter.save(cp);
+            throw new CheckpointAwaitApprovalError(
+              `Awaiting approval at breakpoint "${nodeName}"`,
+              cpId
+            );
+          }
+        },
+        onBeforeExecuteNext: async (nodeName, ctx, nextNodes) => {
+          if (this._interrupted) {
+            const cpId = `${checkpointId}-${++this._checkpointCounter}`;
+            const cp: Checkpoint<T> = {
+              id: cpId,
+              graphName: this.name,
+              runId: runIdResolved,
+              nodeName,
+              nextNodes,
+              context: this.getContext(),
+              metadata: {
+                createdAt: Date.now(),
+                interrupted: true,
+              },
+            };
+            this._interruptCheckpoint = cp;
+            await adapter.save(cp);
+            throw new CheckpointInterruptError(
+              `Execution interrupted at node "${nodeName}"`,
+              cpId
+            );
+          }
+
+          const cpId = `${checkpointId}-${++this._checkpointCounter}`;
+          const cp: Checkpoint<T> = {
+            id: cpId,
+            graphName: this.name,
+            runId: runIdResolved,
+            nodeName,
+            nextNodes,
+            context: this.getContext(),
+            metadata: { createdAt: Date.now() },
+          };
+          await adapter.save(cp);
+        },
+      };
+    }
+
+    try {
+      const node = this.nodes.get(startNode);
+      if (!node) throw new Error(`Node "${startNode}" not found`);
+
+      await this.nodeExecutor.executeNode(
+        startNode,
+        this.context,
+        false,
+        hooks
+      );
+
+      if (saveOnComplete) {
+        const cpId = `${checkpointId}-${++this._checkpointCounter}`;
+        const cp: Checkpoint<T> = {
+          id: cpId,
+          graphName: this.name,
+          runId: runIdResolved,
+          nodeName: "__completed__",
+          nextNodes: [],
+          context: this.getContext(),
+          metadata: { createdAt: Date.now() },
+        };
+        await adapter.save(cp);
+      }
+
+      this.eventEmitter.emit("graphCompleted", {
+        name: this.name,
+        context: this.context,
+      });
+
+      return { context: this.getContext(), checkpointId };
+    } catch (error) {
+      if (
+        error instanceof CheckpointInterruptError ||
+        error instanceof CheckpointAwaitApprovalError
+      ) {
+        this.eventEmitter.emit("graphError", { name: this.name, error });
+        throw error;
+      }
+      if (saveOnComplete) {
+        const cpId = `${checkpointId}-${++this._checkpointCounter}`;
+        const cp: Checkpoint<T> = {
+          id: cpId,
+          graphName: this.name,
+          runId: runIdResolved,
+          nodeName: "__error__",
+          nextNodes: [],
+          context: this.getContext(),
+          metadata: {
+            createdAt: Date.now(),
+            error: (error as Error).message,
+          },
+        };
+        await adapter.save(cp);
+      }
+      this.eventEmitter.emit("graphError", { name: this.name, error });
+      this.globalErrorHandler?.(error as Error, this.context);
+      throw error;
+    }
+  }
+
+  /**
+   * Resumes execution from a saved checkpoint
+   * @param checkpointId - ID of the checkpoint to resume from
+   * @param adapter - Checkpoint persistence adapter
+   * @returns Final context after execution
+   */
+  public async resumeFromCheckpoint(
+    checkpointId: string,
+    adapter: ICheckpointAdapter,
+    contextModifications?: Partial<Record<string, any>>
+  ): Promise<GraphContext<T>> {
+    const checkpoint = await adapter.load(checkpointId);
+    if (!checkpoint) {
+      throw new Error(`Checkpoint "${checkpointId}" not found`);
+    }
+
+    if (checkpoint.nodeName === "__completed__") {
+      return checkpoint.context as GraphContext<T>;
+    }
+
+    let resumeContext = checkpoint.context;
+    if (contextModifications) {
+      resumeContext = { ...checkpoint.context, ...contextModifications };
+    }
+
+    const validationResult = this.validator?.safeParse(resumeContext);
+    if (!validationResult?.success) {
+      const errors = validationResult?.error?.errors.map(
+        (err) => `${err.path.join(".")}: ${err.message}`
+      );
+      throw new Error(`Context validation failed: ${errors?.join(", ")}`);
+    }
+    this.context = validationResult.data as GraphContext<T>;
+
+    this.eventEmitter.emit("graphStarted", { name: this.name });
+
+    this._interrupted = false;
+    this._interruptCheckpoint = null;
+    this._checkpointCounter = 0;
+
+    const hooks: NodeExecutionHooks<T> = {
+      onBeforeExecuteNext: async (nodeName, ctx, nextNodes) => {
+        const cpId = `${checkpointId}-${++this._checkpointCounter}`;
+        if (this._interrupted) {
+          const cp: Checkpoint<T> = {
+            id: cpId,
+            graphName: this.name,
+            nodeName,
+            nextNodes,
+            context: this.getContext(),
+            metadata: { createdAt: Date.now(), interrupted: true },
+          };
+          this._interruptCheckpoint = cp;
+          await adapter.save(cp);
+          throw new CheckpointInterruptError(
+            `Execution interrupted at node "${nodeName}"`,
+            cpId
+          );
+        }
+
+        const cp: Checkpoint<T> = {
+          id: cpId,
+          graphName: this.name,
+          nodeName,
+          nextNodes,
+          context: this.getContext(),
+          metadata: { createdAt: Date.now() },
+        };
+        await adapter.save(cp);
+      },
+    };
+
+    try {
+      for (const nextNode of checkpoint.nextNodes) {
+        await this.nodeExecutor.executeNode(
+          nextNode,
+          this.context,
+          false,
+          hooks
+        );
+      }
+
+      const cpId = `${checkpointId}-${++this._checkpointCounter}`;
+      const cp: Checkpoint<T> = {
+        id: cpId,
+        graphName: this.name,
+        nodeName: "__completed__",
+        nextNodes: [],
+        context: this.getContext(),
+        metadata: { createdAt: Date.now() },
+      };
+      await adapter.save(cp);
+
+      this.eventEmitter.emit("graphCompleted", {
+        name: this.name,
+        context: this.context,
+      });
+
+      return this.getContext();
+    } catch (error) {
+      if (error instanceof CheckpointInterruptError) {
+        this.eventEmitter.emit("graphError", { name: this.name, error });
+        throw error;
+      }
+      const cpId = `${checkpointId}-${++this._checkpointCounter}`;
+      const cp: Checkpoint<T> = {
+        id: cpId,
+        graphName: this.name,
+        nodeName: "__error__",
+        nextNodes: [],
+        context: this.getContext(),
+        metadata: { createdAt: Date.now(), error: (error as Error).message },
+      };
+      await adapter.save(cp);
+      this.eventEmitter.emit("graphError", { name: this.name, error });
+      this.globalErrorHandler?.(error as Error, this.context);
+      throw error;
+    }
+  }
+
+  /**
+   * Interrupts the current execution and saves a checkpoint
+   */
+  public interrupt(): void {
+    this._interrupted = true;
+  }
+
+  /**
+   * Lists all checkpoints for this graph
+   * @param adapter - Checkpoint persistence adapter
+   * @returns Array of checkpoints sorted by creation date (newest first)
+   */
+  public async listCheckpoints(
+    adapter: ICheckpointAdapter
+  ): Promise<Checkpoint<T>[]> {
+    return adapter.list(this.name);
+  }
+
+  /**
+   * Gets checkpoint history for a specific run
+   * @param runId - Run identifier
+   * @param adapter - Checkpoint persistence adapter
+   * @returns Checkpoints for the specified run, sorted newest first
+   */
+  public async getCheckpointHistory(
+    runId: string,
+    adapter: ICheckpointAdapter
+  ): Promise<Checkpoint<T>[]> {
+    const all = await adapter.list(this.name);
+    return all.filter((cp) => cp.runId === runId);
   }
 
   /**
@@ -428,5 +751,25 @@ export class GraphFlow<T extends ZodSchema> {
     }
 
     return this.execute(nodeName, { input: text });
+  }
+}
+
+export class CheckpointInterruptError extends Error {
+  constructor(
+    message: string,
+    public readonly checkpointId: string
+  ) {
+    super(message);
+    this.name = "CheckpointInterruptError";
+  }
+}
+
+export class CheckpointAwaitApprovalError extends Error {
+  constructor(
+    message: string,
+    public readonly checkpointId: string
+  ) {
+    super(message);
+    this.name = "CheckpointAwaitApprovalError";
   }
 }

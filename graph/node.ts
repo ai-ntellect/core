@@ -1,7 +1,7 @@
-import { IEventEmitter } from "interfaces";
+import { IEventEmitter, ICheckpointAdapter } from "interfaces";
 import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
-import { GraphContext, GraphEvent, GraphNodeConfig } from "../types";
+import { Checkpoint, GraphContext, GraphEvent, GraphNodeConfig } from "../types";
 import { GraphEventManager } from "./event-manager";
 
 /**
@@ -14,6 +14,15 @@ export interface NodeParams<T = any> {
 
 export interface GraphLogger {
   addLog: (message: string, data?: any) => void;
+}
+
+export interface NodeExecutionHooks<T extends ZodSchema> {
+  onBeforeExecute?: (nodeName: string, context: GraphContext<T>) => Promise<void>;
+  onBeforeExecuteNext?: (
+    nodeName: string,
+    context: GraphContext<T>,
+    nextNodes: string[]
+  ) => Promise<void>;
 }
 
 export class GraphNode<T extends ZodSchema> {
@@ -81,15 +90,21 @@ export class GraphNode<T extends ZodSchema> {
    * @param context - The current graph context
    * @param params - Input data for the node
    * @param triggeredByEvent - Whether the execution was triggered by an event
+   * @param hooks - Optional execution hooks
    * @throws Error if the node is not found or execution fails
    */
   public async executeNode(
     nodeName: string,
     context: GraphContext<T>,
-    triggeredByEvent: boolean = false
+    triggeredByEvent: boolean = false,
+    hooks?: NodeExecutionHooks<T>
   ): Promise<void> {
     const node = this.nodes.get(nodeName);
     if (!node) throw new Error(`Node "${nodeName}" not found.`);
+
+    if (hooks?.onBeforeExecute) {
+      await hooks.onBeforeExecute(nodeName, context);
+    }
 
     const nodeContext = { ...context };
     this.emitEvent("nodeStarted", { name: nodeName, context: nodeContext });
@@ -105,7 +120,6 @@ export class GraphNode<T extends ZodSchema> {
           if (oldValue === value) return true;
 
           target[prop.toString()] = value;
-          // Mettre à jour le contexte global
           context[prop.toString() as keyof typeof context] = value;
 
           this.emitEvent("nodeStateChanged", {
@@ -130,7 +144,6 @@ export class GraphNode<T extends ZodSchema> {
         const nextNodes =
           typeof node.next === "function" ? node.next(contextProxy) : node.next;
 
-        // Vérifier d'abord les conditions de tous les nœuds suivants
         const nextNodeConfigs = Array.isArray(nextNodes)
           ? nextNodes
           : [nextNodes];
@@ -148,9 +161,14 @@ export class GraphNode<T extends ZodSchema> {
           })
           .filter((n) => n.isValid);
 
-        // Sinon, exécuter les autres nœuds valides
+        const nextNodeNames = validNextNodes.map((n) => n.name);
+
+        if (hooks?.onBeforeExecuteNext) {
+          await hooks.onBeforeExecuteNext(nodeName, context, nextNodeNames);
+        }
+
         for (const nextNode of validNextNodes) {
-          await this.executeNode(nextNode.name, context, false);
+          await this.executeNode(nextNode.name, context, false, hooks);
         }
       }
     } catch (error) {

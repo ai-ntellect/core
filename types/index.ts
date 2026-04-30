@@ -321,7 +321,53 @@ export type ObserverOptions = {
   debounce?: number;
   delay?: number;
   stream?: boolean;
-  properties?: (string | number)[]; // Accepte uniquement string ou number comme clés
+  properties?: (string | number)[];
   onStreamLetter?: (data: { letter: string; property: string }) => void;
   onStreamComplete?: () => void;
 };
+
+/* ======================== CHECKPOINT ======================== */
+
+/**
+ * Checkpoint metadata for tracking execution state
+ */
+export type CheckpointMetadata = {
+  createdAt: number;
+  interrupted?: boolean;
+  awaitingApproval?: boolean;
+  rejected?: boolean;
+  error?: string;
+};
+
+/**
+ * Configuration for checkpoint behavior during execution
+ */
+export type CheckpointConfig = {
+  saveEveryNode?: boolean;
+  saveOnComplete?: boolean;
+  checkpointId?: string;
+  breakpoints?: string[];
+  runId?: string;
+};
+
+/**
+ * Result of a human-in-the-loop approval
+ */
+export type ApprovalResult = {
+  action: "approved" | "rejected";
+  contextModifications?: Record<string, any>;
+};
+
+/**
+ * Represents a saved execution state of a graph
+ */
+export type Checkpoint<T extends ZodSchema = any> = {
+  id: string;
+  graphName: string;
+  runId?: string;
+  nodeName: string;
+  nextNodes: string[];
+  context: Record<string, any>;
+  metadata: CheckpointMetadata;
+};
+
