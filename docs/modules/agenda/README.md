@@ -1,51 +1,63 @@
 # Module Agenda
 
-Planification de tâches cron.
+Planification de tâches récurrentes avec expressions cron. L'agenda s'exécute en processus — quand le cron correspond, votre fonction de tâche s'exécute.
 
 ## Installation
 
-```sh
-pnpm add @ai.ntellect/core
-```
-
-## Utilisation
+Le module est inclus dans le package principal:
 
 ```typescript
 import { Agenda } from "@ai.ntellect/core";
-import { NodeCronAdapter } from "@ai.ntellect/core/modules/agenda/adapters/node-cron";
+```
+
+## Utilisation de base
+
+```typescript
+import { Agenda, NodeCronAdapter } from "@ai.ntellect/core";
 
 const agenda = new Agenda(new NodeCronAdapter());
 
-agenda.schedule("* * * * *", async () => {
-  console.log("Exécuté chaque minute");
+// Toutes les heures
+agenda.schedule("0 * * * *", async () => {
+  console.log("Tâche horaire en cours");
 });
 
-agenda.schedule("0 8 * * *", async () => {
-  console.log("Exécuté à 8h chaque jour");
+// Tâche nommée pour annulation
+agenda.schedule("daily_cleanup", "0 0 * * *", async () => {
+  console.log("Nettoyage quotidien");
 });
 ```
 
-## Expressions cron
+## Syntaxe cron
+
+Utilise `node-cron` en arrière-plan. La syntaxe suit les conventions cron standard:
 
 ```
-┌────────── minute (0-59)
-│ ┌──────── heure (0-23)
-│ │ ┌────── jour (1-31)
-│ │ │ ┌──── mois (1-12)
-│ │ │ │ ┌── jour semaine (0-6)
-* * * * *
+* * * * * *
+│ │ │ │ │ │
+│ │ │ │ │ └── Jour de la semaine (0-7, 0 et 7 = dimanche)
+│ │ │ │ └──── Mois (1-12)
+│ │ │ └────── Jour du mois (1-31)
+│ │ └──────── Heure (0-23)
+│ └────────── Minute (0-59)
+└──────────── Seconde (0-59, optionnel)
 ```
-
-| Expression | Description |
-|------------|-------------|
-| `* * * * *` | Chaque minute |
-| `*/5 * * * *` | Toutes les 5 minutes |
-| `0 8 * * *` | 8h chaque jour |
-| `0 0 * * 0` | Minuit dimanche |
 
 ## API
 
+- `schedule(cronExpression: string, task: Function): void`
+- `schedule(name: string, cronExpression: string, task: Function): void`
+- `cancel(name: string): void`
+
+## Intégration avec l'Agent
+
+L'agent peut utiliser l'agenda pour planifier des réveils:
+
 ```typescript
-agenda.schedule(cronExpression: string, handler: () => void | Promise<void>): void
-agenda.cancel(): void
+const agent = new Agent({
+  role: "Assistant",
+  enableSchedule: true,
+  agenda: agenda,
+  // ...
+});
 ```

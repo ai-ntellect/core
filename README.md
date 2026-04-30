@@ -12,6 +12,21 @@ This is not a distributed orchestration system. It doesn't replay workflows acro
 
 This is not an agent framework like LangGraph or Mastra. It provides the primitives (graphs, events, observable state) but doesn't dictate how you build AI agents. You can layer an agent on top if you want, but the core is generic.
 
+## Key Features
+
+- **Typed state with Zod** — Context validated at every step
+- **Event-driven nodes** — Pause workflows waiting for external triggers (webhooks, user actions)
+- **Checkpoint system** — Save/resume workflow state, time travel, human-in-the-loop breakpoints
+- **Observable state** — RxJS Observables on context changes
+- **Conditional branching** — Dynamic `next` via functions, arrays, or conditional objects
+- **Retry with backoff** — Built-in resilience for flaky operations
+- **Multi-graph orchestration** — Run graphs in parallel or sequentially via `GraphController`
+- **LLM Agent module** — Tools as GraphFlows, cognitive loop (think → execute → reply)
+- **Memory module** — Pluggable adapters (InMemory, Redis, Meilisearch)
+- **Agenda module** — Cron scheduling with `node-cron`
+- **NLP module** — `@nlpjs/basic` wrapped as graph nodes
+- **Interactive CLI** — REPL with slash commands, checkpoint management, human approval
+
 ## Installation
 
 ```sh
@@ -205,6 +220,150 @@ await workflow.validate(ctx);
 
 Validation runs automatically after every node executes. You can also manually validate at any point.
 
+### Conditional branching
+
+Nodes can determine the next step dynamically using several strategies:
+
+```typescript
+// Array: engine picks the first one by default
+next: ["nodeB", "nodeC"]
+
+// Function: inspect context and decide
+next: (ctx) => ctx.status === "ok" ? "process" : "retry"
+
+// Conditional objects
+next: [
+  { when: (ctx) => ctx.score > 80, then: "pass" },
+  { when: (ctx) => ctx.score > 50, then: "review" },
+  { then: "fail" }, // default fallback
+]
+```
+
+### Retry with backoff
+
+Nodes can retry on failure with configurable backoff:
+
+```typescript
+{
+  name: "fetch_api",
+  execute: async (ctx) => {
+    ctx.data = await fetch("https://api.example.com/data");
+  },
+  retry: {
+    maxAttempts: 3,
+    backoff: "exponential", // or "linear", "fixed"
+    delay: 1000,
+  },
+}
+```
+
+### Multi-graph orchestration
+
+Run multiple graphs in parallel or sequentially using `GraphController`:
+
+```typescript
+import { GraphController } from "@ai.ntellect/core";
+
+const controller = new GraphController();
+
+// Run graphs in parallel
+await controller.executeParallel([
+  { graph: workflow1, startNode: "start" },
+  { graph: workflow2, startNode: "init" },
+]);
+
+// Or sequentially
+await controller.executeSequential([
+  { graph: workflow1, startNode: "start" },
+  { graph: workflow2, startNode: "init" },
+]);
+```
+
+## Checkpoint System
+
+The checkpoint system enables workflow persistence, resumption, and time travel debugging. State is saved after each node execution to a configurable adapter.
+
+### Basic usage
+
+```typescript
+import { InMemoryCheckpointAdapter } from "@ai.ntellect/core";
+
+const adapter = new InMemoryCheckpointAdapter();
+
+// Execute with automatic checkpointing
+const runId = await workflow.executeWithCheckpoint("start", adapter, {
+  breakpoints: ["approve_order"], // optional: pause before these nodes
+});
+
+// List all checkpoints for a run
+const checkpoints = await workflow.listCheckpoints(adapter);
+```
+
+### Resume and time travel
+
+```typescript
+// Resume from the latest checkpoint
+await workflow.resumeFromCheckpoint(runId, adapter);
+
+// Resume from a specific checkpoint with state modifications (time travel)
+await workflow.resumeFromCheckpoint(cpId, adapter, {
+  contextModifications: { status: "retry" },
+});
+```
+
+### Interrupt and breakpoints
+
+```typescript
+// Manual interrupt mid-execution
+workflow.interrupt();
+
+// Configure breakpoints to pause before specific nodes
+await workflow.executeWithCheckpoint("start", adapter, {
+  breakpoints: ["think", "approve_order"],
+});
+// Engine pauses before executing these nodes, allowing human-in-the-loop review
+```
+
+### Checkpoint metadata
+
+Each checkpoint tracks:
+- `runId` — Groups related checkpoints
+- `interrupted` — Whether execution was paused
+- `awaitingApproval` — Waiting for human approval
+- `error` — Error information if failed
+
+### CLI integration
+
+The interactive CLI supports checkpoint management:
+- `/status` — Show current execution state
+- `/list` — List available checkpoints
+- `/resume [cpId]` — Resume from a checkpoint
+- `/approve` — Approve a pending action
+- `/reject` — Reject a pending action
+- `/modify k=v` — Modify context before resuming
+
+## NLP Module
+
+Wrap `@nlpjs/basic` as graph nodes for natural language processing:
+
+```typescript
+import { NLPEngine } from "@ai.ntellect/core";
+
+const nlp = new NLPEngine();
+await nlp.train([
+  { intent: "greeting", utterances: ["hello", "hi"], answer: "Hello!" },
+]);
+
+// Use as a graph node
+{
+  name: "process_input",
+  execute: async (ctx) => {
+    const result = await nlp.process(ctx.userInput);
+    ctx.intent = result.intent;
+  },
+}
+```
+
 ## Agent Module
 
 The Agent module adds LLM capabilities. It wraps your GraphFlows as tools that an LLM can call. The LLM receives your prompts, decides which tool to use, extracts the necessary parameters, and the GraphFlow executes with those parameters.
@@ -241,7 +400,7 @@ const llmConfig = {
 `openai`, `ollama`, and `groq` are supported. The model string depends on your provider—Ollama model names are whatever you have installed locally, OpenAI model names are standard (`gpt-4o-mini`, `gpt-4o`, etc.), Groq models include `llama-3.1-8b-instant`, `mixtral-8x7b-32768`, `allam-2-7b`.
 
 **Groq fallback**: When rate-limited, Groq automatically tries fallback models in order:
-1. `llama-3.1-8b-instant` → 2. `llama-3.1-70b-versatile` → 3. `mixtral-8x7b-32768` → 4. `allam-2-7b` → 5. `llama-3-70b-reasoner` → 6. `llama-3-8b-8192`
+1. `llama-3.1-8b-instant` → 2. `allam-2-7b` → 3. `groq/compound-mini`
 
 ### Creating an Agent
 
@@ -431,23 +590,38 @@ pnpm run test:watch
 
 ### CLI
 
-Run agents interactively from the terminal. The CLI includes built-in tools for file operations, command execution, and environment inspection:
+Run agents interactively from the terminal. The CLI includes built-in tools for file operations, command execution, and environment inspection. It auto-loads `.env` for API keys (`GROQ_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`) — no `dotenv` dependency needed.
 
 ```sh
-pnpm cli --provider ollama --model gemma4:e4b --role "Assistant"
-pnpm cli --provider openai --api-key sk-xxx "Coding Assistant"
+pnpm cli -p groq -m llama-3.1-8b-instant       # Groq (fast, free key in .env)
+pnpm cli -p openai -m gpt-4o-mini              # OpenAI (needs OPENAI_API_KEY)
+pnpm cli -p ollama -m gemma4:4b                # Local Ollama
 ```
 
-Supported providers: `openai`, `ollama`. Default models vary by provider.
+Supported providers: `openai`, `ollama`, `groq`, `openrouter`. Default models vary by provider.
 
 Options:
-- `-p, --provider` — LLM provider (openai, ollama)
+- `-p, --provider` — LLM provider (openai, ollama, groq, openrouter)
 - `-m, --model` — model name
 - `-b, --base-url` — API base URL
 - `--api-key` — API key
 - `-r, --role` — agent role
 - `-g, --goal` — agent goal
 - `-v, --verbose` — verbose output
+
+**Slash commands** (interactive mode):
+- `/status` — Show current execution state
+- `/history` — Show conversation history
+- `/list` — List available checkpoints
+- `/resume [cpId]` — Resume from a checkpoint
+- `/approve` — Approve a pending action
+- `/reject` — Reject a pending action
+- `/modify k=v` — Modify context before resuming
+- `/clear` — Clear conversation
+- `/help` — Show help
+- `/exit` — Quit
+
+**Breakpoints**: The CLI auto-pauses before the `think` node (LLM call) for human-in-the-loop review. Configure custom breakpoints via `breakpoints: ["nodeName"]` in checkpoint config.
 
 ## License
 
