@@ -371,3 +371,16 @@ export type Checkpoint<T extends ZodSchema = any> = {
   metadata: CheckpointMetadata;
 };
 
+/* ======================== PARALLEL & HANDOFF ======================== */
+
+export type {
+  ParallelConfig,
+  Send,
+  SendFunction,
+  Command,
+  ReducerFunction,
+  StateReducer,
+  WorkerConfig,
+  ParallelNodeConfig,
+} from "../graph/types.parallel";
+

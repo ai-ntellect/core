@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project Overview
-- **Package**: `@ai.ntellect/core` v0.9.0 — In-process workflow engine with typed graphs, events, LLM agent support
+- **Package**: `@ai.ntellect/core` v0.10.0 — In-process workflow engine with typed graphs, events, LLM agent support, parallel execution & handoff
 - **Package Manager**: pnpm v10.33.0 (enforced via `packageManager` field in package.json)
 
 ## Commands
@@ -64,11 +64,27 @@ interfaces/     Contract interfaces (ICheckpointAdapter, IMemoryAdapter, etc.)
 - `next` accepts: string, array, conditional objects, or function
 - State uses Proxy-wrapping — every property set emits `nodeStateChanged`
 - Supports retry with backoff, `when` (event-driven waits), `when.strategy` (single/all/correlate)
+- **Parallel Fork-Join**: Set `parallel: { enabled: true }` on a node to fork into parallel branches
+  - Use `joinNode: "nodeName"` to specify where branches rejoin
+  - Uses `Promise.all` for true parallel execution (not sequential)
+  - Contexts are `structuredClone`d for each branch
+- **Send API (dynamic fan-out)**: Add `send: (ctx) => Send[]` to a node for runtime-determined branches
+  - Returns array of `{ to: nodeName, input: any, branchId?: string }`
+  - Helper: `SendAPI.map(items, (item, i) => ({ to: "node", input: { item, index: i } }))`
+- **State Reducers**: Control how parallel branch results merge
+  - Set `reducers: [{ key: "results", reducer: (acc, val) => [...acc, ...val] }]`
+  - Built-in: `Reducers.append`, `Reducers.deepMerge`, `Reducers.lastWins`, `Reducers.sum`
+  - Default: deep merge via `applyReducers()`
+- **Subgraphs**: Register with `subgraphManager.register(name, graph)` — branches can be complete graphs
 
 ### Agent
 - Tools are GraphFlows; deduplication prevents re-running same action+params
 - `processWithCheckpoint()` / `resumeFromCheckpoint()` for checkpoint-aware sessions
 - Groq fallback chain: `llama-3.1-8b-instant` → `allam-2-7b` → `groq/compound-mini`
+- **Handoff**: Agents can delegate to other agents using `Command` pattern
+  - Return `{ goto: "agentName", update: { ... }, graph: "PARENT" }` from a node
+  - Use `createHandoffTool()` to create a handoff tool for agents
+  - Supports `createCommand(goto, update?, metadata?)` helper
 
 ## Testing
 - **Framework**: Mocha + Chai + chai-as-promised + sinon

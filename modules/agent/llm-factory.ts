@@ -248,6 +248,47 @@ export class LLMFactory {
           GROQ_FALLBACK_MODELS,
           "Groq"
         );
+      case "openrouter":
+        return createLLMWithFallback(
+          "https://openrouter.ai/api/v1",
+          config.apiKey || "",
+          config.model || "google/gemini-flash-1.5",
+          [],
+          "OpenRouter"
+        );
+      case "google":
+        return {
+          generate: async (prompt: string | PromptInput, schema: z.ZodType<any>) => {
+            const userPrompt = typeof prompt === "string" ? prompt : prompt.user;
+            const systemPrompt = typeof prompt === "string" ? undefined : prompt.system;
+            const apiKey = config.apiKey || "";
+            const model = config.model || "gemini-flash-1.5";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            const body = {
+              contents: [{
+                parts: [{ text: `${systemPrompt ? `System: ${systemPrompt}\n\n` : ""}${userPrompt}` }]
+              }],
+              generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }
+            };
+            const response = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body)
+            });
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`Google API error (${response.status}): ${errorText}`);
+            }
+            const data = await response.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            try {
+              const parsed = JSON.parse(text);
+              return { object: schema.parse(parsed) };
+            } catch {
+              return { object: { actions: [], response: text.substring(0, 200) } };
+            }
+          }
+        };
       case "custom":
         if (!config.customCall) {
           throw new Error("Custom LLM provider requires a customCall function");

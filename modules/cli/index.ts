@@ -52,6 +52,8 @@ const DEFAULT_MODEL: Record<LLMProvider, string> = {
   anthropic: "claude-3-haiku-20240307",
   ollama: "gemma4:4b",
   groq: "llama-3.1-8b-instant",
+  openrouter: "openai/gpt-4o-mini",
+  google: "gemini-2.0-flash",
   custom: "custom",
 };
 
@@ -580,6 +582,9 @@ export async function startCLI(): Promise<void> {
   if (config.provider === "groq" && !config.apiKey) {
     config.apiKey = process.env.GROQ_API_KEY;
   }
+  if (config.provider === "openrouter" && !config.apiKey) {
+    config.apiKey = process.env.OPENROUTER_API_KEY;
+  }
 
   if (config.provider === "openai" && !config.apiKey) {
     console.log(chalk.red("Error: OpenAI requires an API key."));
@@ -589,6 +594,16 @@ export async function startCLI(): Promise<void> {
   if (config.provider === "groq" && !config.apiKey) {
     console.log(chalk.red("Error: Groq requires an API key."));
     console.log(chalk.gray("Use --api-key, set GROQ_API_KEY, or add to .env"));
+    process.exit(1);
+  }
+  if (config.provider === "openrouter" && !config.apiKey) {
+    console.log(chalk.red("Error: OpenRouter requires an API key."));
+    console.log(chalk.gray("Use --api-key, set OPENROUTER_API_KEY, or add to .env"));
+    process.exit(1);
+  }
+  if (config.provider === "google" && !config.apiKey) {
+    console.log(chalk.red("Error: Google requires an API key."));
+    console.log(chalk.gray("Use --api-key, set GOOGLE_API_KEY, or add to .env"));
     process.exit(1);
   }
 

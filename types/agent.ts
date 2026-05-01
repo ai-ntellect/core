@@ -86,7 +86,7 @@ export type PromptSection = {
 /**
  * Supported LLM providers
  */
-export type LLMProvider = "openai" | "anthropic" | "ollama" | "groq" | "custom";
+export type LLMProvider = "openai" | "anthropic" | "ollama" | "groq" | "openrouter" | "google" | "custom";
 
 /**
  * Supported LLM models

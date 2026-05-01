@@ -3,6 +3,8 @@ import { BehaviorSubject, Subject } from "rxjs";
 import { ZodSchema } from "zod";
 import { Checkpoint, GraphContext, GraphEvent, GraphNodeConfig } from "../types";
 import { GraphEventManager } from "./event-manager";
+import { SendAPI } from "./send-api";
+import { applyReducers } from "./reducer";
 
 /**
  * Represents a node in the graph that can execute operations and manage state
@@ -140,13 +142,40 @@ export class GraphNode<T extends ZodSchema> {
       await this.executeWithRetry(node, contextProxy, nodeName);
       this.emitEvent("nodeCompleted", { name: nodeName, context: nodeContext });
 
-      if (!triggeredByEvent && node.next) {
+      if (!triggeredByEvent && (node.next || (node as any).send)) {
         const nextNodes =
           typeof node.next === "function" ? node.next(contextProxy) : node.next;
 
-        const nextNodeConfigs = Array.isArray(nextNodes)
-          ? nextNodes
-          : [nextNodes];
+        // ====== SEND API (Fan-out dynamique) ======
+        if ((node as any).send) {
+          const sends = (node as any).send(contextProxy);
+          const branchResults = await SendAPI.processSends(
+            sends,
+            context,
+            (nodeName: string, ctx: any) => this.executeNode(nodeName, ctx, false, hooks)
+          );
+
+          // Merge avec reducers
+          const merged = applyReducers(
+            context,
+            branchResults,
+            (node as any).reducers || []
+          );
+          Object.assign(context, merged);
+
+          // Si un joinNode est spécifié (dans parallel), l'exécuter
+          const joinNode = (node as any).parallel?.joinNode;
+          if (joinNode) {
+            await this.executeNode(joinNode, context, false, hooks);
+          }
+
+          return; // Pas de next séquentiel après Send
+        }
+
+        // Filtrer les valeurs nulles/undefined
+        const nextNodeConfigs = (Array.isArray(nextNodes) ? nextNodes : [nextNodes]).filter(
+          (n) => n != null
+        );
         const validNextNodes = nextNodeConfigs
           .map((nextNode) => {
             const nextNodeName =
@@ -156,7 +185,7 @@ export class GraphNode<T extends ZodSchema> {
             return {
               name: nextNodeName,
               condition,
-              isValid: !condition || condition(contextProxy),
+              isValid: !condition || (condition && condition(contextProxy)),
             };
           })
           .filter((n) => n.isValid);
@@ -167,6 +196,49 @@ export class GraphNode<T extends ZodSchema> {
           await hooks.onBeforeExecuteNext(nodeName, context, nextNodeNames);
         }
 
+        // ====== PARALLÉLISME FORK-JOIN ======
+        if ((node as any).parallel?.enabled) {
+          const { joinNode, reducers, mergeStrategy } = (node as any).parallel;
+
+          // Fork : cloner le contexte pour chaque branche
+          const branchContexts = validNextNodes.map((n, i: number) => ({
+            nodeName: n.name,
+            context: structuredClone(context),
+            branchId: `${n.name}_${i}`,
+          }));
+
+          // Exécution parallèle (Promise.all)
+          const branchResults = await Promise.all(
+            branchContexts.map(async ({ nodeName, context: ctx, branchId }: any) => {
+              await this.executeNode(nodeName, ctx, false, hooks);
+              return { branchId, context: ctx };
+            })
+          );
+
+          // Join : merger les résultats
+          if (reducers && reducers.length > 0) {
+            const merged = applyReducers(context, branchResults, reducers);
+            Object.assign(context, merged);
+          } else if (mergeStrategy === "isolated") {
+            branchResults.forEach(({ branchId, context: ctx }: any) => {
+              (context as any)[`branch_${branchId}`] = ctx;
+            });
+          } else {
+            // deep-merge par défaut
+            const { deepMerge } = require("./reducer");
+            const merged = deepMerge(context, ...branchResults.map((r: any) => r.context));
+            Object.assign(context, merged);
+          }
+
+          // Si un joinNode est spécifié, l'exécuter
+          if (joinNode) {
+            await this.executeNode(joinNode, context, false, hooks);
+          }
+
+          return;
+        }
+
+        // ====== SÉQUENTIEL (logique existante) ======
         for (const nextNode of validNextNodes) {
           await this.executeNode(nextNode.name, context, false, hooks);
         }
