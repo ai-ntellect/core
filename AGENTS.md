@@ -3,6 +3,7 @@
 ## Project Overview
 - **Package**: `@ai.ntellect/core` v0.10.0 — In-process workflow engine with typed graphs, events, LLM agent support, parallel execution & handoff
 - **Package Manager**: pnpm v10.33.0 (enforced via `packageManager` field in package.json)
+- **CI order**: `install --frozen-lockfile` → `test:all` → `build`
 
 ## Commands
 
@@ -11,10 +12,8 @@ pnpm install                    # Install dependencies
 pnpm run build                  # TypeScript compile to dist/ (runs on prepare)
 pnpm test                       # Mocha via ts-node (default spec)
 pnpm run test:all               # Full suite: test/**/*.test.ts
-pnpm run test:watch:graph       # Watch graph tests only
+pnpm test --grep "suite name"    # Focused run
 ```
-
-**CI order**: `install --frozen-lockfile` → `test:all` → `build`
 
 ## CLI
 
@@ -25,7 +24,7 @@ pnpm cli -p ollama -m gemma4:4b                # Local Ollama
 pnpm cli -p openrouter -m <model>              # OpenRouter
 ```
 
-Supported providers: `openai`, `ollama`, `groq`, `openrouter`.
+Supported providers: `openai`, `ollama`, `groq`, `openrouter`, `google`, `custom`.
 
 **Auto-loads `.env`** for API keys (`GROQ_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`). No `dotenv` dependency — CLI reads `.env` manually.
 
@@ -37,10 +36,10 @@ Supported providers: `openai`, `ollama`, `groq`, `openrouter`.
 
 ```
 graph/          Core engine — GraphFlow, node execution, events, observer
-graph/adapters/ Checkpoint adapters (InMemoryCheckpointAdapter)
+graph/adapters/  Checkpoint adapters (InMemoryCheckpointAdapter)
 modules/agent/  LLM agent with tools (each tool = a GraphFlow)
-modules/memory/ Pluggable memory adapters (InMemory, Redis, Meilisearch)
-modules/agenda/ Cron scheduling backed by memory adapter
+modules/memory/  Pluggable memory adapters (InMemory, Redis, Meilisearch)
+modules/agenda/  Cron scheduling backed by memory adapter
 modules/nlp/    NLP engine (@nlpjs/basic) wrapped as graph nodes
 modules/cli/    Interactive REPL with checkpoint + human-in-the-loop
 types/          Zod schemas + type aliases (Checkpoint, GraphContext, etc.)
