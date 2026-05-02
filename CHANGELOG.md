@@ -14,31 +14,31 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Added
 
 * **CortexFlow Orchestration**
-  Introduced a Petri Net-based routing layer that ensures **deterministic execution of LLM-driven systems**.
+  Stop LLMs from deciding your execution path.
   $\rightarrow$ Eliminates routing hallucinations and uncontrolled tool selection.
 
 * **Hybrid Intent Classification**
-  Fast keyword-first classification with LLM fallback for ambiguous inputs.
-  $\rightarrow$ Reduces latency and increases reliability in production workloads.
+  Cut latency and eliminate classification guesswork with keyword-first detection and LLM fallback.
+  $\rightarrow$ Increases reliability in production workloads.
 
 * **Multi-Intent Execution**
-  Support for detecting and executing multiple intents from a single message.
-  $\rightarrow$ Enables compound workflows (e.g. fetch $\rightarrow$ process $\rightarrow$ notify).
+  One message, multiple workflows.
+  $\rightarrow$ Enables compound flows (e.g. fetch $\rightarrow$ process $\rightarrow$ notify) without repeated chatting.
 
 * **Formal Verification for Workflows**
-  Added deadlock detection, boundedness analysis, and reachability checks on Petri Nets.
+  Mathematically prove your agent can't deadlock.
   $\rightarrow$ Prevents invalid execution graphs before runtime.
 
 * **Persistent Execution State**
-  Redis and PostgreSQL checkpoint adapters for saving and resuming workflows.
+  Stop losing state on crashes with Redis and PostgreSQL checkpoint adapters.
   $\rightarrow$ Enables long-running, fault-tolerant agents.
 
 * **Petri Pattern Library**
-  Prebuilt workflow templates: Human approval flows, RAG pipelines, and structured data extraction.
+  Stop starting from scratch. Prebuilt templates for Human-Approval, RAG, and Structured Data Extraction.
   $\rightarrow$ Accelerates the building of common agent patterns.
 
 * **Benchmark Suite**
-  CortexFlow vs LangGraph comparison:
+  The Proof: CortexFlow vs LangGraph.
   $\rightarrow$ Demonstrates significant reduction in LLM calls and lower latency.
 
 * **Production-Centric Documentation**

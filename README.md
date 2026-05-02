@@ -1,10 +1,10 @@
 # @ai.ntellect/core
 
-**Build LLM agents that don't lose control in production.**
+**Stop your AI agents from going off-rails in production.**
 
 *LLMs generate. You control.*
 
-One LLM call → deterministic execution → no routing hallucinations.
+One LLM call $\rightarrow$ deterministic execution $\rightarrow$ no routing hallucinations.
 
 ---
 
@@ -18,7 +18,7 @@ Most frameworks let the LLM decide everything:
 - in what order
 - with what context
 
-→ This breaks as complexity grows.
+$\rightarrow$ This breaks as complexity grows.
 
 **This framework does the opposite:**
 - LLM decides **intent (once)**
@@ -42,7 +42,7 @@ No drift. No hidden loops. No surprises.
 
 ## Why this works
 
-Because routing is **defined**, not **learned**.
+We replaced probabilistic guessing with explicit definitions. Routing is **defined**, not **learned**.
 
 - **No prompt drift**: Your agent won't change its behavior because of a minor prompt tweak.
 - **No hidden loops**: Execution paths are explicit and finite.
