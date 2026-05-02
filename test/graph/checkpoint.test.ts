@@ -179,7 +179,7 @@ describe("GraphFlow with Checkpoints", () => {
       name: "TestGraph",
       schema: TestSchema,
       nodes: [],
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
     });
   });
 
@@ -267,7 +267,7 @@ describe("GraphFlow with Checkpoints", () => {
       name: "TestGraph",
       schema: TestSchema,
       nodes: graph.getNodes(),
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
     });
 
     const result = await freshGraph.resumeFromCheckpoint(
@@ -365,7 +365,7 @@ describe("GraphFlow with Checkpoints", () => {
       name: "TestGraph",
       schema: TestSchema,
       nodes: graph.getNodes(),
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
     });
 
     const result = await resumedGraph.resumeFromCheckpoint(interrupted!.id, adapter);
@@ -494,7 +494,7 @@ describe("GraphFlow with Checkpoints", () => {
       name: "TestGraph",
       schema: TestSchema,
       nodes: graph.getNodes(),
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
     });
 
     const result = await freshGraph.resumeFromCheckpoint(completed!.id, adapter);
@@ -630,7 +630,7 @@ describe("GraphFlow with Checkpoints", () => {
       name: "TestGraph",
       schema: TestSchema,
       nodes: graph.getNodes(),
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
     });
 
     const result = await freshGraph.resumeFromCheckpoint(
@@ -703,7 +703,7 @@ describe("GraphFlow with Checkpoints", () => {
       name: "TestGraph",
       schema: TestSchema,
       nodes: graph.getNodes(),
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
     });
 
     const result = await travelGraph.resumeFromCheckpoint(firstCp!.id, adapter);
@@ -747,7 +747,7 @@ describe("GraphFlow with Checkpoints", () => {
       name: "TestGraph",
       schema: TestSchema,
       nodes: graph.getNodes(),
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
     });
 
     const result = await rewindGraph.resumeFromCheckpoint(

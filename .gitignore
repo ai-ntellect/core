@@ -16,3 +16,6 @@ scheduled-tasks.json
 agent-memory.json
 memory/
 output/
+# OAuth credentials — never commit these
+client_secret.json
+gmail_token.json

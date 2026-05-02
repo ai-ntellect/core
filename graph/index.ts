@@ -237,12 +237,12 @@ export class GraphFlow<T extends ZodSchema> {
         const mergedContext = { ...this.context, ...context };
         const validationResult = this.validator?.safeParse(mergedContext);
         if (!validationResult?.success) {
-          const errors = validationResult?.error?.errors.map(
+          const errors = validationResult?.error?.issues.map(
             (err) => `${err.path.join(".")}: ${err.message}`
           );
           throw new Error(`Context validation failed: ${errors?.join(", ")}`);
         }
-        this.context = validationResult.data;
+        this.context = validationResult.data as GraphContext<T>;
       }
 
       this.eventEmitter.emit("graphStarted", { name: this.name });
@@ -293,7 +293,7 @@ export class GraphFlow<T extends ZodSchema> {
     if (this.context) {
       const validationResult = this.validator?.safeParse(this.context);
       if (!validationResult?.success) {
-        const errors = validationResult?.error?.errors.map(
+        const errors = validationResult?.error?.issues.map(
           (err) => `${err.path.join(".")}: ${err.message}`
         );
         throw new Error(`Context validation failed: ${errors?.join(", ")}`);
@@ -457,7 +457,7 @@ export class GraphFlow<T extends ZodSchema> {
 
     const validationResult = this.validator?.safeParse(resumeContext);
     if (!validationResult?.success) {
-      const errors = validationResult?.error?.errors.map(
+      const errors = validationResult?.error?.issues.map(
         (err) => `${err.path.join(".")}: ${err.message}`
       );
       throw new Error(`Context validation failed: ${errors?.join(", ")}`);
@@ -636,12 +636,12 @@ export class GraphFlow<T extends ZodSchema> {
     // Parse the new context
     const validationResult = definition.schema.safeParse(definition.context);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map(
+      const errors = validationResult.error.issues.map(
         (err) => `${err.path.join(".")}: ${err.message}`
       );
       throw new Error(`Context validation failed: ${errors.join(", ")}`);
     }
-    this.context = validationResult.data;
+    this.context = validationResult.data as GraphContext<T>;
     this.validator = definition.schema;
 
     // Store entry node and graph events

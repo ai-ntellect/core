@@ -246,12 +246,13 @@ export class GenericExecutor extends AgentExecutor {
           })
           .map(([key, value]) => {
             const zodValue = value as z.ZodTypeAny;
-            let desc = zodValue.description || "";
-            if (zodValue._def.typeName === "ZodEnum") {
-              const options = (zodValue as z.ZodEnum<any>)._def.values;
+            let desc = (zodValue as any).description || "";
+            if (zodValue instanceof z.ZodEnum) {
+              const options: string[] = (zodValue as z.ZodEnum<any>).options ?? [];
               desc = desc ? `${desc} (Options: ${options.join(", ")})` : `Options: ${options.join(", ")}`;
             }
-            return `    - ${key}: ${desc || zodValue._def.typeName}`;
+            const typeName = (zodValue as any)._def?.typeName ?? zodValue.constructor.name ?? "unknown";
+            return `    - ${key}: ${desc || typeName}`;
           })
           .join("\n");
 
@@ -393,7 +394,7 @@ NE PAS inclure de reasoning, commentaires, ou texte hors JSON.`
                   value: z.any(),
                 })
               ),
-              z.record(z.any()),
+              z.record(z.string(), z.any()),
             ]).optional().catch(() => ({})),
           }).passthrough().catch(() => ({ name: "", parameters: {} }))
         ).default([]),

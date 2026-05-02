@@ -1,41 +1,48 @@
 # @ai.ntellect/core
 
-A lightweight, in-process workflow engine for Node.js/TypeScript. Define workflows as **directed graphs** where nodes execute sequentially or in parallel, state is typed with Zod, and execution can pause for events. The entire runtime is ~1000 lines of code — no external services, no message queues, no infrastructure to manage.
+An in-process workflow engine for Node.js/TypeScript built around two complementary primitives: **GraphFlow** for typed graph execution and **CortexFlow** for LLM agent orchestration via Petri Nets.
+
+Inspired by [Hybrid Petri Net / LLM Agent architectures](https://www.mdpi.com/1999-5903/17/8/363).
 
 ## What this is
 
-This is a **graph-based execution engine**. You define a graph with nodes (steps) and edges (transitions). The engine walks the graph, executing nodes, managing state, and handling events. Think of it as:
+- **GraphFlow** — define workflows as directed graphs where nodes execute steps, state is typed with Zod, and execution can pause for external events or checkpoints.
+- **CortexFlow** — a Petri Net orchestration layer that uses a **single LLM call per user turn** to classify intent, then routes deterministically through a state machine. All routing is token-based and free of additional LLM calls.
 
-- **Not a workflow engine like Temporal** — no persistence, replay, or cross-machine scaling
-- **Not an agent framework like LangGraph** — it provides primitives (graphs, events, state), not agent patterns
-- **Not a state machine library** — graphs are dynamic, nodes can branch/merge, state is mutable
+What it is not:
+- **Not Temporal** — no distributed persistence or cross-machine replay
+- **Not LangGraph** — routing is deterministic and happens outside the LLM; the LLM only decides intent
+- **Not a state machine library** — graphs are dynamic, and Petri Nets include static analysis for deadlocks and boundedness
 
-It's a **middle ground**: powerful enough for complex orchestration, simple enough to embed directly in your app.
+The combination addresses a real problem in production LLM agents: as conversation history grows, context bloat causes hallucinations and routing errors. By confining the LLM to a single, well-scoped classification call and delegating all control flow to a verified Petri Net, the system stays predictable regardless of how long the session runs.
 
 ## Core Architecture
 
 ```
-Your App
+User Message
     ↓
-GraphFlow (graph definition)
+IntentClassifier  (1 LLM call — classify intent)
     ↓
-GraphNode (execution engine)
+PetriNet          (deterministic token-based routing — no LLM)
     ↓
-RxJS Event System (reactive state)
+GraphFlow         (node execution — tools, APIs, optional dynamic plan)
     ↓
-Zod Validation (typed state)
+Zod Validation    (typed state at every step)
 ```
 
 ### Key Components
 
 | Component | Role |
 |-----------|------|
+| `CortexFlowOrchestrator` | Top-level coordinator: intent → Petri net → GraphFlow |
+| `PetriNet` | Formally-verified state machine (deadlock detection, boundedness) |
+| `IntentClassifier` | Single-LLM-call intent resolution with confidence thresholding |
 | `GraphFlow` | Graph container: name, schema, context, nodes |
 | `GraphNode` | Execution engine: runs nodes, handles transitions |
 | `GraphEventManager` | Event system: RxJS Subjects + EventEmitter |
 | `GraphObserver` | Reactive API: subscribe to state/events |
 | `CheckpointAdapter` | Persistence: save/resume state |
-| `NodeRegistry` | Registry: execute functions for workers |
+| `ToolRegistry` | Registry of GraphFlow tools available to transitions |
 
 ---
 
@@ -81,6 +88,88 @@ Instead of spaghetti callbacks or scattered service calls, you define a graph on
 - **Agenda module** — Cron scheduling with `node-cron`
 - **NLP module** — `@nlpjs/basic` wrapped as graph nodes
 
+## CortexFlow — Petri Net Orchestration
+
+CortexFlow solves the **LLM context overload** problem in multi-step agents. Instead of letting the LLM drive every routing decision, a Petri Net handles control flow deterministically while the LLM is called only once per turn.
+
+### Why Petri Nets?
+
+Petri Nets enable structural analysis that a pure LLM agent cannot provide:
+- **Deadlock detection** — identify blocking states before deployment, not at runtime
+- **Boundedness check** — verify that token counts stay bounded under all reachable markings
+- **Reachability analysis** — enumerate every state the workflow can reach statically
+
+These checks are run at build time via `matrix.ts` and surface issues before any LLM is involved.
+
+### Quick Start
+
+```typescript
+import { CortexFlowOrchestrator } from "@ai.ntellect/core/petri/orchestrator";
+import { IntentClassifier } from "@ai.ntellect/core/petri/intent-classifier";
+import { ToolRegistry } from "@ai.ntellect/core";
+
+const registry = new ToolRegistry();
+const orchestrator = new CortexFlowOrchestrator("mail_assistant", registry);
+
+// 1. Single LLM call for intent classification
+const classifier = new IntentClassifier(llmFn, {
+  intents: ["FETCH_MAILS", "SUMMARIZE", "UNKNOWN"],
+  confidenceThreshold: 0.7,
+});
+orchestrator.setIntentClassifier(IntentClassifier.toFn(classifier), classifier);
+orchestrator.setLLMCall(llmFn);
+
+// 2. Define the Petri Net (places + transitions)
+const net = orchestrator.petri;
+net.addPlace({ id: "idle",       type: "initial", tokens: [{ id: "start", data: {}, createdAt: 0 }] });
+net.addPlace({ id: "processing", type: "normal",  tokens: [] });
+net.addPlace({ id: "done",       type: "final",   tokens: [] });
+
+net.addTransition({
+  id: "process_mails",
+  from: ["idle"],
+  to: "processing",
+  action: { type: "graphflow", name: "mail_fetch_summarize" },
+});
+
+// 3. Register a GraphFlow tool
+registry.register({ name: "mail_fetch_summarize", description: "...", graph: mailGraph, startNode: "fetch" });
+
+// 4. Run
+const sessionId = orchestrator.startSession();
+const result = await orchestrator.orchestrate("Summarise my last 5 emails", sessionId);
+// → { intent: { intent: "FETCH_MAILS", confidence: 0.95, ... }, transitionResult: ... }
+```
+
+### Clarification on Low Confidence
+
+When the classifier confidence is below the threshold, the orchestrator automatically generates a clarifying question instead of firing a transition:
+
+```typescript
+// result.needsClarification === true
+// result.clarificationQuestion === "Do you want to fetch emails, summarise them, or both?"
+```
+
+### Dev CLI
+
+Debug your Petri Net interactively without writing tests:
+
+```sh
+pnpm run dev:cli examples/my_workflow.json
+```
+
+Commands: `show`, `enabled`, `step <id>`, `auto`, `inject <placeId> [json]`, `history`, `dot`, `reset`.
+
+### Benchmark
+
+Compare CortexFlow vs LangGraph on the same Gmail + LLM summarisation task:
+
+```sh
+pnpm run benchmark
+```
+
+---
+
 ## Plan → Compile → Execute (LLM as Planner)
 
 Treat the LLM as a **planner, not a runtime**. The LLM generates a structured plan (JSON), which is compiled into an executable GraphFlow:
@@ -108,7 +197,7 @@ const ctx = await graph.execute(startNode, {});
 
 **Benefits**: deterministic, observable, debuggable, checkpointable.
 
-**Test with real LLM**: `pnpm test --grep "REAL"` (requires `GROQ_API_KEY`)
+**Test with real LLM (CortexFlow)**: `pnpm run test:petri` (requires Ollama + llama3 running locally)
 
 ---
 

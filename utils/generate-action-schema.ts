@@ -13,12 +13,13 @@ export const generateActionSchema = (graphs: GraphFlow<any>[]) => {
     .join("\n\n");
 };
 
-export const getSchemaString = (schema: z.ZodType): string => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const getSchemaString = (schema: any): string => {
   if (schema instanceof z.ZodObject) {
     const entries = Object.entries(schema.shape);
     const fields = entries.map(([key, value]) => {
-      const description = (value as any)._def.description;
-      const schemaStr = getSchemaString(value as z.ZodType);
+      const description = (value as any)._def?.description;
+      const schemaStr = getSchemaString(value);
       return description
         ? `${key}: ${schemaStr} // ${description}`
         : `${key}: ${schemaStr}`;

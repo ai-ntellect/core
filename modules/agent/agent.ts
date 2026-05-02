@@ -175,9 +175,7 @@ export class Agent {
             if (iteration >= this.maxIterations) {
               return ["reply"];
             }
-            if ((context.executedActions || []).length > 0) {
-              return ["reply"];
-            }
+            // Loop back to think so the agent can reflect on tool results
             return ["think"];
           },
         },

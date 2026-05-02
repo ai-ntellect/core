@@ -54,7 +54,7 @@ describe("GraphFlow", function () {
       name: "TestGraph",
       schema: TestSchema,
       nodes: [],
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
       eventEmitter: eventEmitter,
     });
   });
@@ -166,7 +166,10 @@ describe("GraphFlow", function () {
       await graph.execute("simpleNode", invalidContext as any);
       expect.fail("Should have thrown an error");
     } catch (error: any) {
-      expect(error.message).to.include("Expected number");
+      // Zod v4 changed validation error wording
+      expect(error.message).to.satisfy(
+        (msg: string) => msg.includes("Expected number") || msg.includes("Invalid input")
+      );
     }
   });
 
@@ -251,7 +254,7 @@ describe("GraphFlow", function () {
     const graph = new GraphFlow({
       name: "retryGraph",
       schema: TestSchema,
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
       nodes: [retryNode],
     });
 
@@ -291,7 +294,7 @@ describe("GraphFlow", function () {
       name: "TestGraph",
       schema: TestSchema,
       nodes: [nodeA, nodeB],
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
       entryNode: "A",
     };
 
@@ -322,8 +325,11 @@ describe("GraphFlow", function () {
       await graph.execute("test", { value: -1 });
       expect.fail("Should have thrown an error");
     } catch (error: any) {
-      expect(error.message).to.include(
-        "Number must be greater than or equal to 0"
+      // Zod v4 changed validation error wording
+      expect(error.message).to.satisfy(
+        (msg: string) =>
+          msg.includes("Number must be greater than or equal to 0") ||
+          msg.includes("Too small")
       );
     }
   });
@@ -388,7 +394,7 @@ describe("GraphFlow", function () {
             const newContext = { ...context, value: -1 };
             const validationResult = TestSchema.safeParse(newContext);
             if (!validationResult.success) {
-              throw new Error(validationResult.error.errors[0].message);
+              throw new Error(validationResult.error.issues[0].message);
             }
             graph["context"] = newContext;
           },
@@ -401,8 +407,11 @@ describe("GraphFlow", function () {
       await graph.execute("validationNode");
       throw new Error("Should have thrown an error");
     } catch (error: any) {
-      expect(error.message).to.include(
-        "Number must be greater than or equal to 0"
+      // Zod v4 changed validation error wording
+      expect(error.message).to.satisfy(
+        (msg: string) =>
+          msg.includes("Number must be greater than or equal to 0") ||
+          msg.includes("Too small")
       );
     }
   });
@@ -497,7 +506,7 @@ describe("GraphFlow", function () {
     const graph1 = new GraphFlow({
       name: "Graph1",
       schema: TestSchema,
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
       nodes: [],
     });
 
@@ -520,7 +529,7 @@ describe("GraphFlow", function () {
     const graph2 = new GraphFlow({
       name: "Graph2",
       schema: TestSchema,
-      context: { value: 0 },
+      context: { value: 0, counter: 0, message: "" },
       nodes: [],
     });
 
@@ -563,7 +572,7 @@ describe("GraphFlow", function () {
     const graph1 = new GraphFlow({
       name: "Graph1",
       schema: TestSchema,
-      context: { value: 1 },
+      context: { value: 1, counter: 0, message: "" },
       nodes: [],
     });
 
@@ -578,7 +587,7 @@ describe("GraphFlow", function () {
     const graph2 = new GraphFlow({
       name: "Graph2",
       schema: TestSchema,
-      context: { value: 3 },
+      context: { value: 3, counter: 0, message: "" },
       nodes: [],
     });
 

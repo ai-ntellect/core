@@ -6,7 +6,7 @@ export const PlanSchema = z.object({
   steps: z.array(
     z.object({
       node: z.string(),
-      params: z.record(z.any()).optional(),
+      params: z.record(z.string(), z.any()).optional(),
       description: z.string().optional(),
     })
   ),

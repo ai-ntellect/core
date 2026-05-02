@@ -1,26 +1,58 @@
 # AGENTS.md
 
 ## Project Overview
-- **Package**: `@ai.ntellect/core` v0.10.0 — In-process workflow engine with typed graphs, events, LLM agent support, parallel execution & handoff
-- **Package Manager**: pnpm v10.33.0 (enforced via `packageManager` field in package.json)
+- **Package**: `@ai.ntellect/core` v0.11.0 — In-process workflow engine with typed graphs, events, LLM agent support
+- **Package Manager**: pnpm v10.33.0 (enforced via `packageManager` field)
 - **CI order**: `install --frozen-lockfile` → `test:all` → `build`
 
 ## Commands
 
 ```sh
-pnpm install                    # Install dependencies
-pnpm run build                  # TypeScript compile to dist/ (runs on prepare)
-pnpm test                       # Mocha via ts-node (default spec)
-pnpm run test:all               # Full suite: test/**/*.test.ts
-pnpm test --grep "suite name"    # Focused run
+pnpm install                    # Runs build (prepare script)
+pnpm run build                  # tsc → dist/ (rimraf cleans first)
+pnpm test                       # Mocha via ts-node, 5000ms timeout (.mocharc.json)
+pnpm run test:all               # Same as pnpm test (both use test/**/*.test.ts)
+pnpm test --grep "suite name"  # Run specific suite
 ```
+
+## Architecture
+
+```
+graph/          Core engine — GraphFlow, nodes, events, observer
+  registry.ts    Tool registry for plan→compile→execute
+  planner.ts     LLM→plan JSON (Zod-validated)
+  compiler.ts    plan→GraphFlow executable
+graph/adapters/  Checkpoint adapters (InMemoryCheckpointAdapter)
+modules/agent/  LLM agent with tools (each tool = a GraphFlow)
+modules/memory/  Pluggable memory (InMemory, Redis, Meilisearch)
+modules/agenda/  Cron scheduling backed by memory adapter
+modules/nlp/    NLP engine (@nlpjs/basic) wrapped as graph nodes
+modules/cli/    Interactive REPL with checkpoint + human-in-the-loop
+modules/embedding/  AI embedding adapter
+petri/           CortexFlow — intent classification & orchestration
+  intent-classifier.ts
+  orchestrator.ts
+  matrix.ts
+  types.ts
+types/          Zod schemas + type aliases
+interfaces/     Contract interfaces (ICheckpointAdapter, IMemoryAdapter, etc.)
+app/            Separate Next.js app (own package.json, not part of core build)
+scripts/        Utilities (e.g., get-gmail-token.ts)
+```
+
+**Entry point**: `index.ts` — re-exports from graph, modules, types, interfaces, utils.
+
+**Path alias**: `@/*` → root (tsconfig.json `paths`).
+
+**tsconfig include**: `index.ts`, `modules/**/*`, `graph/**/*`, `types/**/*`, `interfaces/**/*`, `utils/**/*` — excludes `test/`, `examples/`, `petri/`, `app/`.
 
 ## CLI
 
+### Agent CLI
 ```sh
 pnpm cli -p groq -m llama-3.1-8b-instant       # Groq
 pnpm cli -p openai -m gpt-4o-mini              # OpenAI
-pnpm cli -p ollama -m gemma4:4b                # Local Ollama
+pnpm cli -p ollama -m llama3:latest            # Local Ollama
 pnpm cli -p openrouter -m <model>              # OpenRouter
 ```
 
@@ -30,103 +62,58 @@ Supported providers: `openai`, `ollama`, `groq`, `openrouter`, `google`, `custom
 
 **Slash commands**: `/status`, `/history`, `/list`, `/resume [cpId]`, `/approve`, `/reject`, `/modify k=v`, `/clear`, `/help`, `/exit`
 
-**Breakpoint**: auto-pauses before `think` node for human-in-the-loop review.
-
-## Architecture
-
-```
-graph/          Core engine — GraphFlow, node execution, events, observer
-  registry.ts    Tool registry for plan→compile→execute
-  planner.ts     LLM→plan JSON (Zod-validated)
-  compiler.ts    plan→GraphFlow executable
-graph/adapters/  Checkpoint adapters (InMemoryCheckpointAdapter)
-modules/agent/  LLM agent with tools (each tool = a GraphFlow)
-modules/memory/  Pluggable memory adapters (InMemory, Redis, Meilisearch)
-modules/agenda/  Cron scheduling backed by memory adapter
-modules/nlp/    NLP engine (@nlpjs/basic) wrapped as graph nodes
-modules/cli/    Interactive REPL with checkpoint + human-in-the-loop
-types/          Zod schemas + type aliases (Checkpoint, GraphContext, etc.)
-interfaces/     Contract interfaces (ICheckpointAdapter, IMemoryAdapter, etc.)
+### CortexFlow Dev CLI (Petri Net Debugger)
+```sh
+npx ts-node cli-dev.ts [workflow.json]       # Launch interactive debugger
 ```
 
-**Entry point**: `index.ts` — re-exports everything from graph, modules, types, interfaces, utils.
+**Commands:**
+- `load <file.json>` - Load a Petri net from JSON
+- `show [placeId]` - Show marking (all places or specific)
+- `enabled` - List enabled transitions
+- `step <transitionId>` - Fire a transition
+- `auto` - Auto-fire enabled transitions until blocked
+- `inject <placeId> [json]` - Add a token to a place
+- `history` - Show transition history
+- `dot` - Export graph to DOT format
+- `reset` - Reset to initial marking
+- `help` - Show help
+- `exit` - Quit
 
-**Path alias**: `@/*` → root (configured in tsconfig.json).
+## Key Patterns
 
-## Plan → Compile → Execute Pattern
-
+### Plan → Compile → Execute
 ```typescript
-// 1. Register tools (each tool = GraphFlow)
 const registry = new ToolRegistry();
 registry.register({ name: 'check_balance', description: '...', graph, startNode: 'run' });
-
-// 2. LLM generates plan (Zod-validated JSON)
 const plan = await generatePlan(userIntent, registry, llmCall);
-
-// 3. Compile to GraphFlow
 const { graph, startNode } = compilePlan(plan, registry);
-
-// 4. Execute with full checkpoint support
 const ctx = await graph.execute(startNode, {});
 ```
 
-**Key files**: `graph/registry.ts`, `graph/planner.ts`, `graph/compiler.ts`
+### No axios — use native fetch
+This project uses native Node.js `fetch` (Node 18+). Do not add axios as a dependency.
 
-**Test with real LLM**: `pnpm test --grep "REAL"` (requires `GROQ_API_KEY` in `.env`)
+## Testing
 
-**Test with real onchain**: uses Sepolia wallets from `.env` (`PRIVATE_KEY_1`, `STUDENT_2`, etc.)
+- **Framework**: Mocha + Chai + chai-as-promised + sinon
+- **Config**: `.mocharc.json` — 5000ms timeout, spec: `test/**/*.test.ts`
+- **Known intermittent failure**: 1 agent test (`process runs tool graph when LLM requests an action`) — Ollama-dependent
+- **Real LLM tests** (Ollama): `test/petri/real-llm.test.ts` — uses `llama3:latest` at `localhost:11434`
+  - Run: `pnpm test --grep "CortexFlow Real LLM"`
+- **Real onchain tests**: `test/graph/plan-real-onchain.test.ts` (requires Sepolia wallets in `.env`)
+- **Ollama models available**: `llama3:latest`, `llama3.2:3b`, `llama3:8b`, `phi3:latest`, `gemma4:e4b`
 
-## Key Concepts Agents Should Know
-
-### Checkpoint System
+## Checkpoint System
 - `executeWithCheckpoint(adapter, config)` — auto-saves state after each node
 - `resumeFromCheckpoint(cpId, adapter, contextModifications?)` — time travel capable
 - `interrupt()` — manual pause mid-execution
 - **Breakpoints**: config `breakpoints: ["nodeName"]` pauses *before* node executes
 - Errors: `CheckpointInterruptError`, `CheckpointAwaitApprovalError`
 
-### GraphFlow
-- `next` accepts: string, array, conditional objects, or function
-- State uses Proxy-wrapping — every property set emits `nodeStateChanged`
-- Supports retry with backoff, `when` (event-driven waits), `when.strategy` (single/all/correlate)
-- **Parallel Fork-Join**: Set `parallel: { enabled: true }` on a node to fork into parallel branches
-  - Use `joinNode: "nodeName"` to specify where branches rejoin
-  - Uses `Promise.all` for true parallel execution (not sequential)
-  - Contexts are `structuredClone`d for each branch
-- **Send API (dynamic fan-out)**: Add `send: (ctx) => Send[]` to a node for runtime-determined branches
-  - Returns array of `{ to: nodeName, input: any, branchId?: string }`
-  - Helper: `SendAPI.map(items, (item, i) => ({ to: "node", input: { item, index: i } }))`
-- **State Reducers**: Control how parallel branch results merge
-  - Set `reducers: [{ key: "results", reducer: (acc, val) => [...acc, ...val] }]`
-  - Built-in: `Reducers.append`, `Reducers.deepMerge`, `Reducers.lastWins`, `Reducers.sum`
-  - Default: deep merge via `applyReducers()`
-- **Subgraphs**: Register with `subgraphManager.register(name, graph)` — branches can be complete graphs
-
-### Agent
-- Tools are GraphFlows; deduplication prevents re-running same action+params
-- `processWithCheckpoint()` / `resumeFromCheckpoint()` for checkpoint-aware sessions
-- Groq fallback chain: `llama-3.1-8b-instant` → `allam-2-7b` → `groq/compound-mini`
-- **Handoff**: Agents can delegate to other agents using `Command` pattern
-  - Return `{ goto: "agentName", update: { ... }, graph: "PARENT" }` from a node
-  - Use `createHandoffTool()` to create a handoff tool for agents
-  - Supports `createCommand(goto, update?, metadata?)` helper
-
-## Testing
-- **Framework**: Mocha + Chai + chai-as-promised + sinon
-- **Config**: `.mocharc.json` (5000ms timeout), runs via ts-node
-- **Pattern**: `test/**/*.test.ts`
-- **Known failure**: 1 agent test fails intermittently (`process runs tool graph when LLM requests an action`) — Ollama-dependent, unrelated to checkpoint code
-- **Real LLM tests**: `test/graph/plan-llm-integration.test.ts` (requires `GROQ_API_KEY`)
-- **Real onchain tests**: `test/graph/plan-real-onchain.test.ts` (uses Sepolia wallets from `.env`)
-- Focused run: `pnpm test --grep "suite name"`
-
-## Build
-- `tsconfig.json` excludes `test/` and `examples/`
-- Output: `dist/` with declaration maps and source maps
-- `prepare` script runs build — `pnpm install` triggers compile
-
 ## Environment
-- `.env` is gitignored; contains `GROQ_API_KEY` and `OPENROUTER_API_KEY`
-- CLI loads `.env` manually (no `dotenv` package)
-- **Ollama is not available on this machine** (Windows, no local server)
+- `.env` is gitignored; contains `GROQ_API_KEY`, `OPENROUTER_API_KEY`
+- **Ollama IS available** on this machine (macOS, `localhost:11434`)
 - **Sepolia testnet**: `RPC_URL`, `PRIVATE_KEY_1`, `PRIVATE_KEY_2`, `STUDENT_2`, `STUDENT_3`, `STUDENT_4` in `.env`
+- `client_secret.json` at root — Google OAuth2 credentials for Gmail API access
+- `gmail_token.json` — generated by `scripts/get-gmail-token.ts`

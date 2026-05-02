@@ -6,12 +6,21 @@ import { ParallelNodeConfig } from './types.parallel';
 export const nodeRegistry = {
   executeFunctions: new Map<string, Function>(),
   nodeConfigs: new Map<string, ParallelNodeConfig<any>>(),
+  subgraphs: new Map<string, GraphFlow<any>>(),
 
   registerParallel(nodeConfig: ParallelNodeConfig<any>) {
     this.nodeConfigs.set(nodeConfig.name, nodeConfig);
     if (nodeConfig.execute) {
       this.executeFunctions.set(nodeConfig.name, nodeConfig.execute);
     }
+  },
+
+  registerSubgraph(name: string, graph: GraphFlow<any>) {
+    this.subgraphs.set(name, graph);
+  },
+
+  getSubgraph(name: string) {
+    return this.subgraphs.get(name);
   },
 
   getExecuteFunction(nodeName: string) {
@@ -25,6 +34,7 @@ export const nodeRegistry = {
   clear() {
     this.executeFunctions.clear();
     this.nodeConfigs.clear();
+    this.subgraphs.clear();
   },
 };
 
