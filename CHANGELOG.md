@@ -3,9 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
-
-### Added
-- (Upcoming features will be listed here)
+No new features yet — check back soon.
 
 ---
 
@@ -98,7 +96,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [0.8.x] - 2025-03-16 to 2025-04-13
+## [0.8.0] - 2025-04-13
 
 ### 🚀 Added
 
@@ -122,7 +120,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [0.6.x] - 2025-02-01 to 2025-02-04
+## [0.6.0] - 2025-02-04
 
 ### 🚀 Added
 
@@ -140,7 +138,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [0.3.x] - 2025-01-20 to 2025-01-25
+## [0.3.0] - 2025-01-25
 
 ### 🚀 Added
 
