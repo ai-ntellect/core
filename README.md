@@ -162,11 +162,37 @@ Commands: `show`, `enabled`, `step <id>`, `auto`, `inject <placeId> [json]`, `hi
 
 ### Benchmark
 
-Compare CortexFlow vs LangGraph on the same Gmail + LLM summarisation task:
+Scenario: fetch 5 emails → batch-classify urgency → draft replies for urgent ones → archive the rest.
+
+Three implementations are compared: CortexFlow, LangGraph naive (one LLM call per routing decision — the standard pattern), and LangGraph optimised (manually batched by the developer).
 
 ```sh
-pnpm run benchmark
+pnpm run benchmark   # requires Ollama + llama3:latest, or GROQ_API_KEY in .env
 ```
+
+Results below are measured, not projected. A warmup call is made before each timer starts to exclude model loading.
+
+#### Ollama local — llama3:latest
+
+| | CortexFlow | LangGraph naive | LangGraph optimised |
+|---|---|---|---|
+| LLM calls | **2** | 7 | 2 |
+| Total time | **5 181 ms** | 15 305 ms | 6 773 ms |
+| vs naive | **2.95× faster** | baseline | 2.26× faster |
+
+#### Groq API — llama-3.1-8b-instant
+
+| | CortexFlow | LangGraph naive | LangGraph optimised |
+|---|---|---|---|
+| LLM calls | **2** | 7 | 2 |
+| Total time | **1 757 ms** | 2 052 ms | 1 603 ms |
+| vs naive | **1.17× faster** | baseline | 1.28× faster |
+
+**LLM call reduction vs naive: −71% on both backends.**
+
+On Groq (each call ~250 ms), LangGraph optimised is 154 ms faster than CortexFlow — the Petri Net + structured logging overhead becomes measurable when the LLM itself is near-instant. This is an honest trade-off: CortexFlow's structural guarantees (deadlock detection, boundedness) have a small fixed cost.
+
+On Ollama (each call ~2 s), fewer calls dominate: CortexFlow is nearly 3× faster than the naive pattern.
 
 ---
 
