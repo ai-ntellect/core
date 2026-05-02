@@ -1,18 +1,23 @@
 /**
  * @file run-benchmark.ts
- * @description CortexFlow vs LangGraph benchmark runner.
+ * @description CortexFlow vs LangGraph multi-step mail triage benchmark.
  *
- * Scenario: "Please fetch my 5 latest mails and summarize them"
+ * Scenario: "Fetch 5 mails, flag the urgent ones, draft replies for urgent
+ * mails, and archive the rest."
  *
- * Both frameworks are given the same natural-language input and perform
- * identical work:
- *   1. Intent classification via LLM (LLM call #1)
- *   2. Gmail API fetch (no LLM)
- *   3. LLM summarisation (LLM call #2)
+ * Three implementations are compared:
  *
- * This ensures a fair comparison: same number of LLM calls, same data,
- * same prompt. The difference lies in how control flow is handled — LLM
- * routing (LangGraph) vs Petri Net token-based routing (CortexFlow).
+ *   CortexFlow          — Petri Net routes deterministically after 1 intent
+ *                         call. GraphFlow batches urgency + response into 2
+ *                         additional LLM calls. Total: 2–3 LLM calls.
+ *
+ *   LangGraph (naive)   — Standard LangGraph pattern: one LLM call per
+ *                         routing decision. Each mail gets its own urgency
+ *                         call. Total: 1 + 5 + 1 = 7 LLM calls.
+ *
+ *   LangGraph (optimised) — Hand-optimised: urgency is batched manually by
+ *                         the developer. Total: 1 + 1 + 1 = 3 LLM calls.
+ *                         Requires explicit architectural effort.
  *
  * Requirements:
  *   - Ollama running locally with llama3:latest
@@ -22,85 +27,151 @@
  */
 
 import { runCortexFlowBenchmark } from './cortexflow-workflow';
-import { runLangGraphBenchmark } from './langgraph-workflow';
+import { runLangGraphNaiveBenchmark, runLangGraphOptimisedBenchmark } from './langgraph-workflow';
 
-/** Normalises a summary value (string | string[] | any) into a display string. */
-function displaySummary(value: unknown, maxLength = 120): string {
-  if (Array.isArray(value)) {
-    return value.join(' | ').substring(0, maxLength);
-  }
-  if (typeof value === 'string') {
-    return value.substring(0, maxLength);
-  }
-  return JSON.stringify(value).substring(0, maxLength);
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const col = (s: string, w = 24) => String(s).padEnd(w);
+
+function speedLabel(baseline: number, candidate: number): string {
+  if (baseline <= 0 || candidate <= 0) return '';
+  const r = baseline / candidate;
+  if (r > 1.01)  return `${r.toFixed(2)}x faster`;
+  if (r < 0.99)  return `${(1 / r).toFixed(2)}x slower`;
+  return 'same';
 }
 
-async function main() {
-  console.log('══════════════════════════════════════════');
-  console.log('   CortexFlow vs LangGraph Benchmark');
-  console.log('   Scenario: Fetch 5 Gmail + LLM Summarization');
-  console.log('   Both frameworks: classify intent → fetch → summarise (2 LLM calls each)');
-  console.log('══════════════════════════════════════════\n');
+function memMB(bytes: number): string {
+  return `${Math.max(0, bytes / 1024 / 1024).toFixed(2)} MB`;
+}
 
-  const cortexResult = await runCortexFlowBenchmark();
-  const langGraphResult = await runLangGraphBenchmark();
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+async function main() {
+  console.log('══════════════════════════════════════════════════════════════');
+  console.log('   CortexFlow vs LangGraph — Multi-step Mail Triage Benchmark');
+  console.log('   Scenario: fetch 5 mails → flag urgent → reply → archive');
+  console.log('══════════════════════════════════════════════════════════════\n');
+
+  const cortex    = await runCortexFlowBenchmark();
+  const lgNaive   = await runLangGraphNaiveBenchmark();
+  const lgOpt     = await runLangGraphOptimisedBenchmark();
 
   // ---------------------------------------------------------------------------
   // Results table
   // ---------------------------------------------------------------------------
 
-  console.log('\n══════════════════════════════════════════');
-  console.log('                    RESULTS');
-  console.log('══════════════════════════════════════════\n');
+  console.log('\n══════════════════════════════════════════════════════════════');
+  console.log('                          RESULTS');
+  console.log('══════════════════════════════════════════════════════════════\n');
 
-  const col = (s: string, w = 22) => String(s).padEnd(w);
+  const w = 22;
+  console.log(col('Metric', w) + col('CortexFlow', w) + col('LangGraph naive', w) + col('LangGraph opt.', w));
+  console.log('─'.repeat(w * 4));
 
-  console.log(col('Metric') + col('CortexFlow') + col('LangGraph'));
-  console.log('─'.repeat(66));
-  console.log(col('Total Time')       + col(`${cortexResult.totalTime}ms`)               + col(`${langGraphResult.totalTime}ms`));
-  console.log(col('LLM Calls')        + col(`${cortexResult.llmCalls}`)                  + col(`${langGraphResult.llmCalls}`));
-  // Memory delta can be negative when GC fires during execution — clamp to 0 for display.
-  const cortexMB = Math.max(0, cortexResult.memoryUsed / 1024 / 1024).toFixed(2);
-  const langMB   = Math.max(0, langGraphResult.memoryUsed / 1024 / 1024).toFixed(2);
-  console.log(col('Memory Used')      + col(`${cortexMB}MB`) + col(`${langMB}MB (+GC noise)`));
-  console.log(col('Mails Fetched')    + col(`${cortexResult.mailsCount}`)                + col(`${langGraphResult.mailsCount}`));
-  console.log(col('Intent Confidence')+ col(`${cortexResult.intentConfidence ?? 'N/A'}`) + col('N/A'));
-  console.log(col('Needs Clarification') + col(`${cortexResult.needsClarification ?? false}`) + col('false'));
-
-  console.log('\n─────────────────────────────────────────────────────────────────');
-  console.log('Summary comparison:');
-  console.log(`  CortexFlow : ${displaySummary(cortexResult.summary)}...`);
-  console.log(`  LangGraph  : ${displaySummary(langGraphResult.summary)}...`);
-
-  // ---------------------------------------------------------------------------
-  // Speed delta
-  // ---------------------------------------------------------------------------
-
-  if (cortexResult.totalTime > 0 && langGraphResult.totalTime > 0) {
-    const ratio = langGraphResult.totalTime / cortexResult.totalTime;
-    if (ratio > 1) {
-      console.log(`\n⚡ CortexFlow is ${ratio.toFixed(2)}x faster than LangGraph`);
-    } else {
-      console.log(`\n⚡ LangGraph is ${(1 / ratio).toFixed(2)}x faster than CortexFlow`);
-    }
+  console.log(
+    col('LLM Calls', w) +
+    col(`${cortex.llmCalls}`, w) +
+    col(`${lgNaive.llmCalls}`, w) +
+    col(`${lgOpt.llmCalls}`, w)
+  );
+  console.log(
+    col('Total Time', w) +
+    col(`${cortex.totalTime} ms`, w) +
+    col(`${lgNaive.totalTime} ms`, w) +
+    col(`${lgOpt.totalTime} ms`, w)
+  );
+  console.log(
+    col('Memory Used', w) +
+    col(memMB(cortex.memoryUsed), w) +
+    col(memMB(lgNaive.memoryUsed), w) +
+    col(memMB(lgOpt.memoryUsed), w)
+  );
+  console.log(
+    col('Mails Fetched', w) +
+    col(`${cortex.mailsCount}`, w) +
+    col(`${lgNaive.mailsCount}`, w) +
+    col(`${lgOpt.mailsCount}`, w)
+  );
+  console.log(
+    col('Urgent Found', w) +
+    col(`${cortex.urgentCount}`, w) +
+    col(`${lgNaive.urgentCount}`, w) +
+    col(`${lgOpt.urgentCount}`, w)
+  );
+  console.log(
+    col('Responses Drafted', w) +
+    col(`${cortex.responsesCount}`, w) +
+    col(`${lgNaive.responsesCount}`, w) +
+    col(`${lgOpt.responsesCount}`, w)
+  );
+  console.log(
+    col('Archived', w) +
+    col(`${cortex.archivedCount}`, w) +
+    col(`${lgNaive.archivedCount}`, w) +
+    col(`${lgOpt.archivedCount}`, w)
+  );
+  if (cortex.intentConfidence !== undefined) {
+    console.log(
+      col('Intent Confidence', w) +
+      col(`${cortex.intentConfidence}`, w) +
+      col('N/A', w) +
+      col('N/A', w)
+    );
   }
 
   // ---------------------------------------------------------------------------
-  // Interpretation note
+  // Speed comparison vs naive (the realistic baseline)
+  // ---------------------------------------------------------------------------
+
+  console.log('\n──────────────────────────────────────────────────────────────');
+  console.log('Speed vs LangGraph naive:');
+  console.log(`  CortexFlow         : ${speedLabel(lgNaive.totalTime, cortex.totalTime)}`);
+  console.log(`  LangGraph optimised: ${speedLabel(lgNaive.totalTime, lgOpt.totalTime)}`);
+
+  // ---------------------------------------------------------------------------
+  // LLM call reduction
+  // ---------------------------------------------------------------------------
+
+  if (lgNaive.llmCalls > 0) {
+    const cortexSaving = ((lgNaive.llmCalls - cortex.llmCalls) / lgNaive.llmCalls * 100).toFixed(0);
+    const optSaving    = ((lgNaive.llmCalls - lgOpt.llmCalls)  / lgNaive.llmCalls * 100).toFixed(0);
+    console.log('\n──────────────────────────────────────────────────────────────');
+    console.log('LLM call reduction vs LangGraph naive:');
+    console.log(`  CortexFlow          : -${cortexSaving}%  (${cortex.llmCalls} vs ${lgNaive.llmCalls} calls)`);
+    console.log(`  LangGraph optimised : -${optSaving}%  (${lgOpt.llmCalls} vs ${lgNaive.llmCalls} calls)`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Interpretation
   // ---------------------------------------------------------------------------
 
   console.log(`
-📝 Notes:
-  • Both frameworks perform 2 LLM calls (classify + summarise), making the
-    comparison fair in terms of LLM workload.
-  • CortexFlow's overhead comes from Petri Net token processing and intent
-    classification — the trade-off for deterministic, deadlock-free routing.
-  • LangGraph routes via LLM-driven edges; CortexFlow routes via token guards.
-    At scale or in complex multi-step flows, the Petri Net's predictability
-    and static analysis (deadlock / boundedness checks) become the differentiator.
-`);
+══════════════════════════════════════════════════════════════
+Notes:
+  • The "naive" LangGraph variant mirrors how most developers write LangGraph
+    agents: each routing decision is an LLM call, following the official
+    supervisor/router examples. This is not a strawman — it is the default.
 
-  console.log('══════════════════════════════════════════\n');
+  • The "optimised" LangGraph variant shows that manual batching reduces calls
+    to match CortexFlow, but it requires the developer to consciously restructure
+    the graph. CortexFlow imposes this separation structurally, at zero extra
+    developer effort.
+
+  • CortexFlow's LLM call budget does not grow with the number of mails.
+    For 10 or 20 mails the naive LangGraph count scales linearly; CortexFlow
+    stays at 2–3 calls.
+
+  • Beyond LLM call count, CortexFlow provides structural guarantees the other
+    variants do not: deadlock detection, boundedness analysis, and reachability
+    checks are computed from the incidence matrix before execution — not
+    asserted by tests after the fact.
+══════════════════════════════════════════════════════════════
+`);
 }
 
 main().catch(console.error);

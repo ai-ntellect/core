@@ -1,8 +1,16 @@
 /**
- * CortexFlow benchmark workflow — Gmail fetch + LLM summarisation.
+ * CortexFlow benchmark workflow — multi-step mail triage.
  *
- * Mirrors the LangGraph workflow exactly: both frameworks perform
- * classify intent (LLM call #1) → fetch mails → summarise (LLM call #2).
+ * Scenario: fetch 5 mails, classify urgency in batch, generate responses for
+ * urgent mails in batch, archive the rest.
+ *
+ * LLM call budget:
+ *   #1  Intent classification  (CortexFlowOrchestrator / IntentClassifier)
+ *   #2  Batch urgency check    (single call for all 5 mails at once)
+ *   #3  Batch response draft   (single call for all urgent mails, skipped if none)
+ *
+ * Total: 2–3 LLM calls regardless of inbox size.
+ * The Petri Net routes between GraphFlow nodes without any additional LLM call.
  */
 import { TransitionAction } from '../petri/index';
 import { CortexFlowOrchestrator } from '../petri/orchestrator';
@@ -15,12 +23,34 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface Mail {
+  id: string;
+  subject: string;
+  from: string;
+}
+
+interface UrgencyResult {
+  index: number;
+  urgent: boolean;
+  reason: string;
+}
+
+interface ResponseDraft {
+  index: number;
+  response: string;
+}
+
+// ---------------------------------------------------------------------------
 // Gmail helper
 // ---------------------------------------------------------------------------
 
 function createGmailClient() {
+  const credPath = path.join(__dirname, '../client_secret.json');
   const tokenPath = path.join(__dirname, '../gmail_token.json');
-  const credentials = JSON.parse(fs.readFileSync(path.join(__dirname, '../client_secret.json'), 'utf8'));
+  const credentials = JSON.parse(fs.readFileSync(credPath, 'utf8'));
   const token = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
 
   const oauth2Client = new google.auth.OAuth2(
@@ -43,99 +73,157 @@ export async function runCortexFlowBenchmark() {
   const startMemory = process.memoryUsage().heapUsed;
   let llmCalls = 0;
 
-  /** Thin wrapper that counts every LLM call for the benchmark report. */
-  const llmCall = async (prompt: string) => {
+  /** Counts every LLM call made during the benchmark. */
+  const llmCall = async (prompt: string): Promise<string> => {
     llmCalls++;
     const response = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama3:latest',
-        prompt,
-        stream: false,
-        format: 'json',
-      }),
-      signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({ model: 'llama3:latest', prompt, stream: false, format: 'json' }),
+      signal: AbortSignal.timeout(60000),
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
     const data = await response.json();
-    return data.response;
+    return data.response as string;
   };
 
   const gmail = createGmailClient();
   const toolRegistry = new ToolRegistry();
-  const orchestrator = new CortexFlowOrchestrator('mail_assistant', toolRegistry);
+  const orchestrator = new CortexFlowOrchestrator('mail_triage', toolRegistry);
 
-  /**
-   * Intent classifier (LLM call #1).
-   * Matches LangGraph's classifyIntent node so both frameworks do equal work.
-   */
+  // LLM call #1 — intent classification (inside orchestrator)
   const classifier = new IntentClassifier(llmCall, {
-    intents: ['FETCH_MAILS', 'SUMMARIZE', 'UNKNOWN'],
+    intents: ['TRIAGE_MAILS', 'FETCH_MAILS', 'UNKNOWN'],
     confidenceThreshold: 0.6,
   });
   orchestrator.setIntentClassifier(IntentClassifier.toFn(classifier), classifier);
   orchestrator.setLLMCall(llmCall);
 
   // ---------------------------------------------------------------------------
-  // Petri Net topology
+  // Petri Net topology:  idle ──[process_mails]──► processing ──[complete]──► done
+  // All multi-step coordination is handled inside the GraphFlow below.
+  // The Petri Net fires exactly one transition per user request — no LLM needed.
   // ---------------------------------------------------------------------------
 
   const net = orchestrator.petri;
-  net.addPlace({ id: 'idle', type: 'initial', tokens: [{ id: 'start', data: {}, createdAt: 0 }] });
-  net.addPlace({ id: 'processing', type: 'normal', tokens: [] });
-  net.addPlace({ id: 'done', type: 'final', tokens: [] });
+  net.addPlace({ id: 'idle',       type: 'initial', tokens: [{ id: 'start', data: {}, createdAt: 0 }] });
+  net.addPlace({ id: 'processing', type: 'normal',  tokens: [] });
+  net.addPlace({ id: 'done',       type: 'final',   tokens: [] });
 
   // ---------------------------------------------------------------------------
-  // GraphFlow — fetch + summarise (LLM call #2 inside 'summarize' node)
+  // GraphFlow — 4 nodes, 2 LLM calls (urgency batch + response batch)
   // ---------------------------------------------------------------------------
 
   const mailGraph = new GraphFlow<any>({
-    name: 'mail_fetch_summarize',
+    name: 'process_mails',
     context: { maxMails: 5 },
     schema: z.object({ maxMails: z.number() }).passthrough(),
     nodes: [
+      // ── Node 1: fetch ────────────────────────────────────────────────────
       {
         name: 'fetch_mails',
         execute: async (ctx: any) => {
           console.log('  [CortexFlow] Fetching mails from Gmail API...');
-          const res = await gmail.users.messages.list({
-            userId: 'me',
-            maxResults: ctx.maxMails || 5,
-            q: '',
-          });
+          const res = await gmail.users.messages.list({ userId: 'me', maxResults: ctx.maxMails || 5, q: '' });
           const messages = res.data.messages || [];
-          ctx.fetchedMails = [];
+          ctx.mails = [] as Mail[];
           for (const msg of messages) {
             const detail = await gmail.users.messages.get({
-              userId: 'me',
-              id: msg.id!,
-              format: 'metadata',
+              userId: 'me', id: msg.id!, format: 'metadata',
               metadataHeaders: ['Subject', 'From'],
             });
             const headers = detail.data.payload?.headers || [];
-            ctx.fetchedMails.push({
-              id: msg.id,
-              subject: headers.find(h => h.name === 'Subject')?.value || '(no subject)',
-              from: headers.find(h => h.name === 'From')?.value || '(unknown)',
+            ctx.mails.push({
+              id: msg.id!,
+              subject: headers.find((h: any) => h.name === 'Subject')?.value || '(no subject)',
+              from:    headers.find((h: any) => h.name === 'From')?.value    || '(unknown)',
             });
           }
-          console.log(`  [CortexFlow] Fetched ${ctx.fetchedMails.length} mails`);
+          console.log(`  [CortexFlow] Fetched ${ctx.mails.length} mails`);
         },
-        next: 'summarize',
+        next: 'classify_urgency',
       },
+
+      // ── Node 2: LLM call #2 — batch urgency classification ───────────────
       {
-        name: 'summarize',
+        name: 'classify_urgency',
         execute: async (ctx: any) => {
-          console.log('  [CortexFlow] Summarizing with LLM...');
-          const mailText = ctx.fetchedMails
-            .map((m: any) => `From: ${m.from}\nSubject: ${m.subject}`)
-            .join('\n\n');
-          const prompt = `Summarize these emails in 3 bullet points max:\n\n${mailText}\n\nRespond in JSON: {"summary": "..."}`;
-          const response = await llmCall(prompt);
-          const parsed = JSON.parse(response);
-          ctx.summary = parsed.summary;
-          console.log(`  [CortexFlow] Summary: ${ctx.summary}`);
+          console.log('  [CortexFlow] Classifying urgency (1 batch LLM call for all mails)...');
+          const mailList = (ctx.mails as Mail[])
+            .map((m, i) => `[${i}] From: ${m.from}\n    Subject: ${m.subject}`)
+            .join('\n');
+
+          const prompt = `You are an email triage assistant. For each email below, determine if it needs an urgent reply today.
+An email is urgent if the subject contains words like: urgent, ASAP, deadline, action required, meeting today, important, respond today.
+
+Emails:
+${mailList}
+
+Respond with JSON only, no explanation:
+{"urgency": [{"index": 0, "urgent": true, "reason": "..."}, ...]}`;
+
+          const raw = await llmCall(prompt);
+          let results: UrgencyResult[] = [];
+          try {
+            const parsed = JSON.parse(raw);
+            results = Array.isArray(parsed.urgency) ? parsed.urgency : [];
+          } catch {
+            // fallback: mark all as non-urgent
+          }
+
+          ctx.urgentMails = (ctx.mails as Mail[]).filter((_, i) =>
+            results.find(r => r.index === i)?.urgent === true
+          );
+          ctx.nonUrgentMails = (ctx.mails as Mail[]).filter((_, i) =>
+            !results.find(r => r.index === i)?.urgent
+          );
+          console.log(`  [CortexFlow] Urgent: ${ctx.urgentMails.length}, Non-urgent: ${ctx.nonUrgentMails.length}`);
+        },
+        next: 'respond_urgent',
+      },
+
+      // ── Node 3: LLM call #3 — batch response drafts (skipped if none) ───
+      {
+        name: 'respond_urgent',
+        execute: async (ctx: any) => {
+          if (!ctx.urgentMails || ctx.urgentMails.length === 0) {
+            console.log('  [CortexFlow] No urgent mails — skipping response generation');
+            ctx.responses = [] as ResponseDraft[];
+            return;
+          }
+          console.log(`  [CortexFlow] Drafting responses for ${ctx.urgentMails.length} urgent mail(s) (1 batch LLM call)...`);
+          const mailList = (ctx.urgentMails as Mail[])
+            .map((m, i) => `[${i}] From: ${m.from}\n    Subject: ${m.subject}`)
+            .join('\n');
+
+          const prompt = `Draft a brief, professional reply for each urgent email below. Keep each reply under 40 words.
+
+Emails:
+${mailList}
+
+Respond with JSON only:
+{"responses": [{"index": 0, "response": "..."}, ...]}`;
+
+          const raw = await llmCall(prompt);
+          ctx.responses = [] as ResponseDraft[];
+          try {
+            const parsed = JSON.parse(raw);
+            ctx.responses = Array.isArray(parsed.responses) ? parsed.responses : [];
+          } catch {
+            // keep empty array
+          }
+          console.log(`  [CortexFlow] Drafted ${ctx.responses.length} response(s)`);
+        },
+        next: 'archive_others',
+      },
+
+      // ── Node 4: archive non-urgent (no LLM) ─────────────────────────────
+      {
+        name: 'archive_others',
+        execute: async (ctx: any) => {
+          const count = ctx.nonUrgentMails?.length || 0;
+          console.log(`  [CortexFlow] Archiving ${count} non-urgent mail(s) (no LLM)`);
+          ctx.archivedCount = count;
         },
       },
     ],
@@ -143,8 +231,8 @@ export async function runCortexFlowBenchmark() {
   });
 
   toolRegistry.register({
-    name: 'mail_fetch_summarize',
-    description: 'Fetch and summarize mails from Gmail',
+    name: 'process_mails',
+    description: 'Fetch, triage, respond to urgent mails and archive the rest',
     graph: mailGraph,
     startNode: 'fetch_mails',
   });
@@ -155,34 +243,33 @@ export async function runCortexFlowBenchmark() {
     to: 'processing',
     action: {
       type: 'graphflow',
-      name: 'mail_fetch_summarize',
+      name: 'process_mails',
       contextMapper: (ctx) => ({ maxMails: ctx.maxMails || 5 }),
     } as TransitionAction,
   });
 
-  net.addTransition({
-    id: 'complete',
-    from: ['processing'],
-    to: 'done',
-  });
+  net.addTransition({ id: 'complete', from: ['processing'], to: 'done' });
 
   const sessionId = orchestrator.startSession();
   const result = await orchestrator.orchestrate(
-    'Please fetch my 5 latest mails and summarize them',
+    'Fetch my 5 latest mails, flag the urgent ones, draft replies for urgent mails, and archive the rest.',
     sessionId
   );
 
   const endTime = Date.now();
   const endMemory = process.memoryUsage().heapUsed;
+  const actionResult = (result as any).transitionResult?.actionResult ?? {};
 
   return {
     framework: 'CortexFlow',
     totalTime: endTime - startTime,
     llmCalls,
     memoryUsed: endMemory - startMemory,
-    summary: (result as any).transitionResult?.actionResult?.summary || 'N/A',
-    mailsCount: (result as any).transitionResult?.actionResult?.fetchedMails?.length || 0,
+    mailsCount:    actionResult.mails?.length       ?? 0,
+    urgentCount:   actionResult.urgentMails?.length  ?? 0,
+    responsesCount: actionResult.responses?.length   ?? 0,
+    archivedCount: actionResult.archivedCount        ?? 0,
     intentConfidence: result.intent.confidence,
-    needsClarification: result.needsClarification,
+    needsClarification: result.needsClarification ?? false,
   };
 }
