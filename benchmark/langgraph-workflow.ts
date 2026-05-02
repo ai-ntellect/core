@@ -1,63 +1,35 @@
 /**
  * LangGraph benchmark workflows — multi-step mail triage.
  *
- * Two variants are exported to show the architectural spectrum:
+ * Two variants:
  *
- *   runLangGraphNaiveBenchmark    — idiomatic LangGraph usage, one LLM call
- *                                   per routing decision (how most developers
- *                                   write it following the official examples).
- *                                   LLM calls: 1 intent + 5 urgency + 1 response = 7
+ *   runLangGraphNaiveBenchmark     — one LLM call per urgency decision (N mails = N calls).
+ *                                    Mirrors the standard LangGraph supervisor/router pattern.
+ *                                    LLM calls: 1 intent + 5 urgency + 0–1 response = 6–7
  *
- *   runLangGraphOptimizedBenchmark — hand-optimised: urgency classification is
- *                                    batched manually. Requires the developer to
- *                                    consciously restructure the graph.
- *                                    LLM calls: 1 intent + 1 batch urgency + 1 response = 3
- *
- * CortexFlow (see cortexflow-workflow.ts) reaches 2–3 calls structurally,
- * without requiring the developer to think about batching — the Petri Net
- * enforces the separation between semantic analysis and coordination.
+ *   runLangGraphOptimisedBenchmark — urgency batched manually by the developer.
+ *                                    LLM calls: 1 intent + 1 urgency batch + 0–1 response = 2–3
  */
-import { ChatOllama } from '@langchain/ollama';
 import { StateGraph, Annotation } from '@langchain/langgraph';
 import { google } from 'googleapis';
 import * as fs from 'fs';
 import * as path from 'path';
-
-// ---------------------------------------------------------------------------
-// LLM setup
-// ---------------------------------------------------------------------------
-
-let llmCallCount = 0;
-
-const _model = new ChatOllama({
-  model: 'llama3:latest',
-  baseUrl: 'http://localhost:11434',
-  temperature: 0,
-  format: 'json',
-});
-
-/** Thin wrapper that counts every LLM call for the benchmark report. */
-const model = {
-  async invoke(input: Parameters<typeof _model.invoke>[0]) {
-    llmCallCount++;
-    return _model.invoke(input);
-  },
-};
+import { LLMCall, safeParse } from './llm-client';
 
 // ---------------------------------------------------------------------------
 // State definition
 // ---------------------------------------------------------------------------
 
 const MailState = Annotation.Root({
-  messages:     Annotation<Array<{ role: 'user' | 'assistant'; content: string }>>({
+  messages:      Annotation<Array<{ role: 'user' | 'assistant'; content: string }>>({
     reducer: (curr, update) => curr.concat(update),
   }),
-  intent:       Annotation<string>(),
-  mails:        Annotation<any[]>(),
-  urgentMails:  Annotation<any[]>(),
-  responses:    Annotation<any[]>(),
+  intent:        Annotation<string>(),
+  mails:         Annotation<any[]>(),
+  urgentMails:   Annotation<any[]>(),
+  responses:     Annotation<any[]>(),
   archivedCount: Annotation<number>(),
-  maxMails:     Annotation<number>(),
+  maxMails:      Annotation<number>(),
 });
 
 // ---------------------------------------------------------------------------
@@ -65,10 +37,9 @@ const MailState = Annotation.Root({
 // ---------------------------------------------------------------------------
 
 async function fetchMails(maxResults = 5) {
-  console.log('  [LangGraph] Fetching mails from Gmail API...');
+  console.log('  [LangGraph] Fetching mails...');
   const credentials = JSON.parse(fs.readFileSync(path.join(__dirname, '../client_secret.json'), 'utf8'));
   const token       = JSON.parse(fs.readFileSync(path.join(__dirname, '../gmail_token.json'), 'utf8'));
-
   const oauth2Client = new google.auth.OAuth2(
     credentials.web.client_id,
     credentials.web.client_secret,
@@ -80,7 +51,6 @@ async function fetchMails(maxResults = 5) {
   const res      = await gmail.users.messages.list({ userId: 'me', maxResults, q: '' });
   const messages = res.data.messages || [];
   const mails: any[] = [];
-
   for (const msg of messages) {
     const detail  = await gmail.users.messages.get({ userId: 'me', id: msg.id!, format: 'metadata', metadataHeaders: ['Subject', 'From'] });
     const headers = detail.data.payload?.headers || [];
@@ -93,136 +63,96 @@ async function fetchMails(maxResults = 5) {
   return mails;
 }
 
-/** Safely parse JSON produced by the LLM; returns `fallback` on failure. */
-function safeParse<T>(raw: string, fallback: T): T {
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
-}
-
 // ---------------------------------------------------------------------------
-// Shared nodes (identical between both variants)
+// Node factories (capture llm via closure)
 // ---------------------------------------------------------------------------
 
-async function classifyIntent(state: typeof MailState.State) {
-  console.log('  [LangGraph] Classifying intent...');
-  const last = state.messages[state.messages.length - 1]?.content || '';
-  const prompt = `You are an intent classifier. Available intents: TRIAGE_MAILS, FETCH_MAILS, UNKNOWN.
-Classify the user message and extract parameters.
-User message: "${last}"
-Respond with JSON only: {"intent": "INTENT", "confidence": 0.0-1.0, "params": {"count": 5}}`;
-
-  const res    = await model.invoke([{ role: 'user', content: prompt }]);
-  const parsed = safeParse<any>(res.content as string, { intent: 'TRIAGE_MAILS', params: { count: 5 } });
-  console.log(`  [LangGraph] Intent: ${parsed.intent}`);
-  return { intent: parsed.intent, maxMails: parsed.params?.count || 5 };
-}
-
-async function fetchMailsNode(state: typeof MailState.State) {
-  const mails = await fetchMails(state.maxMails || 5);
-  console.log(`  [LangGraph] Fetched ${mails.length} mails`);
-  return { mails };
-}
-
-async function generateResponsesNode(state: typeof MailState.State) {
-  if (!state.urgentMails || state.urgentMails.length === 0) {
-    console.log('  [LangGraph] No urgent mails — skipping response generation');
-    return { responses: [] };
-  }
-  console.log(`  [LangGraph] Drafting responses for ${state.urgentMails.length} urgent mail(s)...`);
-  const mailList = state.urgentMails
-    .map((m: any, i: number) => `[${i}] From: ${m.from}\n    Subject: ${m.subject}`)
-    .join('\n');
-  const prompt = `Draft a brief, professional reply for each urgent email below. Keep each reply under 40 words.
-Emails:\n${mailList}\nRespond with JSON only: {"responses": [{"index": 0, "response": "..."}, ...]}`;
-
-  const res    = await model.invoke([{ role: 'user', content: prompt }]);
-  const parsed = safeParse<any>(res.content as string, { responses: [] });
-  const responses = Array.isArray(parsed.responses) ? parsed.responses : [];
-  console.log(`  [LangGraph] Drafted ${responses.length} response(s)`);
-  return { responses };
-}
-
-async function archiveNode(state: typeof MailState.State) {
-  const urgentIds = new Set((state.urgentMails || []).map((m: any) => m.id));
-  const count     = (state.mails || []).filter((m: any) => !urgentIds.has(m.id)).length;
-  console.log(`  [LangGraph] Archiving ${count} non-urgent mail(s) (no LLM)`);
-  return { archivedCount: count };
-}
-
-// ---------------------------------------------------------------------------
-// VARIANT A — Naive: one LLM call per urgency decision (5 calls for 5 mails)
-//
-// This mirrors how most developers use LangGraph, following the official
-// "supervisor/router" pattern where each routing decision is an LLM call.
-// ---------------------------------------------------------------------------
-
-/**
- * Decides urgency for each mail with a separate LLM call.
- * This is the standard LangGraph pattern: one node = one LLM call.
- * For N mails → N LLM calls.
- */
-async function decideUrgencyNaive(state: typeof MailState.State) {
-  console.log(`  [LangGraph/naive] Checking urgency mail by mail (${state.mails.length} LLM calls)...`);
-  const urgentMails: any[] = [];
-
-  for (let i = 0; i < state.mails.length; i++) {
-    const mail   = state.mails[i];
-    const prompt = `Is this email urgent (needs a reply today)?
-From: ${mail.from}
-Subject: ${mail.subject}
-Urgent means: deadline today, ASAP, meeting today, action required.
-Respond with JSON only: {"urgent": true, "reason": "..."}`;
-
-    const res    = await model.invoke([{ role: 'user', content: prompt }]);
-    const parsed = safeParse<any>(res.content as string, { urgent: false });
-    if (parsed.urgent === true) urgentMails.push(mail);
+function makeNodes(llm: LLMCall, variant: 'naive' | 'optimised') {
+  async function classifyIntent(state: typeof MailState.State) {
+    console.log(`  [LangGraph/${variant}] Classifying intent...`);
+    const last   = state.messages[state.messages.length - 1]?.content || '';
+    const raw    = await llm.call(
+      `Intent classifier. Intents: TRIAGE_MAILS, FETCH_MAILS, UNKNOWN.\nMessage: "${last}"\nJSON: {"intent":"INTENT","params":{"count":5}}`
+    );
+    const parsed = safeParse<any>(raw, { intent: 'TRIAGE_MAILS', params: { count: 5 } });
+    return { intent: parsed.intent, maxMails: parsed.params?.count || 5 };
   }
 
-  console.log(`  [LangGraph/naive] Urgent: ${urgentMails.length}`);
-  return { urgentMails };
+  async function fetchMailsNode(state: typeof MailState.State) {
+    const mails = await fetchMails(state.maxMails || 5);
+    console.log(`  [LangGraph/${variant}] Fetched ${mails.length} mails`);
+    return { mails };
+  }
+
+  /** Naive: one LLM call per mail. */
+  async function decideUrgencyNaive(state: typeof MailState.State) {
+    console.log(`  [LangGraph/naive] Urgency check per mail (${state.mails.length} LLM calls)...`);
+    const urgentMails: any[] = [];
+    for (const mail of state.mails) {
+      const raw    = await llm.call(
+        `Is this email urgent (needs reply today)? Urgent = security alert/deadline/ASAP/action required.\nFrom: ${mail.from}\nSubject: ${mail.subject}\nJSON: {"urgent":true}`
+      );
+      const parsed = safeParse<any>(raw, { urgent: false });
+      if (parsed.urgent === true) urgentMails.push(mail);
+    }
+    console.log(`  [LangGraph/naive] Urgent: ${urgentMails.length}`);
+    return { urgentMails };
+  }
+
+  /** Optimised: one batch LLM call for all mails. */
+  async function decideUrgencyBatch(state: typeof MailState.State) {
+    console.log('  [LangGraph/optimised] Batch urgency (1 LLM call)...');
+    const mailList = state.mails.map((m: any, i: number) => `[${i}] From: ${m.from} | Subject: ${m.subject}`).join('\n');
+    const raw      = await llm.call(
+      `For each email, is it urgent (needs reply today)?\n\nEmails:\n${mailList}\n\nJSON: {"urgency":[{"index":0,"urgent":true},...]}`
+    );
+    const parsed   = safeParse<any>(raw, { urgency: [] });
+    const results  = Array.isArray(parsed.urgency) ? parsed.urgency : [];
+    const urgentMails = state.mails.filter((_: any, i: number) => results.find((r: any) => r.index === i)?.urgent === true);
+    console.log(`  [LangGraph/optimised] Urgent: ${urgentMails.length}`);
+    return { urgentMails };
+  }
+
+  async function generateResponsesNode(state: typeof MailState.State) {
+    if (!state.urgentMails?.length) {
+      console.log(`  [LangGraph/${variant}] No urgent mails — skipping`);
+      return { responses: [] };
+    }
+    console.log(`  [LangGraph/${variant}] Batch response draft (1 LLM call)...`);
+    const mailList = state.urgentMails.map((m: any, i: number) => `[${i}] From: ${m.from} | Subject: ${m.subject}`).join('\n');
+    const raw      = await llm.call(
+      `Draft a brief professional reply (<40 words) for each urgent email.\n\nEmails:\n${mailList}\n\nJSON: {"responses":[{"index":0,"response":"..."},...]}`
+    );
+    const parsed   = safeParse<any>(raw, { responses: [] });
+    const responses = Array.isArray(parsed.responses) ? parsed.responses : [];
+    console.log(`  [LangGraph/${variant}] Drafted ${responses.length} response(s)`);
+    return { responses };
+  }
+
+  async function archiveNode(state: typeof MailState.State) {
+    const urgentIds = new Set((state.urgentMails || []).map((m: any) => m.id));
+    const count     = (state.mails || []).filter((m: any) => !urgentIds.has(m.id)).length;
+    console.log(`  [LangGraph/${variant}] Archive ${count} mail(s) (no LLM)`);
+    return { archivedCount: count };
+  }
+
+  return { classifyIntent, fetchMailsNode, decideUrgencyNaive, decideUrgencyBatch, generateResponsesNode, archiveNode };
 }
 
 // ---------------------------------------------------------------------------
-// VARIANT B — Optimised: one batch LLM call for all urgency decisions
-//
-// The developer explicitly restructures the node to batch all mails in one
-// prompt. This requires manual effort and architectural awareness.
+// Graph builder
 // ---------------------------------------------------------------------------
 
-/**
- * Decides urgency for all mails in a single batch LLM call.
- * This requires the developer to consciously choose batching.
- */
-async function decideUrgencyBatch(state: typeof MailState.State) {
-  console.log('  [LangGraph/optimised] Batch urgency check (1 LLM call for all mails)...');
-  const mailList = state.mails
-    .map((m: any, i: number) => `[${i}] From: ${m.from}\n    Subject: ${m.subject}`)
-    .join('\n');
-  const prompt = `For each email below, determine if it needs an urgent reply today.
-An email is urgent if the subject contains: urgent, ASAP, deadline, action required, meeting today.
-Emails:\n${mailList}\nRespond with JSON only: {"urgency": [{"index": 0, "urgent": true, "reason": "..."}, ...]}`;
+function buildGraph(llm: LLMCall, variant: 'naive' | 'optimised') {
+  const nodes = makeNodes(llm, variant);
+  const urgencyNode = variant === 'naive' ? nodes.decideUrgencyNaive : nodes.decideUrgencyBatch;
 
-  const res     = await model.invoke([{ role: 'user', content: prompt }]);
-  const parsed  = safeParse<any>(res.content as string, { urgency: [] });
-  const results: any[] = Array.isArray(parsed.urgency) ? parsed.urgency : [];
-
-  const urgentMails = state.mails.filter((_: any, i: number) =>
-    results.find((r: any) => r.index === i)?.urgent === true
-  );
-  console.log(`  [LangGraph/optimised] Urgent: ${urgentMails.length}`);
-  return { urgentMails };
-}
-
-// ---------------------------------------------------------------------------
-// Graph compilation
-// ---------------------------------------------------------------------------
-
-function buildGraph(urgencyNode: (s: typeof MailState.State) => Promise<any>) {
   return new StateGraph(MailState)
-    .addNode('classify',           classifyIntent)
-    .addNode('fetch_mails',        fetchMailsNode)
+    .addNode('classify',           nodes.classifyIntent)
+    .addNode('fetch_mails',        nodes.fetchMailsNode)
     .addNode('decide_urgency',     urgencyNode)
-    .addNode('generate_responses', generateResponsesNode)
-    .addNode('archive',            archiveNode)
+    .addNode('generate_responses', nodes.generateResponsesNode)
+    .addNode('archive',            nodes.archiveNode)
     .addEdge('__start__',          'classify')
     .addEdge('classify',           'fetch_mails')
     .addEdge('fetch_mails',        'decide_urgency')
@@ -232,49 +162,40 @@ function buildGraph(urgencyNode: (s: typeof MailState.State) => Promise<any>) {
     .compile();
 }
 
-const naiveGraph     = buildGraph(decideUrgencyNaive);
-const optimisedGraph = buildGraph(decideUrgencyBatch);
-
 // ---------------------------------------------------------------------------
-// Helpers
+// Runner helper
 // ---------------------------------------------------------------------------
-
-function benchmarkResult(framework: string, start: number, startMem: number, result: any) {
-  return {
-    framework,
-    totalTime:      Date.now() - start,
-    llmCalls:       llmCallCount,
-    memoryUsed:     process.memoryUsage().heapUsed - startMem,
-    mailsCount:     result.mails?.length       ?? 0,
-    urgentCount:    result.urgentMails?.length  ?? 0,
-    responsesCount: result.responses?.length    ?? 0,
-    archivedCount:  result.archivedCount        ?? 0,
-  };
-}
 
 const INPUT = {
   messages: [{ role: 'user' as const, content: 'Fetch my 5 latest mails, flag the urgent ones, draft replies for urgent mails, and archive the rest.' }],
   maxMails: 5,
 };
 
-// ---------------------------------------------------------------------------
-// Exports
-// ---------------------------------------------------------------------------
-
-export async function runLangGraphNaiveBenchmark() {
-  console.log('\n🚀 Starting LangGraph (naive) benchmark...\n');
-  llmCallCount = 0;
+async function run(label: string, llm: LLMCall, variant: 'naive' | 'optimised') {
+  console.log(`\n🚀 LangGraph (${variant}) benchmark...\n`);
+  llm.resetCount();
   const t0 = Date.now();
   const m0 = process.memoryUsage().heapUsed;
-  const result = await naiveGraph.invoke(INPUT);
-  return benchmarkResult('LangGraph (naive)', t0, m0, result);
+
+  const graph  = buildGraph(llm, variant);
+  const result = await graph.invoke(INPUT);
+
+  return {
+    framework:      label,
+    totalTime:      Date.now() - t0,
+    llmCalls:       llm.callCount,
+    memoryUsed:     process.memoryUsage().heapUsed - m0,
+    mailsCount:     result.mails?.length        ?? 0,
+    urgentCount:    result.urgentMails?.length   ?? 0,
+    responsesCount: result.responses?.length     ?? 0,
+    archivedCount:  result.archivedCount         ?? 0,
+  };
 }
 
-export async function runLangGraphOptimisedBenchmark() {
-  console.log('\n🚀 Starting LangGraph (optimised) benchmark...\n');
-  llmCallCount = 0;
-  const t0 = Date.now();
-  const m0 = process.memoryUsage().heapUsed;
-  const result = await optimisedGraph.invoke(INPUT);
-  return benchmarkResult('LangGraph (optimised)', t0, m0, result);
+export async function runLangGraphNaiveBenchmark(llm: LLMCall) {
+  return run('LangGraph (naive)', llm, 'naive');
+}
+
+export async function runLangGraphOptimisedBenchmark(llm: LLMCall) {
+  return run('LangGraph (optimised)', llm, 'optimised');
 }

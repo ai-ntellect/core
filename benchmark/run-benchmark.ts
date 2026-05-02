@@ -1,50 +1,134 @@
 /**
  * @file run-benchmark.ts
- * @description CortexFlow vs LangGraph multi-step mail triage benchmark.
+ * @description CortexFlow vs LangGraph — multi-step mail triage benchmark.
  *
- * Scenario: "Fetch 5 mails, flag the urgent ones, draft replies for urgent
- * mails, and archive the rest."
+ * Runs the same scenario on two backends:
+ *   1. Ollama local  (llama3:latest)
+ *   2. Groq API      (llama-3.1-8b-instant, free tier)
  *
- * Three implementations are compared:
+ * A warmup call is made before timing starts on each backend to eliminate
+ * model-loading cold-start from the measurements.
  *
- *   CortexFlow          — Petri Net routes deterministically after 1 intent
- *                         call. GraphFlow batches urgency + response into 2
- *                         additional LLM calls. Total: 2–3 LLM calls.
- *
- *   LangGraph (naive)   — Standard LangGraph pattern: one LLM call per
- *                         routing decision. Each mail gets its own urgency
- *                         call. Total: 1 + 5 + 1 = 7 LLM calls.
- *
- *   LangGraph (optimised) — Hand-optimised: urgency is batched manually by
- *                         the developer. Total: 1 + 1 + 1 = 3 LLM calls.
- *                         Requires explicit architectural effort.
- *
- * Requirements:
- *   - Ollama running locally with llama3:latest
- *   - client_secret.json + gmail_token.json in project root
+ * Scenario: fetch 5 mails → batch-classify urgency → draft replies → archive
  *
  * Run: pnpm run benchmark
  */
 
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+import { createLLMClient } from './llm-client';
 import { runCortexFlowBenchmark } from './cortexflow-workflow';
 import { runLangGraphNaiveBenchmark, runLangGraphOptimisedBenchmark } from './langgraph-workflow';
 
+dotenv.config({ path: path.join(__dirname, '../.env') });
+
 // ---------------------------------------------------------------------------
-// Helpers
+// Backend configs
 // ---------------------------------------------------------------------------
 
-const col = (s: string, w = 24) => String(s).padEnd(w);
+const BACKENDS = {
+  ollama: {
+    label: 'Ollama local (llama3:latest)',
+    baseUrl: 'http://localhost:11434/v1',
+    apiKey:  'ollama',
+    model:   'llama3:latest',
+  },
+  groq: {
+    label: 'Groq API (llama-3.1-8b-instant)',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    apiKey:  process.env.GROQ_API_KEY ?? '',
+    model:   'llama-3.1-8b-instant',
+  },
+} as const;
 
-function speedLabel(baseline: number, candidate: number): string {
-  if (baseline <= 0 || candidate <= 0) return '';
-  const r = baseline / candidate;
-  if (r > 1.01)  return `${r.toFixed(2)}x faster`;
-  if (r < 0.99)  return `${(1 / r).toFixed(2)}x slower`;
-  return 'same';
+// ---------------------------------------------------------------------------
+// Display helpers
+// ---------------------------------------------------------------------------
+
+const col = (s: string, w = 22) => String(s).padEnd(w);
+
+function memMB(bytes: number) {
+  return `${Math.max(0, bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function memMB(bytes: number): string {
-  return `${Math.max(0, bytes / 1024 / 1024).toFixed(2)} MB`;
+function printTable(results: Array<{ framework: string; totalTime: number; llmCalls: number; memoryUsed: number; mailsCount: number; urgentCount: number; responsesCount: number; archivedCount: number; [k: string]: unknown }>) {
+  const headers = ['Metric', ...results.map(r => r.framework)];
+  const w = 22;
+  console.log(headers.map(h => col(h, w)).join(''));
+  console.log('─'.repeat(w * headers.length));
+
+  const rows: [string, (r: typeof results[0]) => string][] = [
+    ['LLM Calls',         r => `${r.llmCalls}`],
+    ['Total Time',        r => `${r.totalTime} ms`],
+    ['Memory Used',       r => memMB(r.memoryUsed)],
+    ['Mails Fetched',     r => `${r.mailsCount}`],
+    ['Urgent Found',      r => `${r.urgentCount}`],
+    ['Responses Drafted', r => `${r.responsesCount}`],
+    ['Archived',          r => `${r.archivedCount}`],
+  ];
+
+  for (const [label, fn] of rows) {
+    console.log(col(label, w) + results.map(r => col(fn(r), w)).join(''));
+  }
+}
+
+function makeRow(r: Awaited<ReturnType<typeof runCortexFlowBenchmark>>) {
+  return r;
+}
+
+function printReduction(results: Array<{ framework: string; totalTime: number; llmCalls: number; [k: string]: unknown }>) {
+  const naive = results.find(r => r.framework.includes('naive'));
+  if (!naive) return;
+  console.log('\nLLM call reduction vs naive:');
+  for (const r of results.filter(x => x !== naive)) {
+    const pct = (((naive.llmCalls - r.llmCalls) / naive.llmCalls) * 100).toFixed(0);
+    const sign = Number(pct) > 0 ? `-${pct}%` : `+${Math.abs(Number(pct))}%`;
+    console.log(`  ${r.framework.padEnd(28)}: ${sign}  (${r.llmCalls} vs ${naive.llmCalls} calls)`);
+  }
+  console.log('\nSpeed vs naive:');
+  for (const r of results.filter(x => x !== naive)) {
+    const ratio = naive.totalTime / r.totalTime;
+    const label = ratio > 1.01 ? `${ratio.toFixed(2)}x faster` : ratio < 0.99 ? `${(1/ratio).toFixed(2)}x slower` : 'same';
+    console.log(`  ${r.framework.padEnd(28)}: ${label}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Warmup — eliminates model cold-start from measurements
+// ---------------------------------------------------------------------------
+
+async function warmup(llm: ReturnType<typeof createLLMClient>, label: string) {
+  process.stdout.write(`  Warming up ${label}... `);
+  const t = Date.now();
+  await llm.call('Reply with JSON only: {"ready":true}');
+  llm.resetCount();
+  console.log(`done (${Date.now() - t} ms)`);
+}
+
+// ---------------------------------------------------------------------------
+// Suite runner
+// ---------------------------------------------------------------------------
+
+async function runSuite(backendKey: keyof typeof BACKENDS) {
+  const cfg = BACKENDS[backendKey];
+  console.log(`\n${'═'.repeat(64)}`);
+  console.log(`  Backend: ${cfg.label}`);
+  console.log(`${'═'.repeat(64)}\n`);
+
+  const llm = createLLMClient(cfg);
+  await warmup(llm, cfg.label);
+
+  const cortex  = await runCortexFlowBenchmark(llm);
+  const lgNaive = await runLangGraphNaiveBenchmark(llm);
+  const lgOpt   = await runLangGraphOptimisedBenchmark(llm);
+
+  console.log(`\n${'─'.repeat(64)}`);
+  console.log('  RESULTS');
+  console.log(`${'─'.repeat(64)}\n`);
+  printTable([cortex, lgNaive, lgOpt]);
+  printReduction([cortex, lgNaive, lgOpt]);
+
+  return { backend: cfg.label, cortex, lgNaive, lgOpt };
 }
 
 // ---------------------------------------------------------------------------
@@ -52,126 +136,60 @@ function memMB(bytes: number): string {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log('══════════════════════════════════════════════════════════════');
-  console.log('   CortexFlow vs LangGraph — Multi-step Mail Triage Benchmark');
-  console.log('   Scenario: fetch 5 mails → flag urgent → reply → archive');
-  console.log('══════════════════════════════════════════════════════════════\n');
+  console.log('CortexFlow vs LangGraph — Multi-step Mail Triage Benchmark');
+  console.log('Scenario: fetch 5 mails → flag urgent → draft replies → archive\n');
+  console.log('Note: one warmup LLM call is made before each backend\'s timer starts');
+  console.log('      to exclude model loading from measurements.\n');
 
-  const cortex    = await runCortexFlowBenchmark();
-  const lgNaive   = await runLangGraphNaiveBenchmark();
-  const lgOpt     = await runLangGraphOptimisedBenchmark();
+  const results: Awaited<ReturnType<typeof runSuite>>[] = [];
 
-  // ---------------------------------------------------------------------------
-  // Results table
-  // ---------------------------------------------------------------------------
+  results.push(await runSuite('ollama'));
 
-  console.log('\n══════════════════════════════════════════════════════════════');
-  console.log('                          RESULTS');
-  console.log('══════════════════════════════════════════════════════════════\n');
-
-  const w = 22;
-  console.log(col('Metric', w) + col('CortexFlow', w) + col('LangGraph naive', w) + col('LangGraph opt.', w));
-  console.log('─'.repeat(w * 4));
-
-  console.log(
-    col('LLM Calls', w) +
-    col(`${cortex.llmCalls}`, w) +
-    col(`${lgNaive.llmCalls}`, w) +
-    col(`${lgOpt.llmCalls}`, w)
-  );
-  console.log(
-    col('Total Time', w) +
-    col(`${cortex.totalTime} ms`, w) +
-    col(`${lgNaive.totalTime} ms`, w) +
-    col(`${lgOpt.totalTime} ms`, w)
-  );
-  console.log(
-    col('Memory Used', w) +
-    col(memMB(cortex.memoryUsed), w) +
-    col(memMB(lgNaive.memoryUsed), w) +
-    col(memMB(lgOpt.memoryUsed), w)
-  );
-  console.log(
-    col('Mails Fetched', w) +
-    col(`${cortex.mailsCount}`, w) +
-    col(`${lgNaive.mailsCount}`, w) +
-    col(`${lgOpt.mailsCount}`, w)
-  );
-  console.log(
-    col('Urgent Found', w) +
-    col(`${cortex.urgentCount}`, w) +
-    col(`${lgNaive.urgentCount}`, w) +
-    col(`${lgOpt.urgentCount}`, w)
-  );
-  console.log(
-    col('Responses Drafted', w) +
-    col(`${cortex.responsesCount}`, w) +
-    col(`${lgNaive.responsesCount}`, w) +
-    col(`${lgOpt.responsesCount}`, w)
-  );
-  console.log(
-    col('Archived', w) +
-    col(`${cortex.archivedCount}`, w) +
-    col(`${lgNaive.archivedCount}`, w) +
-    col(`${lgOpt.archivedCount}`, w)
-  );
-  if (cortex.intentConfidence !== undefined) {
-    console.log(
-      col('Intent Confidence', w) +
-      col(`${cortex.intentConfidence}`, w) +
-      col('N/A', w) +
-      col('N/A', w)
-    );
+  if (!process.env.GROQ_API_KEY) {
+    console.log('\nGroq: GROQ_API_KEY not set — skipping remote backend.\n');
+  } else {
+    results.push(await runSuite('groq'));
   }
 
   // ---------------------------------------------------------------------------
-  // Speed comparison vs naive (the realistic baseline)
+  // Cross-backend summary (if both ran)
   // ---------------------------------------------------------------------------
 
-  console.log('\n──────────────────────────────────────────────────────────────');
-  console.log('Speed vs LangGraph naive:');
-  console.log(`  CortexFlow         : ${speedLabel(lgNaive.totalTime, cortex.totalTime)}`);
-  console.log(`  LangGraph optimised: ${speedLabel(lgNaive.totalTime, lgOpt.totalTime)}`);
+  if (results.length === 2) {
+    const [ol, gr] = results;
+    console.log(`\n${'═'.repeat(64)}`);
+    console.log('  CROSS-BACKEND SUMMARY (measured, not projected)');
+    console.log(`${'═'.repeat(64)}\n`);
 
-  // ---------------------------------------------------------------------------
-  // LLM call reduction
-  // ---------------------------------------------------------------------------
+    const w = 32;
+    console.log(col('Metric', w) + col('Ollama local', 20) + col('Groq API', 20));
+    console.log('─'.repeat(w + 40));
 
-  if (lgNaive.llmCalls > 0) {
-    const cortexSaving = ((lgNaive.llmCalls - cortex.llmCalls) / lgNaive.llmCalls * 100).toFixed(0);
-    const optSaving    = ((lgNaive.llmCalls - lgOpt.llmCalls)  / lgNaive.llmCalls * 100).toFixed(0);
-    console.log('\n──────────────────────────────────────────────────────────────');
-    console.log('LLM call reduction vs LangGraph naive:');
-    console.log(`  CortexFlow          : -${cortexSaving}%  (${cortex.llmCalls} vs ${lgNaive.llmCalls} calls)`);
-    console.log(`  LangGraph optimised : -${optSaving}%  (${lgOpt.llmCalls} vs ${lgNaive.llmCalls} calls)`);
+    const rows: [string, (s: typeof ol) => string][] = [
+      ['CortexFlow total time',     s => `${s.cortex.totalTime} ms`],
+      ['CortexFlow LLM calls',      s => `${s.cortex.llmCalls}`],
+      ['LangGraph naive total time', s => `${s.lgNaive.totalTime} ms`],
+      ['LangGraph naive LLM calls', s => `${s.lgNaive.llmCalls}`],
+      ['LangGraph opt total time',  s => `${s.lgOpt.totalTime} ms`],
+      ['LangGraph opt LLM calls',   s => `${s.lgOpt.llmCalls}`],
+    ];
+
+    for (const [label, fn] of rows) {
+      console.log(col(label, w) + col(fn(ol), 20) + col(fn(gr), 20));
+    }
+
+    const naiveOl = ol.lgNaive.totalTime;
+    const naiveGr = gr.lgNaive.totalTime;
+    const cfOl    = ol.cortex.totalTime;
+    const cfGr    = gr.cortex.totalTime;
+
+    console.log('\nObserved speed ratio (CortexFlow vs LangGraph naive):');
+    console.log(`  Ollama local : ${naiveOl > cfOl ? (naiveOl/cfOl).toFixed(2)+'x faster' : (cfOl/naiveOl).toFixed(2)+'x slower'}`);
+    console.log(`  Groq API     : ${naiveGr > cfGr ? (naiveGr/cfGr).toFixed(2)+'x faster' : (cfGr/naiveGr).toFixed(2)+'x slower'}`);
+    console.log(`\nLLM call reduction (CortexFlow vs LangGraph naive): -${(((ol.lgNaive.llmCalls - ol.cortex.llmCalls) / ol.lgNaive.llmCalls) * 100).toFixed(0)}%`);
   }
 
-  // ---------------------------------------------------------------------------
-  // Interpretation
-  // ---------------------------------------------------------------------------
-
-  console.log(`
-══════════════════════════════════════════════════════════════
-Notes:
-  • The "naive" LangGraph variant mirrors how most developers write LangGraph
-    agents: each routing decision is an LLM call, following the official
-    supervisor/router examples. This is not a strawman — it is the default.
-
-  • The "optimised" LangGraph variant shows that manual batching reduces calls
-    to match CortexFlow, but it requires the developer to consciously restructure
-    the graph. CortexFlow imposes this separation structurally, at zero extra
-    developer effort.
-
-  • CortexFlow's LLM call budget does not grow with the number of mails.
-    For 10 or 20 mails the naive LangGraph count scales linearly; CortexFlow
-    stays at 2–3 calls.
-
-  • Beyond LLM call count, CortexFlow provides structural guarantees the other
-    variants do not: deadlock detection, boundedness analysis, and reachability
-    checks are computed from the incidence matrix before execution — not
-    asserted by tests after the fact.
-══════════════════════════════════════════════════════════════
-`);
+  console.log(`\n${'═'.repeat(64)}\n`);
 }
 
 main().catch(console.error);
