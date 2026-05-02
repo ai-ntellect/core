@@ -1,6 +1,9 @@
 import { GraphFlow } from "../../../graph/index";
 import { z } from "zod";
-import { spawn } from "child_process";
+import { spawn, exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 export function createFileReaderTool(): GraphFlow<any> {
   return new GraphFlow({
@@ -145,55 +148,116 @@ export function createDirectoryListerTool(): GraphFlow<any> {
   });
 }
 
+const BLOCKED_COMMANDS = [
+  "rm -rf /", "mkfs", "dd if=", "chmod -R 777 /",
+  ":(){ :|:& };:", "kill -9 -1", "shutdown", "reboot", "init ",
+];
+
+function isCommandBlocked(command: string): boolean {
+  const normalized = command.toLowerCase().trim();
+  return BLOCKED_COMMANDS.some(b => normalized.includes(b));
+}
+
+async function isDockerAvailable(): Promise<boolean> {
+  try {
+    await execAsync("docker info", { timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function executeInDocker(command: string, cwd: string, timeout: number): Promise<{
+  stdout: string; stderr: string; exitCode: number; method: string
+}> {
+  const safeCwd = cwd.replace(/[^a-zA-Z0-9/_.\-]/g, "");
+  const dockerCmd = `docker run --rm --network none --memory=256m --cpus=0.5 --security-opt no-new-privileges --timeout ${timeout / 1000}s -v ${safeCwd}:/workspace:ro -w /workspace alpine:3.19 sh -c ${JSON.stringify(command)}`;
+  try {
+    const { stdout, stderr } = await execAsync(dockerCmd, { timeout, maxBuffer: 1024 * 1024 });
+    return { stdout: stdout.toString(), stderr: stderr.toString(), exitCode: 0, method: "docker" };
+  } catch (e: any) {
+    return {
+      stdout: e.stdout || "",
+      stderr: e.stderr || e.message || "Docker execution failed",
+      exitCode: e.code ?? 1,
+      method: "docker"
+    };
+  }
+}
+
+async function executeInProcess(command: string, cwd: string, timeout: number): Promise<{
+  stdout: string; stderr: string; exitCode: number; method: string
+}> {
+  const isWindows = process.platform === "win32";
+  const shell = isWindows ? "cmd.exe" : "/bin/sh";
+  const args = isWindows ? ["/c", command] : ["-c", command];
+  const safeEnv = { PATH: process.env.PATH || "", HOME: process.env.HOME || "", LANG: "en_US.UTF-8" };
+
+  return new Promise((resolve) => {
+    const child = spawn(shell, args, { cwd, env: safeEnv });
+    let stdout = "";
+    let stderr = "";
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const finish = (code: number) => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      resolve({ stdout, stderr, exitCode: code, method: "process" });
+    };
+
+    timer = setTimeout(() => {
+      if (!done) {
+        child.kill("SIGKILL");
+        finish(124);
+      }
+    }, timeout);
+
+    child.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
+    child.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
+    child.on("close", (code: number | null) => finish(code ?? 1));
+    child.on("error", () => finish(1));
+    child.on("exit", (code: number | null, sig: NodeJS.Signals | null) => {
+      if (code !== null) finish(code);
+    });
+  });
+}
+
 export function createShellTool(): GraphFlow<any> {
   return new GraphFlow({
     name: "shell",
     schema: z.object({
       command: z.string().describe("Shell command to execute"),
-      cwd: z.string().optional().describe("Working directory"),
+      cwd: z.string().optional().describe("Working directory (host path, only used as context)"),
+      timeout: z.number().optional().describe("Timeout in ms (max 60000)"),
       stdout: z.string().optional().describe("Command output"),
       stderr: z.string().optional().describe("Error output"),
       exitCode: z.number().optional().describe("Exit code"),
+      isolationMethod: z.string().optional().describe("Isolation method used: docker or process"),
     }),
-    context: { command: "", cwd: process.cwd() },
+    context: { command: "", cwd: process.cwd(), timeout: 30000 },
     nodes: [{
       name: "execute",
       execute: async (ctx: any) => {
-        return new Promise((resolve) => {
-          const cwd = ctx.cwd || process.cwd();
-          const isWindows = process.platform === "win32";
-          const shell = isWindows ? "cmd.exe" : "/bin/sh";
-          const args = isWindows ? ["/c", ctx.command] : ["-c", ctx.command];
-          
-          console.log(`  [TOOL:shell] Running: ${ctx.command}`);
-          
-          const child = spawn(shell, args, { cwd });
-          let stdout = "";
-          let stderr = "";
-
-          child.stdout?.on("data", (data: Buffer) => {
-            stdout += data.toString();
-          });
-
-          child.stderr?.on("data", (data: Buffer) => {
-            stderr += data.toString();
-          });
-
-          child.on("close", (code: number | null) => {
-            ctx.stdout = stdout;
-            ctx.stderr = stderr;
-            ctx.exitCode = code ?? 0;
-            console.log(`  [TOOL:shell] Exit code: ${ctx.exitCode}`);
-            resolve();
-          });
-
-          child.on("error", (e: Error) => {
-            ctx.stderr = e.message;
-            ctx.exitCode = 1;
-            console.log(`  [TOOL:shell] Error: ${e.message}`);
-            resolve();
-          });
-        });
+        if (!ctx.command) { ctx.exitCode = 1; ctx.stderr = "No command provided"; return; }
+        if (isCommandBlocked(ctx.command)) {
+          ctx.exitCode = 1; ctx.stderr = "Command blocked for security"; ctx.isolationMethod = "blocked";
+          console.log(`  [TOOL:shell] Blocked: ${ctx.command}`);
+          return;
+        }
+        const timeout = Math.min(ctx.timeout || 30000, 60000);
+        const cwd = ctx.cwd || process.cwd();
+        const dockerAvailable = await isDockerAvailable();
+        console.log(`  [TOOL:shell] Running: ${ctx.command} (${dockerAvailable ? "docker" : "process"} isolation)`);
+        const result = dockerAvailable
+          ? await executeInDocker(ctx.command, cwd, timeout)
+          : await executeInProcess(ctx.command, cwd, timeout);
+        ctx.stdout = result.stdout;
+        ctx.stderr = result.stderr;
+        ctx.exitCode = result.exitCode;
+        ctx.isolationMethod = result.method;
+        console.log(`  [TOOL:shell] Exit code: ${ctx.exitCode} [${result.method}]`);
       },
       next: [],
     }],

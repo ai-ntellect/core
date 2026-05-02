@@ -1,7 +1,9 @@
-import { describe, it } from "mocha";
+import { describe, it, before, after } from "mocha";
 import { expect } from "chai";
-import { createAllAgentTools } from "../../../modules/agent/tools";
+import { createAllAgentTools, createShellTool, createFileWriterTool, createFileReaderTool, createDirectoryListerTool } from "../../../modules/agent/tools";
 import { AgentLogger } from "../../../modules/agent/tools/logger";
+import * as path from "path";
+import * as os from "os";
 
 describe("Native Agent Tools", () => {
   const tools = createAllAgentTools();
@@ -92,6 +94,88 @@ describe("Native Agent Tools", () => {
       expect(schema.stdout).to.exist;
       expect(schema.stderr).to.exist;
       expect(schema.exitCode).to.exist;
+    });
+  });
+
+  describe("shell execution", () => {
+    const testDir = path.join(os.tmpdir(), "opencode-test");
+    const testFile = path.join(testDir, "test.txt");
+    const testPyScript = path.join(testDir, "test_script.py");
+
+    before(async () => {
+      const fs = await import("fs/promises");
+      await fs.mkdir(testDir, { recursive: true });
+    });
+
+    after(async () => {
+      const fs = await import("fs/promises");
+      await fs.rm(testDir, { recursive: true, force: true });
+    });
+
+    it("should execute bash command", async () => {
+      const shell = createShellTool();
+      await shell.execute("execute", { command: "echo hello_bash", cwd: testDir, timeout: 5000 });
+      const ctx = shell.getContext();
+      expect(ctx.exitCode).to.equal(0);
+      expect(ctx.stdout.trim()).to.equal("hello_bash");
+      expect(["docker", "process"]).to.include(ctx.isolationMethod);
+    });
+
+    it("should execute python script", async () => {
+      const writer = createFileWriterTool();
+      await writer.execute("write", { path: testPyScript, content: 'print("hello_python")' });
+
+      const shell = createShellTool();
+      await shell.execute("execute", { command: `python3 ${testPyScript}`, cwd: testDir, timeout: 5000 });
+      const ctx = shell.getContext();
+      expect(ctx.exitCode).to.equal(0);
+      expect(ctx.stdout.trim()).to.equal("hello_python");
+    });
+
+    it("should read file via shell cat", async () => {
+      const writer = createFileWriterTool();
+      await writer.execute("write", { path: testFile, content: "shell_read_test" });
+
+      const shell = createShellTool();
+      await shell.execute("execute", { command: `cat ${testFile}`, cwd: testDir, timeout: 5000 });
+      const ctx = shell.getContext();
+      expect(ctx.exitCode).to.equal(0);
+      expect(ctx.stdout.trim()).to.equal("shell_read_test");
+    });
+
+    it("should list directory via shell ls", async () => {
+      const shell = createShellTool();
+      await shell.execute("execute", { command: "ls -1", cwd: testDir, timeout: 5000 });
+      const ctx = shell.getContext();
+      expect(ctx.exitCode).to.equal(0);
+      expect(ctx.stdout).to.include("test.txt");
+    });
+
+    it("should block dangerous commands", async () => {
+      const shell = createShellTool();
+      await shell.execute("execute", { command: "rm -rf /", cwd: testDir });
+      const ctx = shell.getContext();
+      expect(ctx.exitCode).to.equal(1);
+      expect(ctx.stderr).to.include("blocked");
+      expect(ctx.isolationMethod).to.equal("blocked");
+    });
+
+    it("should timeout long-running commands", async () => {
+      const shell = createShellTool();
+      const start = Date.now();
+      await shell.execute("execute", { command: "sleep 10", cwd: testDir, timeout: 1000 });
+      const elapsed = Date.now() - start;
+      const ctx = shell.getContext();
+      expect(ctx.exitCode).to.equal(124);
+      expect(elapsed).to.be.lessThan(5000);
+    });
+
+    it("should support pipe in bash", async () => {
+      const shell = createShellTool();
+      await shell.execute("execute", { command: 'echo -e "a\nb\nc" | grep b', cwd: testDir, timeout: 5000 });
+      const ctx = shell.getContext();
+      expect(ctx.exitCode).to.equal(0);
+      expect(ctx.stdout.trim()).to.equal("b");
     });
   });
 
