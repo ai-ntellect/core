@@ -1,4 +1,4 @@
-# CLI Interactif
+# CLI
 
 Le CLI offre une interface REPL (Read-Eval-Print Loop) interactive pour exécuter des agents avec gestion de checkpoints et approbation humaine.
 
