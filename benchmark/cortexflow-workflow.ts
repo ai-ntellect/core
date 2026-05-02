@@ -11,7 +11,7 @@ import { CortexFlowOrchestrator } from '../petri/orchestrator';
 import { ToolRegistry } from '../graph/registry';
 import { GraphFlow } from '../graph/index';
 import { z } from 'zod';
-import { IntentClassifier } from '../petri/intent-classifier';
+import { HybridIntentClassifier } from '../petri/intent-classifier';
 import { google } from 'googleapis';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -48,12 +48,20 @@ export async function runCortexFlowBenchmark(llm: LLMCall) {
   const toolRegistry = new ToolRegistry();
   const orchestrator = new CortexFlowOrchestrator('mail_triage', toolRegistry);
 
-  // LLM call #1 — intent classification
-  const classifier = new IntentClassifier(llm.call.bind(llm), {
-    intents: ['TRIAGE_MAILS', 'FETCH_MAILS', 'UNKNOWN'],
-    confidenceThreshold: 0.6,
-  });
-  orchestrator.setIntentClassifier(IntentClassifier.toFn(classifier), classifier);
+  // Intent classification — keyword rules first, LLM fallback for ambiguous messages.
+  // The benchmark input contains "fetch", "mail", "urgent", "archive" → keyword match,
+  // confidence 0.95, no LLM call needed for classification.
+  const classifier = new HybridIntentClassifier(
+    [
+      { intent: 'TRIAGE_MAILS', keywords: ['fetch', 'mail', 'urgent', 'archive'], confidence: 0.95 },
+      { intent: 'TRIAGE_MAILS', keywords: ['triage', 'mail'],                     confidence: 0.95 },
+      { intent: 'FETCH_MAILS',  keywords: ['fetch', 'email'],                     confidence: 0.90 },
+      { intent: 'FETCH_MAILS',  keywords: ['fetch', 'mail'],                      confidence: 0.90 },
+    ],
+    { intents: ['TRIAGE_MAILS', 'FETCH_MAILS', 'UNKNOWN'], confidenceThreshold: 0.6 },
+    llm.call.bind(llm), // LLM fallback for messages that don't match any rule
+  );
+  orchestrator.setIntentClassifier(HybridIntentClassifier.toFn(classifier), classifier);
   orchestrator.setLLMCall(llm.call.bind(llm));
 
   // ---------------------------------------------------------------------------

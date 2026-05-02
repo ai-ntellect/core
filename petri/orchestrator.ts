@@ -5,7 +5,7 @@ import { GraphFlow } from '../graph/index';
 import { z } from 'zod';
 import { compilePlan } from '../graph/compiler';
 import logger from '../utils/logger';
-import { IntentClassifier } from './intent-classifier';
+import { IntentClassifier, IIntentClassifier } from './intent-classifier';
 
 /**
  * An active orchestration session, binding a PetriNet instance to a user conversation.
@@ -81,7 +81,7 @@ export class CortexFlowOrchestrator {
   private toolRegistry: ToolRegistry;
   private sessions: Map<string, Session> = new Map();
   private intentClassifier?: IntentClassifierFn;
-  private intentClassifierInstance?: IntentClassifier;
+  private intentClassifierInstance?: IIntentClassifier;
   private llmCall?: (prompt: string) => Promise<string>;
 
   /**
@@ -111,10 +111,11 @@ export class CortexFlowOrchestrator {
    * Registers the intent classifier used during `orchestrate()`.
    *
    * @param classifier - Functional classifier (`(msg, ctx) => Promise<IntentResult>`).
-   * @param instance - Optional `IntentClassifier` instance used to generate clarification
-   *   questions when confidence is below the threshold.
+   * @param instance - Optional classifier instance (`IntentClassifier` or
+   *   `HybridIntentClassifier`) used to generate clarification questions when
+   *   confidence is below the threshold.
    */
-  setIntentClassifier(classifier: IntentClassifierFn, instance?: IntentClassifier): void {
+  setIntentClassifier(classifier: IntentClassifierFn, instance?: IIntentClassifier): void {
     this.intentClassifier = classifier;
     this.intentClassifierInstance = instance;
   }
@@ -552,7 +553,7 @@ Respond with valid JSON only.`;
   ): Promise<string | undefined> {
     if (!this.intentClassifierInstance) return undefined;
     try {
-      const question = await (this.intentClassifierInstance as any).generateClarification(message);
+      const question = await this.intentClassifierInstance.generateClarification(message);
       session.clarificationQuestion = question;
       return question;
     } catch (error) {

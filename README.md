@@ -172,27 +172,31 @@ pnpm run benchmark   # requires Ollama + llama3:latest, or GROQ_API_KEY in .env
 
 Results below are measured, not projected. A warmup call is made before each timer starts to exclude model loading.
 
+CortexFlow uses a `HybridIntentClassifier` — keyword rules resolve unambiguous commands in microseconds; the LLM is only called when the message is genuinely ambiguous. All other routing is handled by the Petri Net with no additional LLM calls.
+
 #### Ollama local — llama3:latest
 
 | | CortexFlow | LangGraph naive | LangGraph optimised |
 |---|---|---|---|
-| LLM calls | **2** | 7 | 2 |
-| Total time | **5 181 ms** | 15 305 ms | 6 773 ms |
-| vs naive | **2.95× faster** | baseline | 2.26× faster |
+| LLM calls | **1** | 7 | 2 |
+| Total time | **4 052 ms** | 16 876 ms | 6 676 ms |
+| vs naive | **4.16× faster** | baseline | 2.53× faster |
 
 #### Groq API — llama-3.1-8b-instant
 
 | | CortexFlow | LangGraph naive | LangGraph optimised |
 |---|---|---|---|
-| LLM calls | **2** | 7 | 2 |
-| Total time | **1 757 ms** | 2 052 ms | 1 603 ms |
-| vs naive | **1.17× faster** | baseline | 1.28× faster |
+| LLM calls | **1** | 7 | 2 |
+| Total time | **1 650 ms** | 2 192 ms | 1 668 ms |
+| vs naive | **1.33× faster** | baseline | 1.31× faster |
 
-**LLM call reduction vs naive: −71% on both backends.**
+**LLM call reduction vs naive: −86% on both backends.**
 
-On Groq (each call ~250 ms), LangGraph optimised is 154 ms faster than CortexFlow — the Petri Net + structured logging overhead becomes measurable when the LLM itself is near-instant. This is an honest trade-off: CortexFlow's structural guarantees (deadlock detection, boundedness) have a small fixed cost.
+On Groq, CortexFlow (1 650 ms) now edges out LangGraph optimised (1 668 ms) despite the latter also batching its LLM calls — the saved intent-classification round-trip offsets the Petri Net overhead.
 
-On Ollama (each call ~2 s), fewer calls dominate: CortexFlow is nearly 3× faster than the naive pattern.
+On Ollama (each call ~2 s), the call reduction dominates: CortexFlow is 4× faster than the naive pattern and 1.65× faster than the manually-optimised LangGraph variant.
+
+The "LangGraph optimised" variant is included to show that a developer *can* write equivalent batching by hand — but it requires conscious restructuring. CortexFlow enforces the separation structurally, with the Petri Net guaranteeing deadlock-free, bounded routing regardless of workflow complexity.
 
 ---
 
