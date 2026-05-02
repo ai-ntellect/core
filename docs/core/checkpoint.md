@@ -14,6 +14,7 @@ Le système de checkpoints permet de sauvegarder, reprendre et faire du débogag
 | Adaptateur | Usage |
 |------------|-------|
 | `InMemoryCheckpointAdapter` | Tests, développement |
+| `InMemoryPetriCheckpointAdapter` | Checkpoints Petri (nouveau) |
 | Autres à venir | Database, Redis, etc. |
 
 ## Utilisation de base
@@ -61,6 +62,28 @@ await workflow.executeWithCheckpoint("start", adapter, {
 });
 // Le moteur s'arrête avant d'exécuter ces nœuds
 ```
+
+## Checkpoints Petri Net (Nouveau)
+
+Pour les workflows CortexFlow basés sur les Petri Nets :
+
+```typescript
+import { InMemoryPetriCheckpointAdapter } from "@ai.ntellect/core/petri/checkpoint-adapter";
+
+const petriAdapter = new InMemoryPetriCheckpointAdapter();
+orchestrator.setPetriCheckpointAdapter(petriAdapter);
+
+// Sauvegarde automatique ou manuelle
+await orchestrator.savePetriState(sessionId);
+
+// Restauration
+const { net, session } = await petriAdapter.load(checkpointId);
+```
+
+**Fonctionnalités** :
+- Sauvegarde le marquage (tokens) du Petri Net
+- Restaure la session complète (contexte, historique)
+- Extensible via `IPetriCheckpointAdapter` pour Redis/DB
 
 ## Métadonnées des checkpoints
 

@@ -11,7 +11,7 @@ app/
 .claude/
 *.txt
 .github/
-docs/
+# docs/  # Uncommented to include documentation
 scheduled-tasks.json
 agent-memory.json
 memory/

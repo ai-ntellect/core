@@ -10,6 +10,8 @@
 * [Architecture](core/architecture.md)
 * [Checkpoints](core/checkpoint.md)
 * [GraphController](core/graphcontroller.md)
+* [Documentation vivante](core/documentation.md) **(Nouveau)**
+* [Benchmark](core/benchmark.md) **(Nouveau)**
 
 ## Modules
 
