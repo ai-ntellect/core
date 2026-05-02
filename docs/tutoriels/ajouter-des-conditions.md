@@ -20,10 +20,10 @@ Cela permet de :
 
 Nous allons **ajouter une logique conditionnelle** qui :
 
-1. **Convertit un texte en majuscules**.
-2. **Vérifie la longueur du texte**.
-3. **Si le texte fait plus de 10 caractères**, il est marqué comme **"LONG"**.
-4. **Sinon**, il est marqué comme **"COURT"**.
+1. **Convert text to uppercase**.
+2. **Check text length**.
+3. **If text length > 10**, mark as **"LONG"**.
+4. **Else**, mark as **"SHORT"**.
 
 Nous utiliserons **une fonction `next` dynamique** qui **choisit** la prochaine étape en fonction des données.
 
@@ -44,12 +44,12 @@ const schema = z.object({
   result: z.string().optional(),
 });
 
-// Nœud 1 : Convertir le texte en majuscules
+// Node 1: Convert text to uppercase
 const processText: GraphNodeConfig<typeof schema> = {
   name: "processText",
   execute: async (context) => {
     context.processed = context.input.toUpperCase();
-    console.log("Texte transformé :", context.processed);
+    console.log("Text transformed:", context.processed);
   },
   next: (context) => {
     return (context.processed?.length ?? 0) > 10
@@ -58,31 +58,31 @@ const processText: GraphNodeConfig<typeof schema> = {
   },
 };
 
-// Nœud 2A : Gérer un texte long
+// Node 2A: Handle long text
 const longTextHandler: GraphNodeConfig<typeof schema> = {
   name: "longTextHandler",
   execute: async (context) => {
     context.result = `LONG: ${context.processed}`;
-    console.log("Le texte est long :", context.result);
+    console.log("Long text:", context.result);
   },
   next: ["logResult"],
 };
 
-// Nœud 2B : Gérer un texte court
+// Node 2B: Handle short text
 const shortTextHandler: GraphNodeConfig<typeof schema> = {
   name: "shortTextHandler",
   execute: async (context) => {
     context.result = `COURT: ${context.processed}`;
-    console.log("Le texte est court :", context.result);
+    console.log("Short text:", context.result);
   },
   next: ["logResult"],
 };
 
-// Nœud final : Afficher le résultat
+// Final node: Display result
 const logResult: GraphNodeConfig<typeof schema> = {
   name: "logResult",
   execute: async (context) => {
-    console.log("Résultat final :", context.result);
+    console.log("Final result:", context.result);
   },
 };
 
@@ -97,10 +97,9 @@ const graph = new GraphFlow("GraphWithDecision", {
 
 // Exécution du graphe avec différents inputs
 (async () => {
-  console.log("Exécution avec un texte court");
-  await graph.execute("processText", { input: "Hello" });
-
-  console.log("Exécution avec un texte long");
+    console.log("Execution with short text");
+    // ...
+    console.log("Execution with long text");
   await graph.execute("processText", { input: "Hello GraphFlow!" });
 })();
 ```
@@ -125,7 +124,7 @@ next: (context) => {
 #### **Affichage du résultat final**
 
 * `longTextHandler` marque le texte comme **"LONG"**.
-* `shortTextHandler` marque le texte comme **"COURT"**.
+* `shortTextHandler` marque le texte comme **"SHORT"**.
 * Le `logResult` affiche le **résultat final**.
 
 ***
@@ -135,17 +134,17 @@ next: (context) => {
 #### Cas 1 : **Texte court**
 
 ```
-Exécution avec un texte court
-Texte transformé : HELLO
-Le texte est court : COURT: HELLO
-Résultat final : COURT: HELLO
+Execution with short text
+Text transformed: HELLO
+Short text: COURT: HELLO
+Final result: COURT: HELLO
 ```
 
-#### Cas 2 : **Texte long**
+#### Cas 2 : **Long text**
 
 ```
-Exécution avec un texte long
-Texte transformé : HELLO GRAPHFLOW!
-Le texte est long : LONG: HELLO GRAPHFLOW!
-Résultat final : LONG: HELLO GRAPHFLOW!
+Execution with long text
+Text transformed: HELLO GRAPHFLOW!
+Long text: LONG: HELLO GRAPHFLOW!
+Final result: LONG: HELLO GRAPHFLOW!
 ```

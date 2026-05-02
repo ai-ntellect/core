@@ -115,13 +115,13 @@ const workflow = new GraphFlow({
     {
       name: "success",
       execute: async (ctx) => {
-        console.log("Succès:", ctx.data);
+        console.log("Success:", ctx.data);
       },
     },
     {
       name: "handle_error",
       execute: async (ctx) => {
-        console.error("Échec après", ctx.attempts, "tentatives:", ctx.error);
+        console.error("Failure after", ctx.attempts, "attempts:", ctx.error);
       },
     },
   ],

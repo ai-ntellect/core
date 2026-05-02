@@ -7,7 +7,7 @@ Ce tutoriel vous guide dans l'utilisation du système de checkpoints pour sauveg
 - Avoir lu [Créer un graphe simple](./creer-un-graphe-simple.md)
 - Comprendre les concepts de base de GraphFlow
 
-## Étape 1: Configuration de l'adaptateur
+## Configuration de l'adaptateur
 
 ```typescript
 import { GraphFlow } from "@ai.ntellect/core";
@@ -30,7 +30,7 @@ const workflow = new GraphFlow({
       name: "step1",
       execute: async (ctx) => {
         ctx.step = "step1";
-        ctx.data = "Processed in step 1";
+        ctx.data = "Data processed - node 1";
       },
       next: ["step2"],
     },
@@ -38,14 +38,14 @@ const workflow = new GraphFlow({
       name: "step2",
       execute: async (ctx) => {
         ctx.step = "step2";
-        ctx.data = "Processed in step 2";
+        ctx.data = "Data processed - node 2";
       },
     },
   ],
 });
 ```
 
-## Étape 2: Exécution avec checkpoints
+## Exécution avec checkpoints
 
 ```typescript
 // Démarrer l'exécution avec checkpointing
@@ -54,7 +54,7 @@ const runId = await workflow.executeWithCheckpoint("step1", adapter);
 console.log(workflow.getContext().step); // "step1" ou "step2" selon le timing
 ```
 
-## Étape 3: Lister les checkpoints
+## Lister les checkpoints
 
 ```typescript
 const checkpoints = await workflow.listCheckpoints(adapter);
@@ -62,14 +62,14 @@ console.log(checkpoints);
 // Affiche tous les checkpoints du run
 ```
 
-## Étape 4: Reprendre l'exécution
+## Reprendre l'exécution
 
 ```typescript
 // Reprendre depuis le dernier checkpoint
 await workflow.resumeFromCheckpoint(runId, adapter);
 ```
 
-## Étape 5: Voyage temporel
+## Voyage temporel
 
 ```typescript
 // Reprendre depuis un checkpoint spécifique avec modification d'état
@@ -79,7 +79,7 @@ await workflow.resumeFromCheckpoint(cpId, adapter, {
 });
 ```
 
-## Étape 6: Utiliser les breakpoints
+## Utiliser les breakpoints
 
 ```typescript
 // Pause automatique avant certains nœuds

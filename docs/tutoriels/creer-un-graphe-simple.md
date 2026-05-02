@@ -23,7 +23,7 @@ const retrieveData: GraphNodeConfig<typeof Schema> = {
   name: "retrieveData",
   execute: async (ctx) => {
     ctx.input = "Hello, GraphFlow!";
-    console.log("Donnée:", ctx.input);
+    console.log("Data:", ctx.input);
   },
   next: ["processData"],
 };
@@ -32,7 +32,7 @@ const processData: GraphNodeConfig<typeof Schema> = {
   name: "processData",
   execute: async (ctx) => {
     ctx.processed = ctx.input.toUpperCase();
-    console.log("Transformé:", ctx.processed);
+    console.log("Transformed:", ctx.processed);
   },
   next: ["logResult"],
 };
@@ -40,7 +40,7 @@ const processData: GraphNodeConfig<typeof Schema> = {
 const logResult: GraphNodeConfig<typeof Schema> = {
   name: "logResult",
   execute: async (ctx) => {
-    ctx.result = `Résultat: ${ctx.processed}`;
+    ctx.result = `Result: ${ctx.processed}`;
     console.log(ctx.result);
   },
 };
@@ -77,7 +77,7 @@ const processData = {
 const logResult = {
   name: "logResult",
   execute: async (ctx) => {
-    ctx.result = `Résultat: ${ctx.processed}`;
+    ctx.result = `Result: ${ctx.processed}`;
   },
 };
 

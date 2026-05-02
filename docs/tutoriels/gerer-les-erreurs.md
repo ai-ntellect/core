@@ -40,52 +40,51 @@ const schema = z.object({
   result: z.string().optional(),
 });
 
-// Étape 1 : Récupérer une donnée (avec erreur simulée)
+// Step 1: Retrieve data (with simulated error)
 const retrieveData: GraphNodeConfig<typeof schema> = {
   name: "retrieveData",
   execute: async (context) => {
-    console.log("Tentative de récupération de la donnée...");
+    console.log("Attempting to retrieve data...");
     if (Math.random() < 0.7) {
-      throw new Error("Erreur simulée lors de la récupération des données !");
+      throw new Error("Simulated error during data retrieval!");
     }
     context.input = "Hello, GraphFlow!";
-    console.log("Donnée récupérée :", context.input);
+      console.log("Data retrieved:", context.input);
   },
   retry: {
     maxAttempts: 2, // On tente 2 fois avant d'abandonner
     delay: 2000, // 2 secondes d'attente entre chaque tentative
     onRetryFailed: async (error) => {
-      console.log("❌ Retry échoué :", error.message);
+      console.log("❌ Retry failed:", error.message);
     },
     continueOnFailed: true, // On continue l'exécution même en cas d'échec
   },
   next: ["processData"],
 };
 
-// Étape 2 : Transformer la donnée
+// Step 2: Transform data
 const processData: GraphNodeConfig<typeof schema> = {
   name: "processData",
   execute: async (context) => {
     if (!context.input) {
-      console.log("Aucune donnée récupérée, transformation impossible.");
+      console.log("No data retrieved, cannot transform.");
       return;
     }
     context.processed = context.input.toUpperCase();
-    console.log("Donnée transformée :", context.processed);
+    console.log("Data transformed:", context.processed);
   },
   next: ["logResult"],
 };
 
-// Étape 3 : Afficher le résultat
+// Step 3: Display result
 const logResult: GraphNodeConfig<typeof schema> = {
   name: "logResult",
   execute: async (context) => {
     if (!context.processed) {
-      console.log("Aucun résultat à afficher.");
+       console.log("No result to display.");
       return;
     }
-    context.result = `Résultat Final: ${context.processed}`;
-    console.log(context.result);
+    console.log("Final Result:", context.result);
   },
 };
 
@@ -103,11 +102,11 @@ const graph = new GraphFlow("SimpleGraph", graphDefinition);
 
 (async () => {
   try {
-    console.log("Exécution du graphe...");
+    console.log("Executing graph...");
     await graph.execute("retrieveData");
-    console.log("Graphe terminé !");
+     console.log("Graph completed!");
   } catch (error) {
-    console.error("Erreur :", error);
+     console.error("Error:", error);
   }
 })();
 ```
@@ -116,10 +115,10 @@ const graph = new GraphFlow("SimpleGraph", graphDefinition);
 
 ### **Explication des changements**
 
-1. **Erreur simulée dans `retrieveData`** : 70% de chances d'échouer.
-2. **Retry automatique** : Jusqu'à 2 tentatives avec un **délai de 2 secondes**.
-3. **Si le retry échoue**, un message est affiché (`onRetryFailed`).
-4. **On continue l'exécution** même si `retrieveData` a échoué (`continueOnFailed: true`).
-5. **Si la récupération des données échoue complètement**, `processData` et `logResult` s'exécutent mais affichent un avertissement.
+1. **Simulated error in `retrieveData`** : 70% chance of failure.
+2. **Automatic retry** : Up to 2 attempts with **2 second delay**.
+3. **If retry fails**, a message is displayed (`onRetryFailed`).
+4. **Continue execution** even if `retrieveData` fails (`continueOnFailed: true`).
+5. **If data retrieval completely fails**, `processData` and `logResult` execute but display a warning.
 
 **Important** : Le graphe peut avoir **différents comportements** en fonction de si l'erreur est résolue ou non après les retries.

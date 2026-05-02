@@ -26,12 +26,12 @@ Utilisateur: "Envoie 1 ETH à 0x123"
 Agent:
   1. Construit le prompt avec les outils disponibles
   2. LLM choisit: prepareEvmTransaction avec {to: "0x123", value: "1"}
-  3. Exécute et retourne le résultat
+  3. Executes and returns result
 ```
 
 ## Exemple basique
 
-### 1. Définir les outils
+### Définir les outils
 
 ```typescript
 import { z } from "zod";
@@ -65,7 +65,7 @@ const calculator = new GraphFlow({
 });
 ```
 
-### 2. Créer l'agent
+### Créer l'agent
 
 ```typescript
 const agent = new Agent({
@@ -76,12 +76,12 @@ const agent = new Agent({
 });
 ```
 
-### 3. Utiliser
+### Utiliser
 
 ```typescript
 await agent.process("Calcule 25 + 7");
 // -> LLM choisit calculator avec les bons paramètres
-// -> Retourne: "Le résultat est 32"
+// -> Returns: "The result is 32"
 ```
 
 ***
@@ -93,7 +93,7 @@ Le vrai pouvoir d'un agent: **choisir le bon outil** selon la requête.
 ### Outils
 
 ```typescript
-// Outil 1: Calculatrice
+// Tool 1: Calculator
 const calculator = new GraphFlow({
   name: "calculator",
   schema: z.object({
@@ -195,7 +195,7 @@ const smartSearch = new GraphFlow({
       execute: async (ctx) => {
         // Ne pas répéter si déjà fait
         if (ctx.executed.includes("web_search")) {
-          ctx.result = "(Déjà fait, je saute)";
+          ctx.result = "(Already done, skipping)";
         }
       },
       next: (ctx) => ctx.result ? [] : ["do_search"],
