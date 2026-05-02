@@ -20,6 +20,9 @@ export * from "./graph/index";
 export * from "./graph/node";
 export * from "./graph/observer";
 export * from "./graph/visualizer";
+export * from "./graph/registry";
+export * from "./graph/planner";
+export * from "./graph/compiler";
 
 export * from "./interfaces";
 export * from "./modules/agenda";

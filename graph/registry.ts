@@ -1,65 +1,76 @@
-import { ZodSchema } from "zod";
-import { GraphNodeConfig } from "../types";
-import { ParallelNodeConfig } from "./types.parallel";
+import { GraphFlow } from './index';
+import { ParallelNodeConfig } from './types.parallel';
 
-/**
- * Registry centralisé pour les fonctions execute
- * Évite le transfert de fonctions aux workers
- * Pattern utilisé par LangGraph (tools registry)
- */
-export class NodeRegistry {
-  private static instance: NodeRegistry;
-  private executeFunctions = new Map<string, Function>();
-  private nodeConfigs = new Map<string, GraphNodeConfig<any, any>>();
-  private subgraphs = new Map<string, any>(); // GraphFlow instances
+// ========== Parallel Node Registry (legacy) ==========
 
-  static getInstance(): NodeRegistry {
-    if (!NodeRegistry.instance) {
-      NodeRegistry.instance = new NodeRegistry();
-    }
-    return NodeRegistry.instance;
-  }
+export const nodeRegistry = {
+  executeFunctions: new Map<string, Function>(),
+  nodeConfigs: new Map<string, ParallelNodeConfig<any>>(),
 
-  register<T extends ZodSchema>(nodeConfig: GraphNodeConfig<T, any>): void {
+  registerParallel(nodeConfig: ParallelNodeConfig<any>) {
     this.nodeConfigs.set(nodeConfig.name, nodeConfig);
-    this.executeFunctions.set(nodeConfig.name, nodeConfig.execute);
-  }
+    if (nodeConfig.execute) {
+      this.executeFunctions.set(nodeConfig.name, nodeConfig.execute);
+    }
+  },
 
-  registerParallel<T extends ZodSchema>(nodeConfig: ParallelNodeConfig<T, any>): void {
-    this.nodeConfigs.set(nodeConfig.name, nodeConfig as any);
-    this.executeFunctions.set(nodeConfig.name, nodeConfig.execute);
-  }
-
-  registerSubgraph(name: string, graph: any): void {
-    this.subgraphs.set(name, graph);
-  }
-
-  getExecute(nodeName: string): Function | undefined {
+  getExecuteFunction(nodeName: string) {
     return this.executeFunctions.get(nodeName);
-  }
+  },
 
-  getNodeConfig(nodeName: string): GraphNodeConfig<any, any> | undefined {
+  getNodeConfig(nodeName: string) {
     return this.nodeConfigs.get(nodeName);
-  }
+  },
 
-  getSubgraph(name: string): any | undefined {
-    return this.subgraphs.get(name);
-  }
-
-  // Version sérialisable (sans fonctions) pour workers
-  getSerializableConfig(nodeName: string): any | undefined {
-    const config = this.nodeConfigs.get(nodeName);
-    if (!config) return undefined;
-    const { execute, condition, ...serializable } = config as any;
-    return serializable;
-  }
-
-  clear(): void {
+  clear() {
     this.executeFunctions.clear();
     this.nodeConfigs.clear();
-    this.subgraphs.clear();
-  }
+  },
+};
+
+// ========== Tool Registry for Plan → Compile → Execute ==========
+
+export interface RegisteredTool {
+  name: string;
+  description: string;
+  graph: GraphFlow<any>;
+  startNode: string;
 }
 
-// Export singleton
-export const nodeRegistry = NodeRegistry.getInstance();
+export interface PlanStep {
+  node: string;
+  params?: Record<string, any>;
+  description?: string;
+}
+
+export class ToolRegistry {
+  private tools = new Map<string, RegisteredTool>();
+
+  register(tool: RegisteredTool) {
+    if (this.tools.has(tool.name)) {
+      throw new Error(`Tool ${tool.name} already registered`);
+    }
+    this.tools.set(tool.name, tool);
+  }
+
+  get(name: string) {
+    return this.tools.get(name);
+  }
+
+  list() {
+    return Array.from(this.tools.values()).map(({ name, description }) => ({
+      name,
+      description,
+    }));
+  }
+
+  validateSteps(steps: PlanStep[]) {
+    const errors: string[] = [];
+    steps.forEach((step, index) => {
+      if (!this.tools.has(step.node)) {
+        errors.push(`Step ${index}: Unknown node ${step.node}`);
+      }
+    });
+    return { valid: errors.length === 0, errors };
+  }
+}
