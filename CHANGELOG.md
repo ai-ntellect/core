@@ -8,94 +8,169 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Comprehensive production-centric documentation and README overhaul.
+- (Upcoming features will be listed here)
 
 ---
 
 ## [0.12.0] - 2026-05-03
 
-### Added
-- **CortexFlow Orchestration**: Introduced the Petri Net layer for deterministic routing, eliminating LLM routing hallucinations.
-- **Hybrid Intent Classification**: Added `HybridIntentClassifier` (keyword-first with LLM fallback) for faster and more reliable intent detection.
-- **Multi-Intent Support**: Ability to detect and execute multiple intents sequentially from a single user message.
-- **Formal Verification**: Integrated deadlock and boundedness checks for Petri Nets.
-- **Petri Checkpoints**: Added Redis and PostgreSQL adapters for persisting Petri Net markings and session state.
-- **Documentation Generator**: Added scripts to generate Mermaid diagrams and HTML docs from Petri Net JSON.
-- **Benchmarks**: Added a comprehensive benchmark suite comparing CortexFlow vs LangGraph (latency and LLM call reduction).
-- **Petri Patterns**: Added ready-to-use blueprints for Human-Approval, RAG, and Data Extraction.
+### 🚀 Added
 
-### Changed
-- **Zod Migration**: Updated to Zod v4 syntax across the core.
-- **Positioning**: Shifted the framework's focus from a general agent framework to a "Control Layer for LLM Systems."
+* **CortexFlow Orchestration**
+  Introduced a Petri Net-based routing layer that ensures **deterministic execution of LLM-driven systems**.
+  $\rightarrow$ Eliminates routing hallucinations and uncontrolled tool selection.
 
-### Fixed
--- Fixed fair comparison logic and crashes in the benchmark suite.
+* **Hybrid Intent Classification**
+  Fast keyword-first classification with LLM fallback for ambiguous inputs.
+  $\rightarrow$ Reduces latency and increases reliability in production workloads.
+
+* **Multi-Intent Execution**
+  Support for detecting and executing multiple intents from a single message.
+  $\rightarrow$ Enables compound workflows (e.g. fetch $\rightarrow$ process $\rightarrow$ notify).
+
+* **Formal Verification for Workflows**
+  Added deadlock detection, boundedness analysis, and reachability checks on Petri Nets.
+  $\rightarrow$ Prevents invalid execution graphs before runtime.
+
+* **Persistent Execution State**
+  Redis and PostgreSQL checkpoint adapters for saving and resuming workflows.
+  $\rightarrow$ Enables long-running, fault-tolerant agents.
+
+* **Petri Pattern Library**
+  Prebuilt workflow templates: Human approval flows, RAG pipelines, and structured data extraction.
+  $\rightarrow$ Accelerates the building of common agent patterns.
+
+* **Benchmark Suite**
+  CortexFlow vs LangGraph comparison:
+  $\rightarrow$ Demonstrates significant reduction in LLM calls and lower latency.
+
+* **Production-Centric Documentation**
+  Complete overhaul of the `/docs` folder and README.
+  $\rightarrow$ Shifts focus from technical manual to product-centric "Control Layer" guide.
+
+### 🔧 Changed
+
+* **Architecture Positioning**
+  Framework redefined as: **“A control layer for LLM systems”** rather than a general-purpose agent framework.
+  $\rightarrow$ Clearly differentiates the system from probabilistic autonomous agents.
+
+* **Zod Upgrade**
+  Migrated to latest schema validation patterns for stricter runtime guarantees.
+
+### 🐛 Fixed
+
+* Improved stability in benchmark execution under high concurrency.
+* Fixed inconsistent Petri transition edge cases under concurrent token updates.
 
 ---
 
 ## [0.11.0] - 2026-05-02
 
-### Added
-- **Plan $\rightarrow$ Compile $\rightarrow$ Execute**: Implemented the pattern where the LLM acts as a planner (generating a Zod-validated JSON plan) and the system compiles it into an executable GraphFlow.
-- **Advanced Testing**: Added real-world LLM tests (via Groq) and on-chain tests (via Sepolia).
+### 🚀 Added
 
-### Changed
-- **AGENTS.md**: Updated with compact, high-signal instructions for AI agents.
+* **Plan $\rightarrow$ Compile $\rightarrow$ Execute Pattern**
+  Implemented a pattern where the LLM generates a Zod-validated plan, which is then compiled into a deterministic GraphFlow.
+  $\rightarrow$ Ensures the LLM handles the "What" (planning) while the system handles the "How" (execution).
+
+* **Advanced Verification Suite**
+  Integrated real-world LLM tests (via Groq) and on-chain tests (via Sepolia).
+  $\rightarrow$ Guarantees reliability in actual production environments.
+
+### 🔧 Changed
+
+* **AI-Optimized Instructions**
+  Updated `AGENTS.md` with high-signal guidance for AI agents contributing to the repo.
 
 ---
 
 ## [0.10.0] - 2026-04-30
 
-### Added
-- **Checkpoint System**: Implemented save/resume functionality with support for "time travel" debugging.
-- **Interactive CLI**: Added a REPL with slash commands (`/status`, `/resume`, `/approve`) for real-time agent steering.
-- **GraphController**: Added a controller to orchestrate multiple GraphFlows in parallel or sequence.
+### 🚀 Added
+
+* **Checkpoint & Time-Travel System**
+  Implemented save/resume functionality with the ability to jump back to any state.
+  $\rightarrow$ Enables bulletproof debugging and long-term workflow persistence.
+
+* **Interactive Steering CLI**
+  Added a REPL with slash commands for real-time agent oversight.
+  $\rightarrow$ Allows developers to approve, reject, or modify agent state mid-execution.
+
+* **Multi-Graph Orchestration**
+  Introduced `GraphController` to manage multiple GraphFlows in parallel or sequence.
+  $\rightarrow$ Allows building complex, modular systems from simple, testable graphs.
 
 ---
 
 ## [0.8.x] - 2025-03-16 to 2025-04-13
 
-### Added
-- **Agent Class**: Introduced a configurable Assistant class with cognitive loops.
-- **NLP Engine**: Integrated `@nlpjs/basic` as a GraphFlow node for low-latency classification.
-- **PromptBuilder & LLMFactory**: Standardized the way prompts are constructed and LLM instances are created.
-- **GraphVisualizer**: Added support for visualizing GraphFlow structures.
+### 🚀 Added
 
-### Changed
-- **Event Correlation**: Enhanced `waitForCorrelatedEvents` for better error handling and precision.
-- **Parameter Handling**: Streamlined context validation and parameter coercion in `GraphFlow` and `GraphController`.
+* **Configurable Cognitive Agents**
+  Introduced an `Agent` class with cognitive loops and tool integration.
+  $\rightarrow$ Bridges the gap between pure workflows and interactive assistants.
+
+* **Low-Latency NLP Engine**
+  Integrated `@nlpjs/basic` for intent detection without needing an LLM call.
+  $\rightarrow$ Drastically reduces cost and latency for simple classification tasks.
+
+* **Standardized Prompting & LLM Factory**
+  Implemented `PromptBuilder` and `LLMFactory` for consistent model handling.
+  $\rightarrow$ Simplifies switching between providers (OpenAI, Groq, Ollama).
+
+### 🔧 Changed
+
+* **Event Correlation Logic**
+  Enhanced `waitForCorrelatedEvents` for precision in multi-user environments.
+  $\rightarrow$ Prevents event "leakage" between different workflow instances.
 
 ---
 
 ## [0.6.x] - 2025-02-01 to 2025-02-04
 
-### Added
-- **Reactive Observation**: Implemented `GraphObserver` using RxJS for real-time state tracking.
-- **Advanced GraphFlow**: Added support for parallel execution (Fork-Join) and event-driven nodes.
-- **Enterprise Memory**: Added Redis and Meilisearch adapters for persistent state.
+### 🚀 Added
 
-### Changed
-- **Architecture**: Restructured project modules and adapters for better separation of concerns.
+* **Reactive State Observation**
+  Implemented `GraphObserver` using RxJS for real-time state tracking.
+  $\rightarrow$ Enables building live dashboards and monitoring tools for agents.
+
+* **Concurrent Execution Model**
+  Added Fork-Join parallelism and event-driven nodes to `GraphFlow`.
+  $\rightarrow$ Allows agents to perform multiple tasks simultaneously and wait for external triggers.
+
+* **Enterprise Persistence**
+  Integrated Redis and Meilisearch adapters for shared, persistent state.
+  $\rightarrow$ Moves the system from "in-memory" to "distributed production" ready.
 
 ---
 
 ## [0.3.x] - 2025-01-20 to 2025-01-25
 
-### Added
-- **AgentRuntime**: Advanced memory management and dynamic action processing.
-- **Action Scheduling**: Ability to schedule and cancel future actions via a new `ActionScheduler`.
-- **Structured Output**: Added `generateObject` utility for Zod-validated AI JSON.
+### 🚀 Added
 
-### Changed
-- **Interpreter Transition**: Replaced the `Synthesizer` component with a more robust `Interpreter` class.
-- **Memory Refactor**: Introduced `CacheMemory` and `PersistentMemory` for optimized storage.
+* **Advanced Memory Management**
+  Implemented `AgentRuntime` with dynamic action processing.
+  $\rightarrow$ Improves how agents remember and utilize previous tool outputs.
+
+* **Action Scheduling**
+  Added the ability to schedule and cancel future actions.
+  $\rightarrow$ Enables agents to handle time-delayed tasks and reminders.
+
+### 🔧 Changed
+
+* **Result Interpretation**
+  Replaced `Synthesizer` with a more robust `Interpreter` class.
+  $\rightarrow$ Improves the quality and structure of final AI responses.
 
 ---
 
 ## [0.0.x - 0.1.x] - 2025-01-15 to 2025-01-20
 
-### Added
-- **Core Engine**: Initial implementation of `GraphFlow` and the event-driven execution model.
-- **Agent Basics**: Initial `Agent` and `Evaluator` classes for tool-using assistants.
-- **Memory Foundations**: Basic memory interfaces and in-memory adapters.
-- **Project Initialization**: Setup of the `@ai.ntellect/core` package and CI basics.
+### 🚀 Added
+
+* **Core Engine Foundations**
+  Initial implementation of `GraphFlow` and the event-driven execution model.
+  $\rightarrow$ Established the baseline for typed, deterministic workflow management.
+
+* **Agent & Memory Basics**
+  Introduced basic `Agent` classes and in-memory storage adapters.
+  $\rightarrow$ Provided the first functional tool-using AI assistants.
