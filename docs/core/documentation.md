@@ -1,92 +1,55 @@
-# Génération de Documentation Vivante
+# Living Documentation: Visualizing Your Agents
 
-CortexFlow permet de générer automatiquement la documentation des Petri Nets sous forme de diagrammes Mermaid, de fichiers Markdown et de pages HTML interactives.
+One of the biggest challenges in AI orchestration is the "Black Box" problem: you don't know why an agent took a certain path. `@ai.ntellect/core` solves this by treating **documentation as code**.
 
-## Génération via CLI
+CortexFlow can automatically generate visual and textual documentation directly from your Petri Net definitions.
+
+---
+
+## 🛠️ Generation Tools
+
+### 1. CLI Generation
+You can generate documentation for any JSON-defined Petri Net using the provided script:
 
 ```bash
 npx ts-node scripts/generate-petri-docs.ts <petri-net.json> [output-dir]
 ```
 
-**Exemple** :
-```bash
-npx ts-node scripts/generate-petri-docs.ts examples/my-workflow.json ./docs/petri
-```
+**What you get:**
+- **Markdown (`.md`)**: A human-readable explanation of all places, transitions, and the intended flow.
+- **Mermaid Diagram (`.mmd`)**: A visual graph that can be rendered in GitHub, Notion, or Obsidian.
+- **Interactive HTML (`.html`)**: A standalone page with an embedded render of the workflow.
 
-**Sortie** (dans `./docs/petri/` ou dossier spécifié) :
-- `my-workflow.md` — Documentation Markdown
-- `my-workflow-diagram.mmd` — Diagramme Mermaid
-- `my-workflow.html` — Prévisualisation HTML avec rendu Mermaid
-
-## Format de fichier Petri Net (JSON)
-
-```json
-{
-  "name": "mon-workflow",
-  "places": [
-    { "id": "idle", "type": "initial", "tokens": [] },
-    { "id": "processing", "type": "normal", "tokens": [] },
-    { "id": "done", "type": "final", "tokens": [] }
-  ],
-  "transitions": [
-    {
-      "id": "start",
-      "from": ["idle"],
-      "to": ["processing"],
-      "description": "Démarrer le traitement"
-    }
-  ]
-}
-```
-
-## Génération programmatique
+### 2. Programmatic Generation
+You can integrate documentation generation into your CI/CD pipeline or your own admin dashboard:
 
 ```typescript
 import { PetriDocumentationGenerator } from "@ai.ntellect/core/petri/documentation-generator";
-import { PetriNet } from "@ai.ntellect/core/petri/index";
-
-const net = new PetriNet("mon-workflow");
-// ... configurer le réseau
 
 const generator = new PetriDocumentationGenerator();
 await generator.generateForPetri(net, {
   outputDir: "./docs/petri",
-  format: "all", // "markdown" ou "all" (inclut HTML)
-  includeHistory: true,
-  includeState: true,
+  format: "all",
 });
 ```
 
-## Documentation de session
+---
 
-Pour générer la documentation d'une session en cours (avec l'état actuel) :
+## 🔍 Session-Based Documentation (The "Audit Trail")
 
-```typescript
-await generator.generateForSession(
-  orchestrator,
-  sessionId,
-  { outputDir: "./docs/sessions", format: "markdown" }
-);
-```
+Unlike static documentation, **Session Documentation** captures the *actual* execution of a specific request.
 
-**Fichiers générés** :
-- `session-<id>-state.md` — État actuel (marquage, transitions activées)
-- `session-<id>-state.mmd` — Diagramme avec surbrillance de l'état
-- `session-<id>-report.md` — Rapport complet de la session
+When you generate documentation for a session:
+1. **State Highlighting**: The resulting diagram highlights exactly where the tokens were located at the time of the snapshot.
+2. **Transition History**: The Markdown report lists every transition that was fired, in order, with its associated `traceId`.
+3. **Enabled Analysis**: The report shows which transitions were "enabled" (ready to fire) but were not chosen.
 
-## Intégration dans le CLI Dev
+**This turns your documentation into a forensic tool for debugging production agents.**
 
-Le CLI `cli-dev.ts` inclut une commande `dot` pour exporter le graphe au format DOT :
+---
 
-```bash
-npx ts-node cli-dev.ts mon-workflow.json
-> dot
-# Affiche le graphe au format DOT (utilisable avec Graphviz)
-```
+## 📈 Why "Living" Docs?
 
-## Avantages
-
-- **Toujours à jour** — La documentation est générée directement depuis le code
-- **Visualisation** — Diagrammes Mermaid intégrables dans n'importe quel Markdown
-- **Debugging** — L'état actuel est inclus dans la documentation de session
-- **Partage** — Le HTML auto-suffisant peut être partagé sans dépendances
+- **Zero Drift**: Since the docs are generated from the `PetriNet` object, they can never be out of sync with the code.
+- **Accessibility**: Non-technical stakeholders (Product Managers, Compliance Officers) can review the Mermaid diagrams to verify the business logic.
+- **Fast Onboarding**: New developers can visualize the entire agent's decision tree without reading thousands of lines of code.

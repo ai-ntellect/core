@@ -12,6 +12,12 @@ export interface IntentResult {
   entities: Record<string, any>;
   /** Turn history that was fed to the classifier, useful for debugging. */
   turnHistory?: string[];
+  /**
+   * Optional list of multiple intents when the message contains several actions.
+   * Each entry has its own intent label and confidence.
+   * When present, the orchestrator will execute them sequentially.
+   */
+  intents?: Array<{ intent: string; confidence: number; entities?: Record<string, any> }>;
 }
 
 /**
@@ -76,6 +82,11 @@ const IntentSchema = z.object({
   intent:     z.string(),
   confidence: z.number().min(0).max(1),
   entities:   z.record(z.string(), z.any()).optional(),
+  intents:    z.array(z.object({
+    intent:     z.string(),
+    confidence: z.number().min(0).max(1),
+    entities:   z.record(z.string(), z.any()).optional(),
+  })).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -128,6 +139,9 @@ export class IntentClassifier implements IIntentClassifier {
   /**
    * Classifies a user message into one of the registered intents via one LLM call.
    *
+   * Supports multi-intent detection: if the LLM returns an `intents` array,
+   * the result will include multiple intents to be executed sequentially.
+   *
    * On JSON parse failure or Zod validation error, returns a safe fallback
    * `{ intent: "UNKNOWN", confidence: 0, entities: {} }` rather than throwing.
    */
@@ -138,10 +152,13 @@ export class IntentClassifier implements IIntentClassifier {
     const turnHistory = context?.turnHistory || [];
 
     const prompt = `You are an intent classifier for a workflow system.
-Available intents: ${this.intents.join(', ')}
+Available intents: ${this.intents.join(', ')} 
 
 Respond with JSON only in this format:
 {"intent": "INTENT_NAME", "confidence": 0.0-1.0, "entities": {}}
+
+If the user message contains MULTIPLE actions, also include an "intents" array:
+{"intent": "MAIN_INTENT", "confidence": 0.0-1.0, "entities": {}, "intents": [{"intent": "ACTION1", "confidence": 0.0-1.0, "entities": {}}, {"intent": "ACTION2", "confidence": 0.0-1.0, "entities": {}}]}
 
 User message: ${message}
 ${turnHistory.length > 0 ? `Recent history: ${JSON.stringify(turnHistory.slice(-5))}` : ''}
@@ -152,7 +169,23 @@ JSON response:`;
       const response = await this.llmCall(prompt);
       const parsed   = JSON.parse(response);
       const result   = IntentSchema.parse(parsed);
-      return { intent: result.intent, confidence: result.confidence, entities: result.entities || {}, turnHistory };
+
+      const intentResult: IntentResult = {
+        intent: result.intent,
+        confidence: result.confidence,
+        entities: result.entities || {},
+        turnHistory,
+      };
+
+      if (result.intents && result.intents.length > 0) {
+        intentResult.intents = result.intents.map(i => ({
+          intent: i.intent,
+          confidence: i.confidence,
+          entities: i.entities || {},
+        }));
+      }
+
+      return intentResult;
     } catch {
       return { intent: 'UNKNOWN', confidence: 0, entities: {}, turnHistory };
     }

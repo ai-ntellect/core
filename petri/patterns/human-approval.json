@@ -1,0 +1,64 @@
+{
+  "name": "human_approval_workflow",
+  "description": "Workflow with human approval step. Use this pattern when actions need human validation before execution.",
+  "places": [
+    { "id": "idle", "type": "initial", "tokens": [{ "id": "start", "data": {} }] },
+    { "id": "awaiting_approval", "type": "normal", "tokens": [] },
+    { "id": "approved", "type": "normal", "tokens": [] },
+    { "id": "rejected", "type": "normal", "tokens": [] },
+    { "id": "executing", "type": "normal", "tokens": [] },
+    { "id": "completed", "type": "final", "tokens": [] },
+    { "id": "cancelled", "type": "final", "tokens": [] }
+  ],
+  "transitions": [
+    {
+      "id": "request_approval",
+      "from": ["idle"],
+      "to": "awaiting_approval",
+      "description": "Request human approval for the pending action",
+      "action": {
+        "type": "dynamic",
+        "prompt": "Present the action to the user for approval. Explain what will happen.",
+        "maxSteps": 2
+      }
+    },
+    {
+      "id": "approve",
+      "from": ["awaiting_approval"],
+      "to": "approved",
+      "guard": {
+        "type": "deterministic",
+        "condition": "context.approved === true"
+      }
+    },
+    {
+      "id": "reject",
+      "from": ["awaiting_approval"],
+      "to": "rejected",
+      "guard": {
+        "type": "deterministic",
+        "condition": "context.approved === false"
+      }
+    },
+    {
+      "id": "execute_action",
+      "from": ["approved"],
+      "to": "executing",
+      "action": {
+        "type": "graphflow",
+        "name": "main_action",
+        "contextMapper": "ctx => ({ ...ctx, approved: undefined })"
+      }
+    },
+    {
+      "id": "complete",
+      "from": ["executing"],
+      "to": "completed"
+    },
+    {
+      "id": "cancel",
+      "from": ["rejected"],
+      "to": "cancelled"
+    }
+  ]
+}

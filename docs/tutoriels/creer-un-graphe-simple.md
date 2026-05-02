@@ -1,125 +1,92 @@
-# Créer un graphe simple
+# Building Your First Workflow
 
-Créez un workflow avec plusieurs noeuds séquentiels.
+In this guide, we'll move from a single node to a **complete pipeline**. We will build a data processing workflow that retrieves, transforms, and logs information.
 
-## Schema
+## 🏗️ The Blueprint
+
+We want to create a three-step process:
+`Retrieve Data` $\rightarrow$ `Transform to Uppercase` $\rightarrow$ `Log Result`
+
+### 1. Define the State (Schema)
+The **Schema** is the most important part of a GraphFlow. It acts as a contract. If a node tries to set a value that doesn't match the schema, the workflow will throw an error immediately.
 
 ```typescript
 import { z } from "zod";
 
-const Schema = z.object({
-  input: z.string(),
-  processed: z.string().optional(),
-  result: z.string().optional(),
+const DataSchema = z.object({
+  rawInput: z.string(),
+  processedData: z.string().optional(),
+  finalResult: z.string().optional(),
 });
 ```
 
-## Noeuds
+### 2. Define the Nodes
+Each node is a discrete unit of logic. We use the `next` property to define the path.
 
 ```typescript
-import { GraphNodeConfig } from "@ai.ntellect/core/types";
-
-const retrieveData: GraphNodeConfig<typeof Schema> = {
-  name: "retrieveData",
+const retrieveNode = {
+  name: "retrieve",
   execute: async (ctx) => {
-    ctx.input = "Hello, GraphFlow!";
-    console.log("Data:", ctx.input);
+    ctx.rawInput = "deterministic orchestration is powerful";
   },
-  next: ["processData"],
+  next: "transform", // Go to 'transform' next
 };
 
-const processData: GraphNodeConfig<typeof Schema> = {
-  name: "processData",
+const transformNode = {
+  name: "transform",
   execute: async (ctx) => {
-    ctx.processed = ctx.input.toUpperCase();
-    console.log("Transformed:", ctx.processed);
+    ctx.processedData = ctx.rawInput.toUpperCase();
   },
-  next: ["logResult"],
+  next: "log", // Go to 'log' next
 };
 
-const logResult: GraphNodeConfig<typeof Schema> = {
-  name: "logResult",
+const logNode = {
+  name: "log",
   execute: async (ctx) => {
-    ctx.result = `Result: ${ctx.processed}`;
-    console.log(ctx.result);
+    ctx.finalResult = `SUCCESS: ${ctx.processedData}`;
+    console.log(ctx.finalResult);
   },
 };
 ```
 
-## Graphe complet
+### 3. Assemble the GraphFlow
 
 ```typescript
-import { z } from "zod";
 import { GraphFlow } from "@ai.ntellect/core";
 
-const Schema = z.object({
-  input: z.string(),
-  processed: z.string().optional(),
-  result: z.string().optional(),
-});
-
-const retrieveData = {
-  name: "retrieveData",
-  execute: async (ctx) => {
-    ctx.input = "Hello, GraphFlow!";
-  },
-  next: ["processData"],
-};
-
-const processData = {
-  name: "processData",
-  execute: async (ctx) => {
-    ctx.processed = ctx.input.toUpperCase();
-  },
-  next: ["logResult"],
-};
-
-const logResult = {
-  name: "logResult",
-  execute: async (ctx) => {
-    ctx.result = `Result: ${ctx.processed}`;
-  },
-};
-
 const workflow = new GraphFlow({
-  name: "SimpleGraph",
-  schema: Schema,
-  context: { input: "", processed: "", result: "" },
-  nodes: [retrieveData, processData, logResult],
+  name: "DataPipeline",
+  schema: DataSchema,
+  context: { rawInput: "", processedData: "", finalResult: "" },
+  nodes: [retrieveNode, transformNode, logNode],
 });
 
-async function main() {
-  await workflow.execute("retrieveData");
-  console.log(workflow.getContext());
-}
-
-main();
+await workflow.execute("retrieve");
 ```
 
-## Résultat
+---
 
-```
-{ input: 'Hello, GraphFlow!', processed: 'HELLO, GRAPHFLOW!', result: 'Résultat: HELLO, GRAPHFLOW!' }
-```
+## ⚡ Advanced Routing: Dynamic Branching
 
-## next dynamique
+In the real world, workflows aren't always linear. You can make the `next` property a **function** to create conditional logic.
 
-`next` peut être une fonction:
-
+**Example: High-Value Path**
 ```typescript
-{
-  name: "check",
+const checkAmount = {
+  name: "checkAmount",
   execute: async (ctx) => {
-    ctx.value = 10;
+    ctx.amount = 150;
   },
-  next: (ctx) => ctx.value > 5 ? ["success"] : ["failure"],
-},
-{
-  name: "success",
-  execute: async (ctx) => { /* ... */ },
-},
-{
-  name: "failure", 
-  execute: async (ctx) => { /* ... */ },
-},
+  next: (ctx) => {
+    return ctx.amount > 100 ? ["premium_flow"] : ["standard_flow"];
+  },
+};
+
+// Now the workflow splits based on the value of 'amount'
 ```
+
+## 🚀 Summary
+You've just built a deterministic pipeline. Unlike a standard script, this workflow is:
+1. **Observable**: You can track exactly which node is running.
+2. **Type-Safe**: Zod ensures your data is always correct.
+3. **Extensible**: You can add a "Retry" or "Checkpoint" to any node without rewriting the whole logic.

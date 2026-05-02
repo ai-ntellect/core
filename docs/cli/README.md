@@ -1,56 +1,65 @@
-# CLI
+# Interactive CLI: Debugging & Control
 
-Le CLI offre une interface REPL (Read-Eval-Print Loop) interactive pour exécuter des agents avec gestion de checkpoints et approbation humaine.
+The `@ai.ntellect/core` CLI is not just a runner—it is a **control center** for your agents. It allows you to interact with agents in real-time, inspect their internal state, and manually steer execution using checkpoints.
 
-## Démarrage
+## 🚀 Getting Started
+
+Launch the REPL by specifying your LLM provider and model:
 
 ```sh
-pnpm cli -p groq -m llama-3.1-8b-instant       # Groq
-pnpm cli -p openai -m gpt-4o-mini              # OpenAI
-pnpm cli -p ollama -m gemma4:4b                # Local Ollama
+pnpm cli -p groq -m llama-3.1-8b-instant       # High-speed Groq
+pnpm cli -p openai -m gpt-4o-mini              # Versatile OpenAI
+pnpm cli -p ollama -m gemma4:4b                # Local Privacy (Ollama)
 ```
 
-## Options
+### Configuration
+The CLI automatically loads your `.env` file for API keys (`GROQ_API_KEY`, `OPENAI_API_KEY`, etc.), so you don't have to pass them manually.
 
-- `-p, --provider` — Fournisseur LLM (openai, ollama, groq, openrouter)
-- `-m, --model` — Nom du modèle
-- `-b, --base-url` — URL de base de l'API
-- `--api-key` — Clé API
-- `-r, --role` — Rôle de l'agent
-- `-g, --goal` — Objectif de l'agent
-- `-v, --verbose` — Sortie verbose
+---
 
-## Chargement automatique du .env
+## ⌨️ Control Commands (Slash Commands)
 
-Le CLI charge automatiquement le fichier `.env` pour les clés API (`GROQ_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`). Aucune dépendance `dotenv` requise.
+While in the interactive session, use these commands to manage the agent's lifecycle:
 
-## Commandes Slash
+### 🔍 State Inspection
+- `/status` — View the current execution state and active node.
+- `/history` — Print the full conversation and tool execution history.
+- `/list` — List all available checkpoints for the current session.
 
-En mode interactif, utilisez ces commandes:
+### 🕹️ Execution Control
+- `/resume [cpId]` — **Time Travel**: Jump back to a specific checkpoint and continue from there.
+- `/approve` — Signal a "Yes" to a pending human-in-the-loop breakpoint.
+- `/reject` — Signal a "No" to a pending human-in-the-loop breakpoint.
+- `/modify k=v` — **State Injection**: Change a variable in the context *before* resuming execution.
 
-- `/status` — Affiche l'état d'exécution actuel
-- `/history` — Affiche l'historique de conversation
-- `/list` — Liste les checkpoints disponibles
-- `/resume [cpId]` — Reprend depuis un checkpoint
-- `/approve` — Approuve une action en attente
-- `/reject` — Rejette une action en attente
-- `/modify k=v` — Modifie le contexte avant la reprise
-- `/clear` — Efface la conversation
-- `/help` — Affiche l'aide
-- `/exit` — Quitte
+### 🧹 Session Management
+- `/clear` — Reset the current conversation context.
+- `/help` — Show all available commands.
+- `/exit` — Gracefully terminate the session.
 
-## Breakpoints
+---
 
-Le CLI s'arrête automatiquement avant le nœud `think` (appel LLM) pour révision human-in-the-loop. Configurez des breakpoints personnalisés via `breakpoints: ["nodeName"]` dans la config checkpoint.
+## 🛑 Human-in-the-Loop (HITL)
 
-## Exemple de session
+The CLI is designed for **safe AI deployment**. By default, the agent is configured with a breakpoint before the `think` node (the LLM call). 
 
-```
-> /role Math Assistant
-> What is 25 plus 7?
-[LLM thinking...]
-The answer is 32.
-> /history
-[Shows conversation history]
-> /exit
+**The Workflow:**
+1. The agent identifies a need to call a tool.
+2. The CLI **pauses** execution.
+3. You review the proposed action.
+4. You type `/approve` to let it proceed or `/modify` to correct the parameters.
+
+This ensures that no destructive action (like a financial transfer or a file deletion) happens without explicit human consent.
+
+## 📖 Example Session
+
+```text
+> /role Financial Assistant
+> Transfer $50 to Alice
+[BREAKPOINT] Agent wants to execute: transfer_funds { amount: 50, to: "Alice" }
+> /approve
+[Executing...]
+Transaction successful. Reference: TX_9921.
+> /status
+Current Node: notify_user | Status: COMPLETED
 ```

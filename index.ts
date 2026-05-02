@@ -35,3 +35,7 @@ export * from "./utils/generate-action-schema";
 export * from "./utils/header-builder";
 
 export { startCLI, runCLI, type CLIConfig } from "./modules/cli";
+
+// Pipeline - High-level abstraction for agent orchestration
+export { AgentPipeline, priceZone } from "./pipeline/agent-pipeline";
+export type { Stage, PriceTrigger, AgentPipelineConfig } from "./pipeline/agent-pipeline";

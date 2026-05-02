@@ -1,99 +1,69 @@
+# Use Cases & Design Patterns
+
+`@ai.ntellect/core` is designed for scenarios where **failure is not an option**. While simple chatbots can use raw LLM loops, production systems require structured, predictable execution.
+
+Here are the primary patterns you can build with this framework.
+
 ---
-description: >-
-  @ai.ntellect/core automatise et orchestre des workflows intelligents, de l’IA
-  à la blockchain en passant par l’automatisation métier.
+
+## 1. Task-Based Assistants (The "Router" Pattern)
+Perfect for applications that provide a suite of specific services.
+
+**The Pattern**: `Natural Language` $\rightarrow$ `Intent Classification` $\rightarrow$ `Deterministic Workflow`.
+
+- **Example**: A Banking Assistant.
+  - "What's my balance?" $\rightarrow$ `GET_BALANCE` intent $\rightarrow$ `fetchBalance` GraphFlow.
+  - "Pay my electricity bill" $\rightarrow$ `PAY_BILL` intent $\rightarrow$ `validateAccount` $\rightarrow$ `executePayment` $\rightarrow$ `notifyUser` GraphFlow.
+- **Why this wins**: The LLM cannot "hallucinate" a new payment method or skip the validation step. The path is hardcoded in the Petri Net.
+
 ---
 
-# Cas d'usages
+## 2. Human-in-the-Loop (The "Approval" Pattern)
+Essential for high-stakes actions that require a human "sanity check."
 
-**@ai.ntellect/core** est conçu pour orchestrer des **workflows intelligents** et automatiser des processus complexes.&#x20;
+**The Pattern**: `Workflow Execution` $\rightarrow$ `Checkpoint` $\rightarrow$ `Awaiting Approval` $\rightarrow$ `Resume`.
 
-Son architecture modulaire et événementielle permet de l’adapter à de nombreux domaines, qu’il s’agisse d’**automatisation métier, d’intelligence artificielle, d’intégration blockchain ou de gestion de systèmes distribués**.
+- **Example**: Enterprise Expense Approval.
+  - Employee submits a \$5,000 expense.
+  - GraphFlow processes the request and hits a **Breakpoint**.
+  - Execution pauses; state is saved to Redis.
+  - Manager receives a notification and calls `/approve`.
+  - GraphFlow resumes from the exact same state and completes the payment.
+- **Why this wins**: You don't have to write complex "polling" logic. The system natively supports pausing and resuming long-running processes.
 
-Cette section présente **les principaux cas d’usage** où **@ai.ntellect/core** apporte une **réelle valeur ajoutée**.
+---
 
-***
+## 3. Event-Driven Orchestration (The "Reactive" Pattern)
+For systems that must react to the real world (Webhooks, IoT, Blockchain).
 
-### **Automatisation de workflows métiers**
+**The Pattern**: `Event Trigger` $\rightarrow$ `Context Correlation` $\rightarrow$ `Workflow Trigger`.
 
-Les entreprises ont besoin d’automatiser **leurs processus internes** pour améliorer **l’efficacité, la traçabilité et la réactivité**.
+- **Example**: Crypto Whale Alert & Trade.
+  - **Event**: A large transfer is detected on-chain.
+  - **Action**: Trigger a GraphFlow that analyzes the wallet history, calculates the impact, and executes a hedge trade.
+- **Why this wins**: By using **Event-Driven Nodes**, your workflows can "sleep" for days and wake up the instant a specific external condition is met.
 
-#### **Exemple : Traitement automatique des demandes clients**
+---
 
-* Un graphe est déclenché lorsqu’un client soumet une demande.
-* Le système analyse la demande et décide si une réponse automatique est possible.
-* Si une intervention humaine est nécessaire, une tâche est assignée via l’agenda.
-* Une réponse est envoyée au client une fois la tâche complétée.
+## 4. Financial & Critical Workflows (The "Zero-Failure" Pattern)
+For systems where a single error can result in financial loss or compliance breach.
 
-**Gains** : automatisation des tâches répétitives, meilleure gestion des ressources, amélioration de l’expérience client.
+**The Pattern**: `Formal Verification` $\rightarrow$ `Zod Validation` $\rightarrow$ `Atomic Execution`.
 
-***
+- **Example**: Automated Compliance Reporting.
+  - Collect data from 5 different APIs.
+  - Validate each piece of data against a strict Zod schema.
+  - Use a **Fork-Join** model to process reports in parallel.
+  - Merge results using a custom **Reducer** to ensure no data is lost.
+- **Why this wins**: The use of Petri Nets allows you to prove that the workflow will never enter an invalid state (Deadlock Detection), and Zod ensures that no corrupted data ever reaches your core logic.
 
-### **Orchestration d’intelligence artificielle**
+---
 
-Les modèles d’intelligence artificielle doivent souvent être orchestrés dans **des pipelines complexes**, où plusieurs étapes de traitement sont nécessaires avant d’obtenir un résultat exploitable.
+## 🚀 Summary: When to use what?
 
-#### **Exemple : Traitement de documents avec un LLM**
-
-* Un utilisateur charge un document via une API.
-* Le graphe déclenche un modèle d’IA qui extrait les informations clés.
-* Selon les résultats, le document est classifié et envoyé à un workflow de validation.
-* Une réponse est générée et stockée dans une base de données.
-
-**Gains** : orchestration fluide des modèles IA, meilleure gestion des workflows d’apprentissage et de décision.
-
-***
-
-### **Automatisation on-chain**
-
-Les interactions avec la blockchain nécessitent souvent des **systèmes capables de réagir en temps réel aux événements on-chain** et de gérer des processus off-chain.
-
-#### **Exemple : Exécution d’une transaction conditionnelle**
-
-* Un événement blockchain est détecté (ex. : réception d’un token).
-* Un graphe vérifie les conditions définies (ex. : solde suffisant, signature requise).
-* Si la transaction est validée, elle est envoyée sur la blockchain.
-* Une notification est envoyée à l’utilisateur.
-
-**Gains** : exécution d’interactions blockchain automatisées, meilleure gestion des conditions complexes.
-
-***
-
-### **Réactivité en temps réel**
-
-Certaines applications nécessitent de réagir instantanément à **des événements externes** pour déclencher des actions automatiques.
-
-#### **Exemple : Surveillance et alerte en cybersécurité**
-
-* Un graphe surveille les logs d’activité d’un système.
-* S’il détecte une activité suspecte (ex. : connexion inhabituelle), il déclenche une alerte.
-* Une action de mitigation est appliquée (ex. : blocage IP, demande d’authentification supplémentaire).
-* Un rapport est généré et envoyé aux administrateurs.
-
-**Gains** : automatisation de la gestion des incidents, temps de réponse réduit, meilleure sécurité proactive.
-
-***
-
-### **Coordination et orchestration multi-systèmes**
-
-Dans des architectures complexes, il est souvent nécessaire de **synchroniser plusieurs systèmes** en fonction de règles métier spécifiques.
-
-#### **Exemple : Supply chain intelligente**
-
-* Un graphe suit l’état des stocks en temps réel via des API fournisseurs.
-* Si un produit est en rupture, il déclenche une commande automatique auprès du fournisseur.
-* L’état de la commande est suivi, et les délais d’expédition sont optimisés.
-* Une notification est envoyée aux clients en fonction de la disponibilité du produit.
-
-**Gains** : meilleure gestion des ressources, réduction des délais et optimisation des coûts.
-
-***
-
-### **Pourquoi cette approche est puissante ?**
-
-* **Automatisation avancée** : exécution fluide et adaptative de tâches complexes.
-* **Réactivité événementielle** : gestion en temps réel des interactions avec des systèmes externes.
-* **Orchestration modulaire** : gestion de workflows indépendants et interconnectés.
-* **Interopérabilité** : intégration facile avec des API, des bases de données et des systèmes blockchain.
-
-Ces cas d’usage montrent comment **@ai.ntellect/core** peut être utilisé dans des contextes variés, **allant de l’automatisation métier à l’IA et la blockchain**.
+| If you need... | Use this pattern | Key Primitive |
+| :--- | :--- | :--- |
+| Predictable routing | **Task-Based** | `CortexFlow` (Intent $\rightarrow$ Net) |
+| Safety / Oversight | **Approval** | `Checkpoints` + `Breakpoints` |
+| External triggers | **Reactive** | `Event-Driven Nodes` |
+| Mathematical certainty | **Zero-Failure** | `Petri Net Verification` + `Zod` |

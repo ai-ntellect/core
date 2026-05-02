@@ -1,39 +1,34 @@
-# Table des matières
+# Table of Contents
 
-* [Bienvenue](./)
+* [Welcome](./README.md)
 
-## Concepts Core
+## 🚀 Getting Started
+* [Quick Start Guide](./tutoriels/pour-commencer.md)
+* [The Philosophy](./philosophie.md)
+* [Key Concepts](./concepts-cles.md)
 
-* [Introduction](core/introduction.md)
-* [GraphFlow](core/graphflow.md)
-* [Événements](core/les-evenements.md)
-* [Architecture](core/architecture.md)
-* [Checkpoints](core/checkpoint.md)
-* [GraphController](core/graphcontroller.md)
-* [Documentation vivante](core/documentation.md) **(Nouveau)**
-* [Benchmark](core/benchmark.md) **(Nouveau)**
+## 🛠️ The Engine (Core)
+* [GraphFlow Deep Dive](./core/graphflow.md)
+* [Event-Driven Architectures](./core/les-evenements.md)
+* [Resilience & Checkpoints](./core/checkpoint.md)
+* [Multi-Graph Orchestration](./core/graphcontroller.md)
+* [Technical Architecture](./core/architecture.md)
+* [Visualizing Your Agents](./core/documentation.md)
+* [Performance Benchmarks](./core/benchmark.md)
 
-## Modules
+## 🧩 Modules & Tooling
+* [Modular Extensions](./modules/introduction.md)
+* [Memory Systems](./modules/memoire/)
+* [Agenda & Scheduling](./modules/agenda/)
+* [Interactive CLI](./cli/README.md)
 
-* [Introduction](modules/introduction.md)
-* [Mémoire](modules/memoire/)
-* [Agenda](modules/agenda/)
-* [NLP](modules/nlp/)
-* [CLI](cli/)
+## 📖 Tutorials
+* [Building Your First Workflow](./tutoriels/creer-un-graphe-simple.md)
+* [Building Tool-Using Agents](./tutoriels/creer-un-agent.md)
+* [Implementing Human-in-the-Loop](./tutoriels/checkpoint-usage.md)
+* [Advanced Branching](./tutoriels/branching.md)
+* [Handling Errors & Retries](./tutoriels/retry.md)
 
-## Tutoriels
-
-* [Pour commencer](tutoriels/pour-commencer.md)
-* [Créer un graphe simple](tutoriels/creer-un-graphe-simple.md)
-* [Créer un agent](tutoriels/creer-un-agent.md)
-* [Créer un agent onchain](tutoriels/creer-agent-onchain.md)
-* [Ajouter des conditions](tutoriels/ajouter-des-conditions.md)
-* [Branching](tutoriels/branching.md)
-* [Retry](tutoriels/retry.md)
-* [Gérer les erreurs](tutoriels/gerer-les-erreurs.md)
-* [Utiliser les checkpoints](tutoriels/checkpoint-usage.md)
-
-## Liens
-
-* [NPM](https://www.npmjs.com/package/@ai.ntellect/core)
-* [GitHub](https://github.com/ai-ntellect/core)
+## 🔗 Links
+* [NPM Package](https://www.npmjs.com/package/@ai.ntellect/core)
+* [GitHub Repository](https://github.com/ai-ntellect/core)

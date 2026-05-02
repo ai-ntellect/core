@@ -1,78 +1,63 @@
-# GraphController
+# GraphController: Multi-Graph Orchestration
 
-Le `GraphController` permet d'exécuter plusieurs graphes en parallèle ou séquentiellement.
+While a `GraphFlow` is powerful for a single workflow, real-world applications often require the coordination of multiple independent workflows. The `GraphController` is the orchestrator that manages these relationships.
 
-## Installation
+## 🎯 Purpose
+
+The `GraphController` allows you to treat individual `GraphFlows` as modular components. Instead of building one giant, monolithic graph, you can build small, testable graphs and compose them into complex pipelines.
+
+---
+
+## 🚀 Execution Modes
+
+### 1. Sequential Execution
+Use `executeSequential` when Workflow B depends on the successful completion of Workflow A.
 
 ```typescript
-import { GraphController } from "@ai.ntellect/core";
-```
-
-## Exécution parallèle
-
-Exécutez plusieurs workflows simultanément avec `executeParallel` :
-
-```typescript
-import { GraphController } from "@ai.ntellect/core";
-
 const controller = new GraphController();
 
-// Exécution parallèle de deux graphes
-const results = await controller.executeParallel([
-  { graph: workflow1, startNode: "start" },
-  { graph: workflow2, startNode: "init" },
-]);
-```
-
-## Exécution séquentielle
-
-Exécutez plusieurs workflows l'un après l'autre avec `executeSequential` :
-
-```typescript
-// Exécution séquentielle : workflow2 ne démarre qu'après workflow1
 await controller.executeSequential([
-  { graph: workflow1, startNode: "start" },
-  { graph: workflow2, startNode: "init" },
+  { graph: userValidationGraph, startNode: "start" },
+  { graph: paymentProcessingGraph, startNode: "init" },
+  { graph: notificationGraph, startNode: "send" },
 ]);
 ```
+If any graph in the sequence fails, the chain stops, and the error is propagated, preventing inconsistent states.
 
-## Cas d'usage
-
-- **Pipelines de données** : Traitement séquentiel de plusieurs étapes
-- **Workflows parallèles** : Tâches indépendantes simultanées
-- **Synchronisation** : Attendre que tous les workflows soient terminés
-
-## Exemple complet
+### 2. Parallel Execution
+Use `executeParallel` to trigger multiple independent workflows simultaneously, reducing overall latency.
 
 ```typescript
-import { GraphController, GraphFlow } from "@ai.ntellect/core";
-
-// Création de deux graphes simples
-const graph1 = new GraphFlow({
-  name: "process-data",
-  context: { result: "" },
-  nodes: [{
-    name: "start",
-    execute: async (ctx) => { ctx.result = "data processed"; }
-  }]
-});
-
-const graph2 = new GraphFlow({
-  name: "send-notification",
-  context: { sent: false },
-  nodes: [{
-    name: "init",
-    execute: async (ctx) => { ctx.sent = true; }
-  }]
-});
-
-const controller = new GraphController();
-
-// Exécution parallèle puis séquentielle
-await controller.executeParallel([
-  { graph: graph1, startNode: "start" },
-  { graph: graph2, startNode: "init" },
+const results = await controller.executeParallel([
+  { graph: fetchStockGraph, startNode: "start" },
+  { graph: fetchPriceGraph, startNode: "start" },
+  { graph: checkComplianceGraph, startNode: "start" },
 ]);
-
-console.log("Tous les workflows sont terminés");
 ```
+The `GraphController` manages the `Promise.all` logic internally and returns an array of results once all graphs have completed.
+
+---
+
+## 🛠️ Advanced Patterns
+
+### The "Super-Graph" Pattern
+You can use a `GraphController` inside a `GraphNode` of another `GraphFlow`. This allows you to create hierarchical workflows:
+- **Parent Graph**: Handles high-level business logic.
+- **Child Graphs (via Controller)**: Handle specific technical implementations.
+
+### Cross-Graph Event Communication
+Graphs managed by a controller can communicate via the event system.
+1. `Graph A` emits an event `data.ready`.
+2. `Graph B` has a node waiting for `data.ready`.
+3. `Graph B` wakes up and processes the data produced by `Graph A`.
+
+---
+
+## ⚖️ When to use GraphController vs. Parallel Nodes?
+
+| Feature | Parallel Nodes (within GraphFlow) | GraphController (across GraphFlows) |
+| :--- | :--- | :--- |
+| **Scope** | Intra-graph (Internal) | Inter-graph (External) |
+| **State** | Shares the same `Context` | Each graph has its own `Context` |
+| **Coupling** | Tightly coupled | Loosely coupled (Modular) |
+| **Use Case** | Splitting a single task into sub-tasks | Orchestrating different business modules |

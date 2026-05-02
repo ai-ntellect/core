@@ -16,12 +16,24 @@ export interface Session {
   createdAt: number;
   traceId?: string;
   clarificationQuestion?: string;
+  inFallbackMode?: boolean;
+  fallbackContext?: {
+    conversationHistory: string[];
+    lastFallbackResponse?: string;
+  };
 }
+
+export type FallbackLLM = (
+  message: string,
+  session: Session,
+  toolRegistry?: ToolRegistry
+) => Promise<{ response: string; shouldReenterPetri?: boolean; reinterpretMessage?: string }>;
 
 export interface IntentResult {
   intent: string;
   confidence: number;
   entities: Record<string, any>;
+  intents?: Array<{ intent: string; confidence: number; entities?: Record<string, any> }>;
 }
 
 export type IntentClassifierFn = (
@@ -37,10 +49,24 @@ export class CortexFlowOrchestrator {
   private intentClassifierInstance?: IntentClassifier;
   private llmCall?: (prompt: string) => Promise<string>;
   private petriCheckpointAdapter?: IPetriCheckpointAdapter;
+  private fallbackLLM?: FallbackLLM;
+  private confidenceThreshold: number = 0.6;
 
   constructor(name: string, toolRegistry?: ToolRegistry) {
     this.petriNet = new PetriNet(name);
     this.toolRegistry = toolRegistry || new ToolRegistry();
+  }
+
+  setFallbackLLM(fn: FallbackLLM): void {
+    this.fallbackLLM = fn;
+  }
+
+  setConfidenceThreshold(threshold: number): void {
+    this.confidenceThreshold = threshold;
+  }
+
+  getConfidenceThreshold(): number {
+    return this.confidenceThreshold;
   }
 
   get petri(): PetriNet {
@@ -284,17 +310,31 @@ Respond with valid JSON only.`;
     sessionId: string;
     needsClarification?: boolean;
     clarificationQuestion?: string;
+    fallbackResponse?: string;
+    shouldReenterPetri?: boolean;
   }> {
     const session = sessionId ? this.sessions.get(sessionId) : undefined;
     const resolvedSessionId = session ? session.id : this.startSession(sessionId);
     const sessionObj = this.sessions.get(resolvedSessionId)!;
     const log = logger.child({ sessionId: resolvedSessionId, traceId: sessionObj.traceId });
     log.info({ message }, 'Orchestration started');
+
+    if (sessionObj.inFallbackMode && this.fallbackLLM) {
+      return this.handleFallbackMode(message, resolvedSessionId, sessionObj, log);
+    }
+
     const intent = await this.classifyIntent(message, resolvedSessionId);
     sessionObj.history.push(message);
     log.info({ intent }, 'Intent classified');
-    if (intent.confidence < 0.6) {
-      log.warn({ intent }, 'Low confidence, needs clarification');
+
+    const threshold = this.confidenceThreshold;
+    if (intent.confidence < threshold || intent.intent === 'UNKNOWN') {
+      log.warn({ intent, threshold }, 'Low confidence or UNKNOWN, entering fallback mode');
+
+      if (this.fallbackLLM) {
+        return this.enterFallbackMode(message, resolvedSessionId, sessionObj, intent, log);
+      }
+
       let clarificationQuestion: string | undefined;
       if (this.intentClassifierInstance) {
         try {
@@ -306,32 +346,153 @@ Respond with valid JSON only.`;
       }
       return { intent, sessionId: resolvedSessionId, needsClarification: true, clarificationQuestion };
     }
-    const enabledTransitions = sessionObj.petriNet.getEnabledTransitions({
-      intent: intent.intent,
-      confidence: intent.confidence,
-      ...intent.entities,
-    });
-    if (enabledTransitions.length === 0) {
-      log.warn({ intent }, 'No enabled transitions');
-      let clarificationQuestion: string | undefined;
-      if (this.intentClassifierInstance) {
-        try {
-          clarificationQuestion = await this.intentClassifierInstance.generateClarification(message);
-          sessionObj.clarificationQuestion = clarificationQuestion;
-        } catch (error) {
-          log.warn({ error }, 'Failed to generate clarification question');
-        }
-      }
-      return { intent, sessionId: resolvedSessionId, needsClarification: true, clarificationQuestion };
+
+    let intentsToExecute = intent.intents && intent.intents.length > 0
+      ? [...intent.intents]
+      : [];
+
+    const mainIntent = { intent: intent.intent, confidence: intent.confidence, entities: intent.entities };
+    if (!intentsToExecute.some(i => i.intent === mainIntent.intent)) {
+      intentsToExecute.unshift(mainIntent);
     }
-    const transitionId = enabledTransitions[0];
-    log.info({ transitionId }, 'Firing enabled transition');
-    const result = await this.fire(transitionId, resolvedSessionId, {
-      intent: intent.intent,
-      ...intent.entities,
-      traceId: sessionObj.traceId,
-    });
-    log.info({ result }, 'Orchestration completed');
-    return { intent, transitionResult: result, sessionId: resolvedSessionId, needsClarification: false };
+
+    const results: Array<TransitionResult & { actionResult?: any }> = [];
+
+    for (let i = 0; i < intentsToExecute.length; i++) {
+      const subIntent = intentsToExecute[i];
+
+      if (i > 0) {
+        log.info('Resetting Petri net for next sub-intent');
+        sessionObj.petriNet.state.marking.clear();
+        sessionObj.petriNet.state.marking.set('idle', [{
+          id: `reset_${Date.now()}`,
+          data: { resetForMultiIntent: true },
+          createdAt: Date.now(),
+        }]);
+        sessionObj.petriNet.state.history = [];
+      }
+
+      const enabledTransitions = sessionObj.petriNet.getEnabledTransitions({
+        intent: subIntent.intent,
+        confidence: subIntent.confidence,
+        ...(subIntent.entities || {}),
+      });
+
+      if (enabledTransitions.length === 0) {
+        log.warn({ subIntent }, 'No enabled transitions for sub-intent');
+
+        if (this.fallbackLLM && intentsToExecute.length === 1) {
+          return this.enterFallbackMode(message, resolvedSessionId, sessionObj, intent, log);
+        }
+
+        if (intentsToExecute.length === 1) {
+          let clarificationQuestion: string | undefined;
+          if (this.intentClassifierInstance) {
+            try {
+              clarificationQuestion = await this.intentClassifierInstance.generateClarification(message);
+              sessionObj.clarificationQuestion = clarificationQuestion;
+            } catch (error) {
+              log.warn({ error }, 'Failed to generate clarification question');
+            }
+          }
+          return { intent, sessionId: resolvedSessionId, needsClarification: true, clarificationQuestion };
+        }
+        continue;
+      }
+
+      const transitionId = enabledTransitions[0];
+      log.info({ transitionId, subIntent }, 'Firing enabled transition for sub-intent');
+      const result = await this.fire(transitionId, resolvedSessionId, {
+        intent: subIntent.intent,
+        ...(subIntent.entities || {}),
+        traceId: sessionObj.traceId,
+      });
+      results.push(result);
+      log.info({ result }, 'Sub-intent transition completed');
+    }
+
+    log.info({ results }, 'Orchestration completed');
+    return {
+      intent,
+      transitionResult: results.length > 0 ? results[results.length - 1] : undefined,
+      sessionId: resolvedSessionId,
+      needsClarification: false,
+    };
+  }
+
+  private async enterFallbackMode(
+    message: string,
+    sessionId: string,
+    sessionObj: Session,
+    intent: IntentResult,
+    log: any
+  ): Promise<{
+    intent: IntentResult;
+    sessionId: string;
+    fallbackResponse?: string;
+    needsClarification?: boolean;
+    shouldReenterPetri?: boolean;
+  }> {
+    sessionObj.inFallbackMode = true;
+    if (!sessionObj.fallbackContext) {
+      sessionObj.fallbackContext = {
+        conversationHistory: [...sessionObj.history],
+      };
+    }
+
+    const fallbackResult = await this.fallbackLLM!(message, sessionObj, this.toolRegistry);
+
+    sessionObj.fallbackContext.lastFallbackResponse = fallbackResult.response;
+    sessionObj.fallbackContext.conversationHistory.push(message, fallbackResult.response);
+
+    log.info({ fallbackResult }, 'Fallback LLM responded');
+
+    if (fallbackResult.shouldReenterPetri && fallbackResult.reinterpretMessage) {
+      log.info({ reinterpretMessage: fallbackResult.reinterpretMessage }, 'Reinterpreting message via fallback');
+      sessionObj.inFallbackMode = false;
+      return this.orchestrate(fallbackResult.reinterpretMessage, sessionId);
+    }
+
+    return {
+      intent,
+      sessionId,
+      fallbackResponse: fallbackResult.response,
+      shouldReenterPetri: false,
+    };
+  }
+
+  private async handleFallbackMode(
+    message: string,
+    sessionId: string,
+    sessionObj: Session,
+    log: any
+  ): Promise<{
+    intent: IntentResult;
+    sessionId: string;
+    fallbackResponse?: string;
+    needsClarification?: boolean;
+    shouldReenterPetri?: boolean;
+  }> {
+    const intent: IntentResult = { intent: 'UNKNOWN', confidence: 0, entities: {} };
+
+    const fallbackResult = await this.fallbackLLM!(message, sessionObj, this.toolRegistry);
+
+    sessionObj.fallbackContext!.lastFallbackResponse = fallbackResult.response;
+    sessionObj.fallbackContext!.conversationHistory.push(message, fallbackResult.response);
+
+    log.info({ fallbackResult }, 'Fallback LLM continued');
+
+    if (fallbackResult.shouldReenterPetri && fallbackResult.reinterpretMessage) {
+      log.info({ reinterpretMessage: fallbackResult.reinterpretMessage }, 'Reinterpreting message via fallback');
+      sessionObj.inFallbackMode = false;
+      return this.orchestrate(fallbackResult.reinterpretMessage, sessionId);
+    }
+
+    return {
+      intent,
+      sessionId,
+      fallbackResponse: fallbackResult.response,
+      shouldReenterPetri: false,
+    };
   }
 }

@@ -1,0 +1,79 @@
+{
+  "name": "data_extraction_workflow",
+  "description": "Extract structured data from unstructured input. Useful for form filling, information extraction from emails, or document processing.",
+  "places": [
+    { "id": "idle", "type": "initial", "tokens": [{ "id": "start", "data": {} }] },
+    { "id": "text_analyzed", "type": "normal", "tokens": [] },
+    { "id": "data_extracted", "type": "normal", "tokens": [] },
+    { "id": "validating", "type": "normal", "tokens": [] },
+    { "id": "validation_passed", "type": "normal", "tokens": [] },
+    { "id": "validation_failed", "type": "normal", "tokens": [] },
+    { "id": "completed", "type": "final", "tokens": [] },
+    { "id": "needs_review", "type": "final", "tokens": [] }
+  ],
+  "transitions": [
+    {
+      "id": "analyze_text",
+      "from": ["idle"],
+      "to": "text_analyzed",
+      "action": {
+        "type": "dynamic",
+        "prompt": "Analyze the input text and identify key information to extract based on the required fields.",
+        "maxSteps": 2
+      }
+    },
+    {
+      "id": "extract_data",
+      "from": ["text_analyzed"],
+      "to": "data_extracted",
+      "action": {
+        "type": "graphflow",
+        "name": "extraction_tool",
+        "contextMapper": "ctx => ({ text: ctx.originalText || ctx.input, schema: ctx.extractionSchema })"
+      }
+    },
+    {
+      "id": "validate_data",
+      "from": ["data_extracted"],
+      "to": "validating",
+      "action": {
+        "type": "dynamic",
+        "prompt": "Validate the extracted data against the required schema. Check for missing fields, format errors, and consistency.",
+        "maxSteps": 3
+      }
+    },
+    {
+      "id": "validation_passed",
+      "from": ["validating"],
+      "to": "validation_passed",
+      "guard": {
+        "type": "deterministic",
+        "condition": "context.validationResult?.isValid === true"
+      }
+    },
+    {
+      "id": "validation_failed",
+      "from": ["validating"],
+      "to": "validation_failed",
+      "guard": {
+        "type": "deterministic",
+        "condition": "context.validationResult?.isValid === false"
+      }
+    },
+    {
+      "id": "complete",
+      "from": ["validation_passed"],
+      "to": "completed"
+    },
+    {
+      "id": "flag_for_review",
+      "from": ["validation_failed"],
+      "to": "needs_review",
+      "action": {
+        "type": "dynamic",
+        "prompt": "Flag the extraction for human review. Explain what validation errors occurred.",
+        "maxSteps": 2
+      }
+    }
+  ]
+}

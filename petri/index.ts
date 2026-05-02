@@ -14,6 +14,9 @@ import {
   matrixSubtract,
   hasPositiveNullVector,
 } from './matrix';
+import { IPetriCheckpointAdapter, InMemoryPetriCheckpointAdapter } from './checkpoint-adapter';
+import { RedisPetriCheckpointAdapter } from './redis-checkpoint-adapter';
+import { PostgresPetriCheckpointAdapter } from './postgres-checkpoint-adapter';
 
 export {
   Token,
@@ -26,6 +29,14 @@ export {
   ActionExecutor,
   TransitionAction,
 } from './types';
+
+export {
+  IPetriCheckpointAdapter,
+  InMemoryPetriCheckpointAdapter,
+} from './checkpoint-adapter';
+
+export { RedisPetriCheckpointAdapter } from './redis-checkpoint-adapter';
+export { PostgresPetriCheckpointAdapter } from './postgres-checkpoint-adapter';
 
 export class PetriNet {
   name: string;

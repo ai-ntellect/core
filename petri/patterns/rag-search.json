@@ -1,0 +1,68 @@
+{
+  "name": "rag_search_workflow",
+  "description": "Retrieval-Augmented Generation workflow. Searches a knowledge base, retrieves relevant documents, and generates a response using LLM.",
+  "places": [
+    { "id": "idle", "type": "initial", "tokens": [{ "id": "start", "data": {} }] },
+    { "id": "query_parsed", "type": "normal", "tokens": [] },
+    { "id": "searching", "type": "normal", "tokens": [] },
+    { "id": "documents_retrieved", "type": "normal", "tokens": [] },
+    { "id": "generating_response", "type": "normal", "tokens": [] },
+    { "id": "completed", "type": "final", "tokens": [] },
+    { "id": "no_results", "type": "final", "tokens": [] }
+  ],
+  "transitions": [
+    {
+      "id": "parse_query",
+      "from": ["idle"],
+      "to": "query_parsed",
+      "action": {
+        "type": "dynamic",
+        "prompt": "Parse the user query to extract search terms and intent. Return structured data.",
+        "maxSteps": 2
+      }
+    },
+    {
+      "id": "search_knowledge_base",
+      "from": ["query_parsed"],
+      "to": "searching",
+      "action": {
+        "type": "graphflow",
+        "name": "vector_search",
+        "contextMapper": "ctx => ({ query: ctx.parsedQuery?.query || ctx.originalMessage })"
+      }
+    },
+    {
+      "id": "retrieve_docs",
+      "from": ["searching"],
+      "to": "documents_retrieved",
+      "guard": {
+        "type": "deterministic",
+        "condition": "context.searchResults && context.searchResults.length > 0"
+      }
+    },
+    {
+      "id": "no_results_found",
+      "from": ["searching"],
+      "to": "no_results",
+      "guard": {
+        "type": "deterministic",
+        "condition": "!context.searchResults || context.searchResults.length === 0"
+      }
+    },
+    {
+      "id": "generate_answer",
+      "from": ["documents_retrieved"],
+      "to": "generating_response",
+      "action": {
+        "type": "graphflow",
+        "name": "llm_generator",
+        "contextMapper": "ctx => ({ query: ctx.originalMessage, documents: ctx.searchResults })"
+      }
+    },
+    {
+      "id": "complete",
+      "from": ["generating_response"],
+      "to": "completed"
+    }
+  ]
+}

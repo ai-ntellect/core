@@ -1,109 +1,72 @@
-# Système de Checkpoints
+# Resilience & Checkpoints
 
-Le système de checkpoints permet de sauvegarder, reprendre et faire du débogage temporel sur les workflows. L'état est sauvegardé après chaque exécution de nœud dans un adaptateur configurable.
+In production, workflows fail. Servers crash, APIs timeout, and humans take days to approve requests. The **Checkpoint System** is what makes `@ai.ntellect/core` production-grade.
 
-## Concepts clés
+## 📌 What is a Checkpoint?
 
-- **Checkpoint** — Snapshot de l'état du workflow après un nœud
-- **runId** — Identifiant groupant les checkpoints d'une exécution
-- **breakpoints** — Pause automatique avant certains nœuds
-- **time travel** — Reprise d'un checkpoint avec modification d'état
+A checkpoint is a **serialized snapshot** of a workflow's entire state at a specific point in time. It includes:
+1. The current **Context** (the data).
+2. The current **Node/Position** (where we are).
+3. The **Run ID** (which execution this belongs to).
+4. **Metadata** (timestamps, error states, approval status).
 
-## Adaptateurs
+---
 
-| Adaptateur | Usage |
-|------------|-------|
-| `InMemoryCheckpointAdapter` | Tests, développement |
-| `InMemoryPetriCheckpointAdapter` | Checkpoints Petri (nouveau) |
-| Autres à venir | Database, Redis, etc. |
+## 🛠️ Core Functionalities
 
-## Utilisation de base
+### 1. Automatic State Persistence
+By using `executeWithCheckpoint`, the engine automatically saves the state after every single node execution. If the process crashes, you don't lose progress; you simply resume from the last successful node.
 
+### 2. Breakpoints (Human-in-the-Loop)
+Breakpoints allow you to intentionally pause a workflow *before* a critical node executes.
 ```typescript
-import { GraphFlow } from "@ai.ntellect/core";
-import { InMemoryCheckpointAdapter } from "@ai.ntellect/core";
-
-const adapter = new InMemoryCheckpointAdapter();
-const workflow = new GraphFlow({ /* ... */ });
-
-// Exécution avec checkpointing automatique
-const runId = await workflow.executeWithCheckpoint("start", adapter, {
-  breakpoints: ["approve_order"], // Optionnel: pause avant ces nœuds
-});
-
-// Lister tous les checkpoints d'une exécution
-const checkpoints = await workflow.listCheckpoints(adapter);
-
-// Historique d'un run
-const history = await workflow.getCheckpointHistory(runId, adapter);
-```
-
-## Reprise et voyage temporel
-
-```typescript
-// Reprise depuis le dernier checkpoint
-await workflow.resumeFromCheckpoint(runId, adapter);
-
-// Reprise depuis un checkpoint spécifique avec modification d'état
-await workflow.resumeFromCheckpoint(cpId, adapter, {
-  contextModifications: { status: "retry" },
-});
-```
-
-## Interruptions et breakpoints
-
-```typescript
-// Interruption manuelle en cours d'exécution
-workflow.interrupt();
-
-// Configuration des breakpoints pour pause avant certains nœuds
 await workflow.executeWithCheckpoint("start", adapter, {
-  breakpoints: ["think", "approve_order"],
+  breakpoints: ["execute_payment"], 
 });
-// Le moteur s'arrête avant d'exécuter ces nœuds
 ```
+The workflow will stop exactly before `execute_payment`. It stays in a `awaiting_approval` state until an external command calls `resumeFromCheckpoint`.
 
-## Checkpoints Petri Net (Nouveau)
-
-Pour les workflows CortexFlow basés sur les Petri Nets :
+### 3. Time-Travel Debugging
+This is the most powerful tool for developers. You can resume a workflow from *any* previous checkpoint in its history, and you can even **modify the state** before resuming.
 
 ```typescript
-import { InMemoryPetriCheckpointAdapter } from "@ai.ntellect/core/petri/checkpoint-adapter";
-
-const petriAdapter = new InMemoryPetriCheckpointAdapter();
-orchestrator.setPetriCheckpointAdapter(petriAdapter);
-
-// Sauvegarde automatique ou manuelle
-await orchestrator.savePetriState(sessionId);
-
-// Restauration
-const { net, session } = await petriAdapter.load(checkpointId);
+// "What would have happened if the user had entered 'USD' instead of 'EUR'?"
+await workflow.resumeFromCheckpoint(cpId, adapter, {
+  contextModifications: { currency: "USD" },
+});
 ```
 
-**Fonctionnalités** :
-- Sauvegarde le marquage (tokens) du Petri Net
-- Restaure la session complète (contexte, historique)
-- Extensible via `IPetriCheckpointAdapter` pour Redis/DB
+---
 
-## Métadonnées des checkpoints
+## 🔌 Adapters
 
-Chaque checkpoint tracke:
-- `runId` — Groupe les checkpoints liés
-- `interrupted` — Exécution en pause
-- `awaitingApproval` — En attente d'approbation humaine
-- `error` — Informations d'erreur si échec
+You can choose where your checkpoints are stored based on your needs:
 
-## Erreurs spécifiques
+| Adapter | Best For | Persistence |
+| :--- | :--- | :--- |
+| `InMemoryCheckpointAdapter` | Local dev, unit tests | Volatile (Lost on restart) |
+| `RedisPetriCheckpointAdapter` | High-performance production | Persistent / Distributed |
+| `PostgresPetriCheckpointAdapter` | Audit-heavy, relational data | Persistent / ACID |
 
-- `CheckpointInterruptError` — Déclenchée lors d'une interruption
-- `CheckpointAwaitApprovalError` — Déclenchée en attente d'approbation
+---
 
-## Intégration CLI
+## 🧠 Petri Net Checkpoints
 
-Le CLI interactif supporte la gestion des checkpoints:
-- `/status` — Affiche l'état d'exécution
-- `/list` — Liste les checkpoints disponibles
-- `/resume [cpId]` — Reprend depuis un checkpoint
-- `/approve` — Approuve une action en attente
-- `/reject` — Rejette une action en attente
-- `/modify k=v` — Modifie le contexte avant la reprise
+For **CortexFlow** workflows, checkpoints are even more critical. We save the **Petri Net Marking** (the distribution of tokens across places).
+
+This means you can:
+- Pause a complex orchestration.
+- Restore the exact state of the Petri Net.
+- See exactly which transitions were enabled at the moment of the pause.
+
+---
+
+## ⚠️ Error Handling & Recovery
+
+When a node fails, the system creates an **Error Checkpoint**.
+Instead of the whole system crashing, the workflow enters a `failed` state. A developer or an automated process can then:
+1. Analyze the error in the checkpoint metadata.
+2. Fix the underlying issue (or modify the context).
+3. Resume the workflow from the failed node.
+
+**This eliminates the need to restart long-running workflows from scratch.**
