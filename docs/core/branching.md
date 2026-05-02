@@ -1,4 +1,4 @@
-# Branching Conditionnel
+# Branching
 
 Les nœuds peuvent déterminer dynamiquement l'étape suivante en utilisant plusieurs stratégies.
 

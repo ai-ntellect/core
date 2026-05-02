@@ -1,4 +1,4 @@
-# Les événements
+# Événements
 
 Les noeuds peuvent attendre des événements avant de s'exécuter.
 

@@ -36,6 +36,9 @@ Supported providers: `openai`, `ollama`, `groq`, `openrouter`, `google`, `custom
 
 ```
 graph/          Core engine — GraphFlow, node execution, events, observer
+  registry.ts    Tool registry for plan→compile→execute
+  planner.ts     LLM→plan JSON (Zod-validated)
+  compiler.ts    plan→GraphFlow executable
 graph/adapters/  Checkpoint adapters (InMemoryCheckpointAdapter)
 modules/agent/  LLM agent with tools (each tool = a GraphFlow)
 modules/memory/  Pluggable memory adapters (InMemory, Redis, Meilisearch)
@@ -49,6 +52,29 @@ interfaces/     Contract interfaces (ICheckpointAdapter, IMemoryAdapter, etc.)
 **Entry point**: `index.ts` — re-exports everything from graph, modules, types, interfaces, utils.
 
 **Path alias**: `@/*` → root (configured in tsconfig.json).
+
+## Plan → Compile → Execute Pattern
+
+```typescript
+// 1. Register tools (each tool = GraphFlow)
+const registry = new ToolRegistry();
+registry.register({ name: 'check_balance', description: '...', graph, startNode: 'run' });
+
+// 2. LLM generates plan (Zod-validated JSON)
+const plan = await generatePlan(userIntent, registry, llmCall);
+
+// 3. Compile to GraphFlow
+const { graph, startNode } = compilePlan(plan, registry);
+
+// 4. Execute with full checkpoint support
+const ctx = await graph.execute(startNode, {});
+```
+
+**Key files**: `graph/registry.ts`, `graph/planner.ts`, `graph/compiler.ts`
+
+**Test with real LLM**: `pnpm test --grep "REAL"` (requires `GROQ_API_KEY` in `.env`)
+
+**Test with real onchain**: uses Sepolia wallets from `.env` (`PRIVATE_KEY_1`, `STUDENT_2`, etc.)
 
 ## Key Concepts Agents Should Know
 
@@ -90,6 +116,8 @@ interfaces/     Contract interfaces (ICheckpointAdapter, IMemoryAdapter, etc.)
 - **Config**: `.mocharc.json` (5000ms timeout), runs via ts-node
 - **Pattern**: `test/**/*.test.ts`
 - **Known failure**: 1 agent test fails intermittently (`process runs tool graph when LLM requests an action`) — Ollama-dependent, unrelated to checkpoint code
+- **Real LLM tests**: `test/graph/plan-llm-integration.test.ts` (requires `GROQ_API_KEY`)
+- **Real onchain tests**: `test/graph/plan-real-onchain.test.ts` (uses Sepolia wallets from `.env`)
 - Focused run: `pnpm test --grep "suite name"`
 
 ## Build
@@ -101,3 +129,4 @@ interfaces/     Contract interfaces (ICheckpointAdapter, IMemoryAdapter, etc.)
 - `.env` is gitignored; contains `GROQ_API_KEY` and `OPENROUTER_API_KEY`
 - CLI loads `.env` manually (no `dotenv` package)
 - **Ollama is not available on this machine** (Windows, no local server)
+- **Sepolia testnet**: `RPC_URL`, `PRIVATE_KEY_1`, `PRIVATE_KEY_2`, `STUDENT_2`, `STUDENT_3`, `STUDENT_4` in `.env`

@@ -1,4 +1,4 @@
-# Retry avec Backoff
+# Retry
 
 Les nœuds peuvent réessayer en cas d'échec avec un backoff configurable.
 
@@ -13,7 +13,7 @@ Les nœuds peuvent réessayer en cas d'échec avec un backoff configurable.
   retry: {
     maxAttempts: 3,
     backoff: "exponential", // ou "linear", "fixed"
-    delay: 1000,
+    delay: 1000, // délai initial en ms
   },
 }
 ```
@@ -22,7 +22,7 @@ Les nœuds peuvent réessayer en cas d'échec avec un backoff configurable.
 
 ### Fixed (fixe)
 
-Délai constant entre chaque tentative:
+Délai constant entre chaque tentative :
 
 ```typescript
 retry: {
@@ -34,7 +34,7 @@ retry: {
 
 ### Linear (linéaire)
 
-Délai qui augmente linéairement:
+Délai qui augmente linéairement (`delay * attempt`) :
 
 ```typescript
 retry: {
@@ -46,7 +46,7 @@ retry: {
 
 ### Exponential (exponentiel)
 
-Délai qui double à chaque tentative:
+Délai qui double à chaque tentative (`delay * 2^(attempt-1)`) :
 
 ```typescript
 retry: {
@@ -58,6 +58,34 @@ retry: {
 
 ## Cas d'usage
 
-- **Appels API instables** — Réessayer en cas d'erreurs réseau
-- **Opérations de base de données** — Gérer les verrous temporaires
-- **Services tiers** — Tolérance aux pannes transientes
+- **Appels API instables** : Réessayer en cas d'erreurs réseau
+- **Opérations de base de données** : Gérer les verrous temporaires
+- **Services tiers** : Tolérance aux pannes transientes
+
+## Exemple complet
+
+```typescript
+import { GraphFlow } from "@ai.ntellect/core";
+
+const workflow = new GraphFlow({
+  name: "api-fetch",
+  context: { data: null, attempts: 0 },
+  nodes: [{
+    name: "fetch_api",
+    execute: async (ctx) => {
+      ctx.attempts++;
+      const response = await fetch("https://api.example.com/data");
+      if (!response.ok) throw new Error("API error");
+      ctx.data = await response.json();
+    },
+    retry: {
+      maxAttempts: 3,
+      backoff: "exponential",
+      delay: 1000, // 1s, 2s, 4s entre les tentatives
+    },
+  }]
+});
+
+await workflow.execute("fetch_api");
+console.log(`Récupéré après ${workflow.getContext().attempts} tentative(s)`);
+```

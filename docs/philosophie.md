@@ -28,13 +28,11 @@ Nous pensons qu’aucune de ces deux postures ne permet d’affronter la complex
 
 ### Une troisième voie : le Defensive Accelerationism (d/acc)
 
-Notre position est claire : oui à l’accélération, mais à condition qu’elle nous rende plus résilients, plus autonomes, et mieux protégés.
+Notre position : accélérer, mais pour renforcer la résilience, l'autonomie et la transparence des systèmes.
 
-Ce cadre s’inscrit dans le defensive accelerationism (d/acc), un courant émergent que des acteurs comme Vitalik Buterin commencent à formaliser.
+Ce cadre s'inscrit dans le defensive accelerationism (d/acc), un courant émergent que des acteurs comme Vitalik Buterin commencent à formaliser.
 
-Il ne s’agit pas d’aller plus vite pour dominer, mais d’aller vite pour défendre ce qui compte : l’autonomie collective, l’intégrité de l’information, la transparence des systèmes, la résilience face aux chocs.
-
-Car l’innovation sans garde-fous n’est pas neutre : elle alimente la centralisation, la surveillance, l’opacité.
+L'innovation sans garde-fous n'est pas neutre : elle tend vers la centralisation et l'opacité.
 
 ### Nos principes fondateurs
 
@@ -60,35 +58,26 @@ Nous croyons en une ingénierie transparente, observable, modulaire, qui outille
 Nous refusons le gigantisme pour le gigantisme.\
 Notre approche privilégie la modularité, la lisibilité, la frugalité énergétique, et la capacité à construire localement des systèmes compréhensibles, testables, appropriables.
 
-### L’infrastructure comme acte politique
+### Une infrastructure modulaire et ouverte
 
-Nous ne construisons pas une surcouche logicielle.
-
-Nous concevons un socle stratégique pour orchestrer l’intelligence :
+Nous concevons un socle technique pour orchestrer des systèmes intelligents :
 
 * Une architecture modulaire, où chaque composant peut être activé, désactivé, ou remplacé
 * Un moteur graph-based, lisible et observable
 * Des connecteurs ouverts vers les LLM, blockchains, bases de données ou APIs
 * Une gouvernance ouverte pensée pour la vérification et la contribution collective
 
-Notre objectif : doter les chercheurs, les institutions, les makers et les citoyens d’une infrastructure qu’ils peuvent auditer, comprendre, étendre, et défendre.
+Notre objectif : fournir aux développeurs, institutions et makers une infrastructure qu'ils peuvent auditer, comprendre et étendre.
 
-### Une technologie au service de la défense collective
+### Applications
 
-Nous plaçons le d/acc au cœur de quatre champs de défense stratégique :
+Le cadre d/acc s'applique à plusieurs domaines :
 
-* Défense physique : architectures résilientes face aux chocs géopolitiques et climatiques
-* Défense biologique : IA au service de la prévention sanitaire et de la réponse aux crises
-* Défense cybernétique : cryptographie, souveraineté des identités, décentralisation
-* Défense informationnelle : intégrité des données, lutte contre la désinformation, gouvernance distribuée
+* Infrastructures résilientes face aux chocs géopolitiques et climatiques
+* IA au service de la prévention sanitaire et de la réponse aux crises
+* Cryptographie, souveraineté des identités, décentralisation
+* Intégrité des données, lutte contre la désinformation
 
 ### Ce que nous proposons
 
-Chez AI.ntellect Labs, nous ne faisons pas de la technologie un produit captif.
-
-Nous concevons une infrastructure partagée, ouverte, défendable.
-
-Pas pour dominer.\
-Pour survivre.\
-Pour comprendre.\
-Pour reprendre la main.
+Chez AI.ntellect Labs, nous concevons une infrastructure partagée, ouverte et transparente, pensée pour être auditée, comprise et étendue par ses utilisateurs.

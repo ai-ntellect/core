@@ -1,31 +1,116 @@
 # @ai.ntellect/core
 
-An in-process workflow engine for Node.js/TypeScript. It lets you define workflows as graphs of nodes, where each node performs a specific task and can wait for events before proceeding. The entire runtime weighs only a few hundred lines and embeds directly in your application—no external services, no message queues, no infrastructure to manage.
+A lightweight, in-process workflow engine for Node.js/TypeScript. Define workflows as **directed graphs** where nodes execute sequentially or in parallel, state is typed with Zod, and execution can pause for events. The entire runtime is ~1000 lines of code — no external services, no message queues, no infrastructure to manage.
+
+## What this is
+
+This is a **graph-based execution engine**. You define a graph with nodes (steps) and edges (transitions). The engine walks the graph, executing nodes, managing state, and handling events. Think of it as:
+
+- **Not a workflow engine like Temporal** — no persistence, replay, or cross-machine scaling
+- **Not an agent framework like LangGraph** — it provides primitives (graphs, events, state), not agent patterns
+- **Not a state machine library** — graphs are dynamic, nodes can branch/merge, state is mutable
+
+It's a **middle ground**: powerful enough for complex orchestration, simple enough to embed directly in your app.
+
+## Core Architecture
+
+```
+Your App
+    ↓
+GraphFlow (graph definition)
+    ↓
+GraphNode (execution engine)
+    ↓
+RxJS Event System (reactive state)
+    ↓
+Zod Validation (typed state)
+```
+
+### Key Components
+
+| Component | Role |
+|-----------|------|
+| `GraphFlow` | Graph container: name, schema, context, nodes |
+| `GraphNode` | Execution engine: runs nodes, handles transitions |
+| `GraphEventManager` | Event system: RxJS Subjects + EventEmitter |
+| `GraphObserver` | Reactive API: subscribe to state/events |
+| `CheckpointAdapter` | Persistence: save/resume state |
+| `NodeRegistry` | Registry: execute functions for workers |
+
+---
 
 ## What this is useful for
 
-You build applications that need to coordinate multiple steps with shared state. Instead of spaghetti callbacks or scattered service calls, you define a graph once and let the engine execute it. State is typed with Zod, so you get validation at every step. Events let you pause nodes and wait for external triggers—a payment confirmation, a user response, a webhook. The state is observable, so any part of your app can react to changes.
+You build applications that need to **coordinate multiple steps with shared state**:
 
-## What this is NOT
+- **Multi-step workflows**: onboarding, checkout, data pipelines
+- **Event-driven processes**: wait for webhooks, user actions, async operations
+- **Stateful agents**: LLM loops with tools (each tool = a GraphFlow)
+- **Parallel processing**: Fork-Join model, dynamic fan-out via Send API
+- **Human-in-the-loop**: breakpoints, approvals, checkpoints
 
-This is not a distributed orchestration system. It doesn't replay workflows across crashes, doesn't persist to a database by default, and doesn't scale across machines. For those needs, use Temporal or Inngest.
+Instead of spaghetti callbacks or scattered service calls, you define a graph once and let the engine execute it.
 
-This is not an agent framework like LangGraph or Mastra. It provides the primitives (graphs, events, observable state) but doesn't dictate how you build AI agents. You can layer an agent on top if you want, but the core is generic.
+---
 
 ## Key Features
 
-- **Typed state with Zod** — Context validated at every step
-- **Event-driven nodes** — Pause workflows waiting for external triggers (webhooks, user actions)
-- **Checkpoint system** — Save/resume workflow state, time travel, human-in-the-loop breakpoints
+### Graph Execution
+- **Typed state with Zod** — Context validated at every node transition
+- **Sequential & parallel nodes** — Fork-Join model with `Promise.all`
+- **Dynamic branching** — `next` accepts strings, arrays, functions, or conditional objects
+- **Send API (fan-out)** — Runtime-determined branches via `send: (ctx) => Send[]`
+- **State Reducers** — Control how parallel results merge (`Reducers.append`, `deepMerge`)
+
+### Resilience
+- **Event-driven nodes** — Pause workflows waiting for external triggers
+- **Checkpoint system** — Save/resume state, time travel debugging
+- **Retry with backoff** — Configurable resilience for flaky operations
+- **Breakpoints** — Human-in-the-loop review before critical nodes
+
+### Observability
 - **Observable state** — RxJS Observables on context changes
-- **Conditional branching** — Dynamic `next` via functions, arrays, or conditional objects
-- **Retry with backoff** — Built-in resilience for flaky operations
-- **Multi-graph orchestration** — Run graphs in parallel or sequentially via `GraphController`
+- **Event emission** — `nodeStarted`, `nodeCompleted`, `nodeStateChanged`
+- **Graph visualization** — `GraphVisualizer` for debugging
+
+### Extensions
+- **Plan → Compile → Execute Pattern** — LLM generates plan JSON, compiled to GraphFlow at runtime
 - **LLM Agent module** — Tools as GraphFlows, cognitive loop (think → execute → reply)
+- **Agent Handoff** — Delegate to sub-agents via Command pattern
 - **Memory module** — Pluggable adapters (InMemory, Redis, Meilisearch)
 - **Agenda module** — Cron scheduling with `node-cron`
 - **NLP module** — `@nlpjs/basic` wrapped as graph nodes
-- **Interactive CLI** — REPL with slash commands, checkpoint management, human approval
+
+## Plan → Compile → Execute (LLM as Planner)
+
+Treat the LLM as a **planner, not a runtime**. The LLM generates a structured plan (JSON), which is compiled into an executable GraphFlow:
+
+```typescript
+import { ToolRegistry, generatePlan, compilePlan } from "@ai.ntellect/core";
+
+// 1. Register tools (each tool = GraphFlow)
+const registry = new ToolRegistry();
+registry.register({ name: "check_balance", description: "...", graph, startNode: "run" });
+
+// 2. LLM generates plan (Zod-validated JSON)
+const plan = await generatePlan(userIntent, registry, llmCall);
+
+// 3. Compile to GraphFlow
+const { graph, startNode } = compilePlan(plan, registry);
+
+// 4. Execute with full checkpoint support
+const ctx = await graph.execute(startNode, {});
+```
+
+**Why this is different**:
+- **LangGraph** = routing within a *fixed* graph
+- **This pattern** = LLM *generates the graph structure* itself
+
+**Benefits**: deterministic, observable, debuggable, checkpointable.
+
+**Test with real LLM**: `pnpm test --grep "REAL"` (requires `GROQ_API_KEY`)
+
+---
 
 ## Installation
 
@@ -33,166 +118,233 @@ This is not an agent framework like LangGraph or Mastra. It provides the primiti
 pnpm add @ai.ntellect/core zod
 ```
 
-Requires TypeScript 5.x+ and Node.js 18+.
+**Requirements**: TypeScript 5.x+, Node.js 18+.
+
+---
 
 ## Core Concepts
 
-### GraphFlow
+### GraphFlow: The Graph Container
 
-A GraphFlow is a workflow definition. It has a name, a schema that defines what the workflow state looks like, an initial context, and a list of nodes. Think of it as a function with internal state that executes in stages.
+A `GraphFlow` is a **workflow definition**. It has:
+- A `name` (identifier)
+- A `schema` (Zod schema defining state shape)
+- An `context` (initial state)
+- A `nodes` array (the steps)
 
-When you create a GraphFlow, you define the shape of all data that flows through the workflow using Zod. This isn't optional—every time the workflow moves between nodes, the context is validated. If something is the wrong type or fails a validation rule, the workflow throws immediately.
-
-The nodes are the actual steps. Each node has a name and an execute function. This function receives the workflow context and can modify it. When a node finishes, the engine looks for the next node to run.
+Think of it as a **function with internal state** that executes in stages.
 
 ```typescript
 import { z } from "zod";
 import { GraphFlow } from "@ai.ntellect/core";
 
-// The schema defines the shape of your workflow state.
-// Every field is validated when moving between nodes.
+// 1. Define state shape with Zod (VALIDATION AT EVERY STEP)
 const Schema = z.object({
   message: z.string(),
+  count: z.number().default(0),
 });
 
-// Create the workflow with initial values.
+// 2. Create the workflow
 const workflow = new GraphFlow({
-  name: "hello",
+  name: "counter",
   schema: Schema,
-  context: { message: "" },
+  context: { message: "", count: 0 },
   nodes: [
     {
-      name: "greet",
+      name: "increment",
       execute: async (ctx) => {
-        ctx.message = "Hello!";
+        ctx.count++; // Typed! Autocomplete works.
+        ctx.message = `Count is now ${ctx.count}`;
       },
     },
   ],
 });
 
-// Start execution at a specific node.
-await workflow.execute("greet");
-
-// The context now contains the modified values.
-console.log(workflow.getContext().message); // "Hello!"
+// 3. Execute
+await workflow.execute("increment");
+console.log(workflow.getContext().count); // 1
 ```
 
-In a real application, nodes would fetch data from APIs, process payments, send notifications, or call databases. The engine handles the flow control—you just write the logic for each step.
+**Key insight**: The Zod schema isn't optional. Every time the workflow moves between nodes, the context is **validated**. If something is the wrong type or fails a validation rule, the workflow throws immediately.
 
-### Sequential nodes
+---
 
-By default, a node runs once and the workflow ends. But nodes can declare the next node to execute using the `next` property. This creates a chain—node A runs, then node B runs, then node C runs, and so on.
+### Nodes: The Steps
 
-The engine walks through the chain automatically. Each node receives the context modified by the previous node. You don't need to manually pass data around.
+Each node has:
+- A `name` (unique identifier)
+- An `execute` function (the logic)
+- Optional `next` (where to go next)
+- Optional `when` (event-driven pause)
+- Optional `parallel` (fork into parallel branches)
+
+#### Sequential Execution
+
+By default, nodes execute **sequentially**:
 
 ```typescript
 nodes: [
   {
     name: "fetch_user",
     execute: async (ctx) => {
-      // ctx.user is populated here
       ctx.user = await db.users.find(ctx.userId);
     },
-    next: ["validate_user"], // after this, run validate_user
+    next: "validate_user", // After this, run "validate_user"
   },
   {
     name: "validate_user",
     execute: async (ctx) => {
-      // ctx.user is available here
-      if (!ctx.user.emailVerified) {
-        throw new Error("User not verified");
-      }
+      if (!ctx.user.emailVerified) throw new Error("User not verified");
     },
-    next: ["send_welcome"],
+    next: "send_welcome",
   },
   {
     name: "send_welcome",
     execute: async (ctx) => {
-      // send email, etc.
+      await sendEmail(ctx.user.email, "Welcome!");
     },
   },
 ]
 ```
 
-You can point to multiple next nodes, but the engine picks the first one by default. For conditional branching, a node can inspect the context and decide what to do inside its execute function, or you can use event-driven nodes to pause and wait.
+The engine walks through the chain automatically. Each node receives the context modified by the previous node.
 
-### Event-driven nodes
+#### Parallel Execution (Fork-Join Model)
 
-This is where the workflow engine becomes powerful. A node can pause and wait for an external event before executing. This is useful when you need to wait for something that happens outside the workflow—a webhook, a user action, a message from another service.
+Set `parallel: { enabled: true }` on a node to fork into **parallel branches**:
 
-When a node has a `when` property, the engine stops there and subscribes to the specified events. It won't execute the node's code until the event arrives (or the timeout fires).
+```typescript
+nodes: [
+  {
+    name: "start",
+    execute: async (ctx) => { ctx.value = 1; },
+    parallel: { enabled: true, joinNode: "merge" },
+    next: ["branch1", "branch2", "branch3"], // These run IN PARALLEL
+  },
+  {
+    name: "branch1",
+    execute: async (ctx) => { ctx.from1 = "done"; },
+  },
+  {
+    name: "branch2",
+    execute: async (ctx) => { ctx.from2 = "done"; },
+  },
+  {
+    name: "merge",
+    execute: async (ctx) => {
+      // ctx.from1 and ctx.from2 are both set (from parallel branches)
+      console.log(ctx.from1, ctx.from2);
+    },
+  },
+]
+```
+
+**How it works**:
+1. Node "start" executes
+2. Engine forks: clones context 3 times (once per branch)
+3. Branches "branch1", "branch2", "branch3" execute **concurrently** via `Promise.all`
+4. Engine waits for ALL branches to complete
+5. Results are **merged** (deep merge by default, or use reducers)
+6. Node "merge" executes (the `joinNode`)
+
+#### Dynamic Fan-Out (Send API)
+
+For runtime-determined branches, use the **Send API**:
+
+```typescript
+nodes: [
+  {
+    name: "distribute",
+    execute: async (ctx) => { ctx.results = []; },
+    send: (ctx) => ctx.items.map((item, i) => ({
+      to: "processItem",
+      input: { currentItem: item, index: i },
+      branchId: `item_${i}`,
+    })),
+    parallel: { enabled: true, joinNode: "done" },
+  },
+  {
+    name: "processItem",
+    execute: async (ctx) => {
+      ctx.results.push(`Processed: ${ctx.currentItem}`);
+    },
+  },
+]
+```
+
+This creates **N parallel branches** at runtime based on `ctx.items.length`.
+
+#### State Reducers
+
+Control how parallel branch results merge:
+
+```typescript
+{
+  name: "start",
+  parallel: { enabled: true, joinNode: "merge" },
+  reducers: [
+    {
+      key: "results",
+      reducer: (acc, val) => [...acc, ...val], // Append arrays
+      initial: [],
+    },
+  ],
+  next: ["branch1", "branch2"],
+}
+```
+
+Built-in reducers: `Reducers.append`, `Reducers.deepMerge`, `Reducers.lastWins`, `Reducers.sum`.
+
+---
+
+### Event-Driven Nodes
+
+Nodes can **pause and wait** for external events:
 
 ```typescript
 {
   name: "await_payment",
   when: {
-    // Listen for this event name
     events: ["payment.received"],
-    // If no event arrives in 30 seconds, the node executes anyway
-    timeout: 30000,
-    // "single" means: execute as soon as ANY matching event arrives
-    strategy: { type: "single" },
+    timeout: 30000, // 30s timeout
+    strategy: { type: "single" }, // Execute when ANY event arrives
   },
   execute: async (ctx) => {
-    // The event payload is available in the workflow context
-    ctx.status = "paid";
+    ctx.status = "paid"; // Event payload is in context
   },
 }
 ```
 
-The `strategy` determines when the node executes:
+**Strategies**:
+- `single` — Execute when first matching event arrives
+- `all` — Execute when ALL listed events have arrived
+- `correlate` — Execute when events match a correlation function
 
-- **`single`**: Execute when the first matching event arrives. Useful for "wait for payment, then proceed."
-
-- **`all`**: Execute only when ALL listed events have arrived. Useful for "wait for payment AND inventory check, then proceed."
-
-- **`correlate`**: Execute when all events match a correlation condition. This is for scenarios where multiple events must relate to the same entity—to correlate a payment with the right order, for example:
-
-```typescript
-{
-  name: "validation",
-  when: {
-    events: ["payment.validated", "inventory.checked"],
-    strategy: {
-      type: "correlate",
-      // Only proceed when both events have the same orderId
-      correlation: (events) =>
-        events.every(e => e.payload.orderId === events[0].payload.orderId),
-    },
-  },
-}
-```
-
-In your application code, you emit events from wherever they happen—webhook handlers, message consumers, async operations:
+**Emit events from anywhere in your app**:
 
 ```typescript
-// Somewhere in your HTTP handler
 workflow.emit("payment.received", {
   orderId: "123",
   amount: 99,
 });
 ```
 
-The workflow engine receives this, checks which nodes are waiting, and triggers the appropriate ones.
+---
 
-### Observable state
+### Observable State
 
-Workflow state isn't just for nodes. You can subscribe to changes from anywhere in your application using the observe API. This returns RxJS Observables that emit every time the context updates.
-
-Subscribe to the entire context:
+Subscribe to context changes reactively:
 
 ```typescript
+// Subscribe to entire context
 workflow
   .observe()
   .state()
   .subscribe((ctx) => {
     console.log("Context changed:", ctx);
   });
-```
 
-Or subscribe to a single property for more targeted reactions:
-
-```typescript
+// Subscribe to a single property
 workflow
   .observe()
   .property("status")
@@ -201,89 +353,11 @@ workflow
   });
 ```
 
-This is useful for building dashboards, logging, debugging, or triggering side effects in other parts of your app.
+---
 
-### Context validation
+### Checkpoint System
 
-Every time the workflow moves between nodes, the context is validated against the Zod schema. If validation fails, the workflow throws and stops. This prevents bad state from propagating through your workflow.
-
-```typescript
-const Schema = z.object({
-  count: z.number().min(0), // must be >= 0
-  status: z.enum(["pending", "done"]),
-});
-
-// If at some point ctx.count becomes negative,
-// the workflow throws here
-await workflow.validate(ctx);
-```
-
-Validation runs automatically after every node executes. You can also manually validate at any point.
-
-### Conditional branching
-
-Nodes can determine the next step dynamically using several strategies:
-
-```typescript
-// Array: engine picks the first one by default
-next: ["nodeB", "nodeC"]
-
-// Function: inspect context and decide
-next: (ctx) => ctx.status === "ok" ? "process" : "retry"
-
-// Conditional objects
-next: [
-  { when: (ctx) => ctx.score > 80, then: "pass" },
-  { when: (ctx) => ctx.score > 50, then: "review" },
-  { then: "fail" }, // default fallback
-]
-```
-
-### Retry with backoff
-
-Nodes can retry on failure with configurable backoff:
-
-```typescript
-{
-  name: "fetch_api",
-  execute: async (ctx) => {
-    ctx.data = await fetch("https://api.example.com/data");
-  },
-  retry: {
-    maxAttempts: 3,
-    backoff: "exponential", // or "linear", "fixed"
-    delay: 1000,
-  },
-}
-```
-
-### Multi-graph orchestration
-
-Run multiple graphs in parallel or sequentially using `GraphController`:
-
-```typescript
-import { GraphController } from "@ai.ntellect/core";
-
-const controller = new GraphController();
-
-// Run graphs in parallel
-await controller.executeParallel([
-  { graph: workflow1, startNode: "start" },
-  { graph: workflow2, startNode: "init" },
-]);
-
-// Or sequentially
-await controller.executeSequential([
-  { graph: workflow1, startNode: "start" },
-  { graph: workflow2, startNode: "init" },
-]);
-```
-
-## Checkpoint System
-
-The checkpoint system enables workflow persistence, resumption, and time travel debugging. State is saved after each node execution to a configurable adapter.
-
-### Basic usage
+Save and resume workflow state:
 
 ```typescript
 import { InMemoryCheckpointAdapter } from "@ai.ntellect/core";
@@ -291,337 +365,144 @@ import { InMemoryCheckpointAdapter } from "@ai.ntellect/core";
 const adapter = new InMemoryCheckpointAdapter();
 
 // Execute with automatic checkpointing
-const runId = await workflow.executeWithCheckpoint("start", adapter, {
-  breakpoints: ["approve_order"], // optional: pause before these nodes
+const { checkpointId } = await workflow.executeWithCheckpoint("start", adapter, {
+  breakpoints: ["approve_order"], // Pause before these nodes
 });
 
-// List all checkpoints for a run
+// List all checkpoints
 const checkpoints = await workflow.listCheckpoints(adapter);
-```
 
-### Resume and time travel
-
-```typescript
-// Resume from the latest checkpoint
-await workflow.resumeFromCheckpoint(runId, adapter);
-
-// Resume from a specific checkpoint with state modifications (time travel)
-await workflow.resumeFromCheckpoint(cpId, adapter, {
+// Resume from a checkpoint (time travel!)
+await workflow.resumeFromCheckpoint(checkpointId, adapter, {
   contextModifications: { status: "retry" },
 });
 ```
 
-### Interrupt and breakpoints
+---
+
+## LLM Agent Module
+
+The Agent module adds **LLM capabilities** on top of GraphFlow:
 
 ```typescript
-// Manual interrupt mid-execution
-workflow.interrupt();
+import { Agent, createCalculatorTool } from "@ai.ntellect/core";
 
-// Configure breakpoints to pause before specific nodes
-await workflow.executeWithCheckpoint("start", adapter, {
-  breakpoints: ["think", "approve_order"],
-});
-// Engine pauses before executing these nodes, allowing human-in-the-loop review
-```
-
-### Checkpoint metadata
-
-Each checkpoint tracks:
-- `runId` — Groups related checkpoints
-- `interrupted` — Whether execution was paused
-- `awaitingApproval` — Waiting for human approval
-- `error` — Error information if failed
-
-### CLI integration
-
-The interactive CLI supports checkpoint management:
-- `/status` — Show current execution state
-- `/list` — List available checkpoints
-- `/resume [cpId]` — Resume from a checkpoint
-- `/approve` — Approve a pending action
-- `/reject` — Reject a pending action
-- `/modify k=v` — Modify context before resuming
-
-## NLP Module
-
-Wrap `@nlpjs/basic` as graph nodes for natural language processing:
-
-```typescript
-import { NLPEngine } from "@ai.ntellect/core";
-
-const nlp = new NLPEngine();
-await nlp.train([
-  { intent: "greeting", utterances: ["hello", "hi"], answer: "Hello!" },
-]);
-
-// Use as a graph node
-{
-  name: "process_input",
-  execute: async (ctx) => {
-    const result = await nlp.process(ctx.userInput);
-    ctx.intent = result.intent;
-  },
-}
-```
-
-## Agent Module
-
-The Agent module adds LLM capabilities. It wraps your GraphFlows as tools that an LLM can call. The LLM receives your prompts, decides which tool to use, extracts the necessary parameters, and the GraphFlow executes with those parameters.
-
-This is not a full agent framework. It gives you a simple way to connect an LLM to your workflows. You define what the tools do, the LLM decides when to use them.
-
-### LLM configuration
-
-The agent needs to know which LLM to use. You configure the provider and model:
-
-```typescript
-// OpenAI
-const llmConfig = {
-  provider: "openai",
-  model: "gpt-4o-mini",
-  apiKey: process.env.OPENAI_API_KEY,
-};
-
-// Ollama (running locally)
-const llmConfig = {
-  provider: "ollama",
-  model: "gemma4:e4b",
-  baseUrl: "http://localhost:11434",
-};
-
-// Groq (fast inference)
-const llmConfig = {
-  provider: "groq",
-  model: "llama-3.1-8b-instant",
-  apiKey: process.env.GROQ_API_KEY,
-};
-```
-
-`openai`, `ollama`, and `groq` are supported. The model string depends on your provider—Ollama model names are whatever you have installed locally, OpenAI model names are standard (`gpt-4o-mini`, `gpt-4o`, etc.), Groq models include `llama-3.1-8b-instant`, `mixtral-8x7b-32768`, `allam-2-7b`.
-
-**Groq fallback**: When rate-limited, Groq automatically tries fallback models in order:
-1. `llama-3.1-8b-instant` → 2. `allam-2-7b` → 3. `groq/compound-mini`
-
-### Creating an Agent
-
-You create an Agent with a role (what it is), a goal (what it should do), and a list of tools (GraphFlows that it can call). The role and goal guide the LLM's behavior. You can also set `maxIterations` to limit how many think-execute cycles the agent runs.
-
-```typescript
-import { z } from "zod";
-import { GraphFlow, Agent } from "@ai.ntellect/core";
-
-// Define the calculator tool as a GraphFlow
-const CalcSchema = z.object({
-  a: z.number().describe("First number"),
-  b: z.number().describe("Second number"),
-  operation: z.enum(["add", "subtract"]).describe("Operation to perform"),
-  result: z.number().optional(),
-});
-
-const calculator = new GraphFlow({
-  name: "calculator",
-  schema: CalcSchema,
-  context: { a: 0, b: 0, operation: "add" },
-  nodes: [{
-    name: "calculate",
-    execute: async (ctx) => {
-      ctx.result = ctx.operation === "add" ? ctx.a + ctx.b : ctx.a - ctx.b;
-    },
-  }],
-});
-
-// Create the agent with the tool
 const agent = new Agent({
   role: "Math Assistant",
   goal: "Help with calculations",
-  tools: [calculator],
-  maxIterations: 3,
+  tools: [createCalculatorTool()],
   llmConfig: {
-    provider: "ollama",
-    model: "gemma4:e4b",
+    provider: "groq",
+    model: "llama-3.1-8b-instant",
+    apiKey: process.env.GROQ_API_KEY,
   },
   verbose: true,
 });
+
+const result = await agent.process("What is 25 + 7?");
+console.log(result.response); // "25 + 7 = 32"
+console.log(result.executedActions); // [{ name: "calculator", parameters: ... }]
 ```
 
 ### How the Agent works
 
-The Agent runs in a continuous loop: **think** → **execute** → **think** → **execute** until either there are no more actions to execute or `maxIterations` is reached (default: 5).
+The Agent runs a **cognitive loop**:
 
-1. **Think** — The LLM decides which tools to call and with what parameters
-2. **Execute** — The tools run and return results
-3. Repeat
+1. **Think** — LLM decides which tools to call and with what parameters
+2. **Execute** — Tools (GraphFlows) run and return results
+3. **Reply** — LLM generates final response
 
-The agent tracks `executedActions` to avoid re-running the same tool call twice. You can access the full result:
+This repeats until:
+- No more tools to call (task complete)
+- `maxIterations` reached (default: 5)
 
-```typescript
-const result = await agent.process("What is 25 plus 7?");
-console.log(result.response);     // The agent's final response
-console.log(result.executedActions); // Array of { name, parameters, result }
-```
+### Agent Handoff
 
-Enable verbose mode to see the internal thinking in the console—useful for debugging.
-
-The Agent handles the full round-trip: receiving the prompt, detecting intent, calling the tool with parameters, returning the result. You only define the tools, the LLM figures out how to use them.
-
-The `.describe()` calls in your Zod schema become the tool descriptions that the LLM sees. Make them clear—`"First number"` is better than `"a"`.
-
-### Dynamic Goal
-
-Enable `dynamicGoal: true` to have the LLM compute a sub-goal at each iteration. The meta-agent analyzes the original goal, what's been done, and what's left to decide the next step:
+Agents can **delegate to other agents** using the Command pattern:
 
 ```typescript
-const agent = new Agent({
-  role: "Assistant",
-  goal: "Write code, analyze, create report",
-  dynamicGoal: true, // Enable dynamic goal computation
-  // ...
-});
+// In a node, return a Command to handoff
+{
+  name: "delegate",
+  execute: async (ctx) => {
+    return {
+      goto: "specialist_agent",
+      update: { task: ctx.currentTask },
+      graph: "PARENT", // Handoff to parent graph
+    };
+  },
+}
 ```
 
-### Dynamic Next (coming soon)
+Use `createHandoffTool()` to create a handoff tool for agents.
 
-Enable `dynamicNext: true` to have the LLM determine which cognitive node to use next (think, execute, plan, schedule, reply, ask, end). This creates a fully autonomous agent that decides its own workflow.
+---
 
-### Scheduler with Cron Wake-up
+## CLI (Interactive REPL)
 
-The agent can schedule tasks that wake it up later. When the cron expression matches, the agent processes the scheduled request:
+Run agents interactively:
 
-```typescript
-const agent = new Agent({
-  role: "Assistant",
-  enableSchedule: true,
-  agenda: /* Agenda instance */,
-  // ...
-});
+```sh
+pnpm cli -p groq -m llama-3.1-8b-instant       # Groq
+pnpm cli -p openai -m gpt-4o-mini              # OpenAI
+pnpm cli -p ollama -m gemma4:4b                # Local Ollama
+pnpm cli -p openrouter -m <model>              # OpenRouter
 ```
 
-The scheduler tool accepts a cron expression and input prompt. When triggered, the agent processes the saved request as if the user had sent it.
+**Slash commands**:
+- `/status` — Show current execution state
+- `/history` — Show conversation history
+- `/resume [cpId]` — Resume from a checkpoint
+- `/approve` / `/reject` — Handle pending approvals
+- `/modify k=v` — Modify context before resuming
 
-### Running examples
+---
+
+## Testing
+
+```sh
+pnpm test                       # Mocha via ts-node
+pnpm run test:all               # Full suite
+pnpm test --grep "suite name"    # Focused run
+```
+
+**Framework**: Mocha + Chai + chai-as-promised + sinon
+**Pattern**: `test/**/*.test.ts`
+**Config**: `.mocharc.json` (5000ms timeout)
+
+---
+
+## Build
+
+```sh
+pnpm install                    # Install dependencies
+pnpm run build                  # TypeScript compile to dist/
+```
+
+**Output**: `dist/` with declaration maps and source maps
+**CI order**: `install --frozen-lockfile` → `test:all` → `build`
+
+---
+
+## Examples
 
 ```sh
 pnpm run example:hello           # Simple workflow
 pnpm run example:events         # Event-driven workflow
 pnpm run example:agent         # Agent with tools
-pnpm run example:agent-project  # Agent that creates files on disk
-pnpm run example:native-tools  # Agent with native Node.js tools
+pnpm run example:agent-events  # Agent with events
+pnpm run example:agent-project  # Agent that creates files
+pnpm run example:agent-complex  # Complex agent projects
+pnpm run example:native-tools   # Native tools demo
+pnpm run example:wallet        # Wallet assistant (legacy)
+pnpm run example:onchain       # Onchain agent with plan→compile→execute
 ```
 
-All examples require either Ollama running locally or `OPENAI_API_KEY` set.
+**Onchain example**: `examples/onchain-agent/` uses the plan→compile→execute pattern with real Sepolia wallets from `.env`.
 
-## Optional Modules
+All examples require either Ollama running locally or API keys (`GROQ_API_KEY`, `OPENAI_API_KEY`) set in `.env`.
 
-These modules extend the core with common patterns. They're all optional—import only what you need.
-
-### Memory
-
-A key-value store with pluggable adapters. Use this to persist workflow state across restarts, share state between workflows, or cache API responses.
-
-```typescript
-import { Memory, InMemoryAdapter } from "@ai.ntellect/core";
-
-const memory = new Memory(new InMemoryAdapter());
-await memory.init();
-
-// Save a value
-await memory.save("user_prefs", { theme: "dark" });
-
-// Retrieve it later
-const prefs = await memory.recall("user_prefs");
-```
-
-Available adapters:
-
-| Adapter | Use case |
-|---------|----------|
-| `InMemoryAdapter` | Testing, ephemeral storage |
-| `RedisAdapter` | Distributed apps, cross-instance sharing |
-| `MeilisearchAdapter` | Semantic search, similarity recall |
-
-```typescript
-import { Memory, RedisAdapter } from "@ai.ntellect/core";
-import Redis from "ioredis";
-
-const redis = new Redis(process.env.REDIS_URL);
-const memory = new Memory(new RedisAdapter(redis));
-```
-
-### Agenda
-
-Schedule recurring tasks with cron expressions. The agenda runs in-process—when the cron matches, your task function executes.
-
-```typescript
-import { Agenda, NodeCronAdapter } from "@ai.ntellect/core";
-
-const agenda = new Agenda(new NodeCronAdapter());
-
-// Every hour
-agenda.schedule("0 * * * *", async () => {
-  console.log("Hourly task running");
-});
-
-// Named job for cancellation
-agenda.schedule("daily_cleanup", "0 0 * * *", async () => {
-  console.log("Daily cleanup");
-});
-```
-
-Uses `node-cron` under the hood. Syntax follows standard cron conventions.
-
-## Development
-
-```sh
-pnpm install
-pnpm run test:all
-pnpm run build
-```
-
-### Testing
-
-Mocha + Chai + chai-as-promised + sinon:
-
-```sh
-pnpm run test        # Single run
-pnpm run test:all   # All test suites
-pnpm run test:coverage
-pnpm run test:watch
-```
-
-### CLI
-
-Run agents interactively from the terminal. The CLI includes built-in tools for file operations, command execution, and environment inspection. It auto-loads `.env` for API keys (`GROQ_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`) — no `dotenv` dependency needed.
-
-```sh
-pnpm cli -p groq -m llama-3.1-8b-instant       # Groq (fast, free key in .env)
-pnpm cli -p openai -m gpt-4o-mini              # OpenAI (needs OPENAI_API_KEY)
-pnpm cli -p ollama -m gemma4:4b                # Local Ollama
-```
-
-Supported providers: `openai`, `ollama`, `groq`, `openrouter`. Default models vary by provider.
-
-Options:
-- `-p, --provider` — LLM provider (openai, ollama, groq, openrouter)
-- `-m, --model` — model name
-- `-b, --base-url` — API base URL
-- `--api-key` — API key
-- `-r, --role` — agent role
-- `-g, --goal` — agent goal
-- `-v, --verbose` — verbose output
-
-**Slash commands** (interactive mode):
-- `/status` — Show current execution state
-- `/history` — Show conversation history
-- `/list` — List available checkpoints
-- `/resume [cpId]` — Resume from a checkpoint
-- `/approve` — Approve a pending action
-- `/reject` — Reject a pending action
-- `/modify k=v` — Modify context before resuming
-- `/clear` — Clear conversation
-- `/help` — Show help
-- `/exit` — Quit
-
-**Breakpoints**: The CLI auto-pauses before the `think` node (LLM call) for human-in-the-loop review. Configure custom breakpoints via `breakpoints: ["nodeName"]` in checkpoint config.
+---
 
 ## License
 

@@ -1,4 +1,4 @@
-# Module Memory
+# Module Mémoire
 
 Persistance de données pour les agents.
 

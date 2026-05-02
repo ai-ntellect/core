@@ -24,7 +24,7 @@
 * [Pour commencer](tutoriels/pour-commencer.md)
 * [Créer un graphe simple](tutoriels/creer-un-graphe-simple.md)
 * [Créer un agent](tutoriels/creer-un-agent.md)
-* [Créer un agent avec décision](/broken/pages/X7FWvp69lI4cCWJ6ArEd)
+* [Ajouter des conditions](tutoriels/ajouter-des-conditions.md)
 * [Créer un agent onchain](tutoriels/creer-agent-onchain.md)
 * [Ajouter des conditions](tutoriels/ajouter-des-conditions.md)
 * [Gérer les erreurs](tutoriels/gerer-les-erreurs.md)
