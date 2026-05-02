@@ -1,4 +1,10 @@
-import { PetriNet, TransitionAction } from '../petri/index';
+/**
+ * CortexFlow benchmark workflow — Gmail fetch + LLM summarisation.
+ *
+ * Mirrors the LangGraph workflow exactly: both frameworks perform
+ * classify intent (LLM call #1) → fetch mails → summarise (LLM call #2).
+ */
+import { TransitionAction } from '../petri/index';
 import { CortexFlowOrchestrator } from '../petri/orchestrator';
 import { ToolRegistry } from '../graph/registry';
 import { GraphFlow } from '../graph/index';
@@ -8,24 +14,9 @@ import { google } from 'googleapis';
 import * as fs from 'fs';
 import * as path from 'path';
 
-function createOllamaCall(model = 'llama3:latest') {
-  return async (prompt: string) => {
-    const response = await fetch('http://localhost:11434/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        prompt,
-        stream: false,
-        format: 'json',
-      }),
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    return data.response;
-  };
-}
+// ---------------------------------------------------------------------------
+// Gmail helper
+// ---------------------------------------------------------------------------
 
 function createGmailClient() {
   const tokenPath = path.join(__dirname, '../gmail_token.json');
@@ -41,6 +32,10 @@ function createGmailClient() {
   return google.gmail({ version: 'v1', auth: oauth2Client });
 }
 
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+
 export async function runCortexFlowBenchmark() {
   console.log('\n🚀 Starting CortexFlow benchmark...\n');
 
@@ -48,6 +43,7 @@ export async function runCortexFlowBenchmark() {
   const startMemory = process.memoryUsage().heapUsed;
   let llmCalls = 0;
 
+  /** Thin wrapper that counts every LLM call for the benchmark report. */
   const llmCall = async (prompt: string) => {
     llmCalls++;
     const response = await fetch('http://localhost:11434/api/generate', {
@@ -70,6 +66,10 @@ export async function runCortexFlowBenchmark() {
   const toolRegistry = new ToolRegistry();
   const orchestrator = new CortexFlowOrchestrator('mail_assistant', toolRegistry);
 
+  /**
+   * Intent classifier (LLM call #1).
+   * Matches LangGraph's classifyIntent node so both frameworks do equal work.
+   */
   const classifier = new IntentClassifier(llmCall, {
     intents: ['FETCH_MAILS', 'SUMMARIZE', 'UNKNOWN'],
     confidenceThreshold: 0.6,
@@ -77,13 +77,19 @@ export async function runCortexFlowBenchmark() {
   orchestrator.setIntentClassifier(IntentClassifier.toFn(classifier), classifier);
   orchestrator.setLLMCall(llmCall);
 
-  // Setup Petri net
+  // ---------------------------------------------------------------------------
+  // Petri Net topology
+  // ---------------------------------------------------------------------------
+
   const net = orchestrator.petri;
   net.addPlace({ id: 'idle', type: 'initial', tokens: [{ id: 'start', data: {}, createdAt: 0 }] });
   net.addPlace({ id: 'processing', type: 'normal', tokens: [] });
   net.addPlace({ id: 'done', type: 'final', tokens: [] });
 
-  // Create GraphFlow
+  // ---------------------------------------------------------------------------
+  // GraphFlow — fetch + summarise (LLM call #2 inside 'summarize' node)
+  // ---------------------------------------------------------------------------
+
   const mailGraph = new GraphFlow<any>({
     name: 'mail_fetch_summarize',
     context: { maxMails: 5 },
@@ -122,7 +128,9 @@ export async function runCortexFlowBenchmark() {
         name: 'summarize',
         execute: async (ctx: any) => {
           console.log('  [CortexFlow] Summarizing with LLM...');
-          const mailText = ctx.fetchedMails.map((m: any) => `From: ${m.from}\nSubject: ${m.subject}`).join('\n\n');
+          const mailText = ctx.fetchedMails
+            .map((m: any) => `From: ${m.from}\nSubject: ${m.subject}`)
+            .join('\n\n');
           const prompt = `Summarize these emails in 3 bullet points max:\n\n${mailText}\n\nRespond in JSON: {"summary": "..."}`;
           const response = await llmCall(prompt);
           const parsed = JSON.parse(response);
@@ -170,7 +178,7 @@ export async function runCortexFlowBenchmark() {
   return {
     framework: 'CortexFlow',
     totalTime: endTime - startTime,
-    llmCalls,  // Intent classification + summarization
+    llmCalls,
     memoryUsed: endMemory - startMemory,
     summary: (result as any).transitionResult?.actionResult?.summary || 'N/A',
     mailsCount: (result as any).transitionResult?.actionResult?.fetchedMails?.length || 0,
