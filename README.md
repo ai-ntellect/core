@@ -155,16 +155,24 @@ When the classifier confidence is below the threshold, the orchestrator automati
 Debug your Petri Net interactively without writing tests:
 
 ```sh
-pnpm run dev:cli examples/my_workflow.json
+npx ts-node cli-dev.ts [workflow.json]       # Launch interactive debugger
 ```
 
-Commands: `show`, `enabled`, `step <id>`, `auto`, `inject <placeId> [json]`, `history`, `dot`, `reset`.
+Commands: `load`, `show`, `enabled`, `step <id>`, `auto`, `inject <placeId> [json]`, `history`, `dot`, `reset`, `help`, `exit`.
+
+### Generate Documentation
+
+Auto-generate Mermaid diagrams, Markdown docs, and HTML preview from Petri Nets:
+
+```sh
+npx ts-node scripts/generate-petri-docs.ts <petri-net.json> [output-dir]
+```
+
+Output: `./docs/petri/` (or specified dir) with `.md`, `.mmd`, and `.html` files.
 
 ### Benchmark
 
 Scenario: fetch 5 emails → batch-classify urgency → draft replies for urgent ones → archive the rest.
-
-Three implementations are compared: CortexFlow, LangGraph naive (one LLM call per routing decision — the standard pattern), and LangGraph optimised (manually batched by the developer).
 
 ```sh
 pnpm run benchmark   # requires Ollama + llama3:latest, or GROQ_API_KEY in .env
@@ -179,8 +187,10 @@ CortexFlow uses a `HybridIntentClassifier` — keyword rules resolve unambiguous
 | | CortexFlow | LangGraph naive | LangGraph optimised |
 |---|---|---|---|
 | LLM calls | **1** | 7 | 2 |
-| Total time | **4 052 ms** | 16 876 ms | 6 676 ms |
-| vs naive | **4.16× faster** | baseline | 2.53× faster |
+| Total time | **13.4s** | 3.7s | 4.2s |
+| vs naive | **0.28× faster** (more features) | baseline | 0.9× slower |
+
+**CortexFlow provides full traceability + formal Petri Net verification at 0.28× the speed of LangGraph naive.**
 
 #### Groq API — llama-3.1-8b-instant
 
@@ -192,11 +202,31 @@ CortexFlow uses a `HybridIntentClassifier` — keyword rules resolve unambiguous
 
 **LLM call reduction vs naive: −86% on both backends.**
 
-On Groq, CortexFlow (1 650 ms) now edges out LangGraph optimised (1 668 ms) despite the latter also batching its LLM calls — the saved intent-classification round-trip offsets the Petri Net overhead.
+---
 
-On Ollama (each call ~2 s), the call reduction dominates: CortexFlow is 4× faster than the naive pattern and 1.65× faster than the manually-optimised LangGraph variant.
+## Petri Checkpoint Persistence
 
-The "LangGraph optimised" variant is included to show that a developer *can* write equivalent batching by hand — but it requires conscious restructuring. CortexFlow enforces the separation structurally, with the Petri Net guaranteeing deadlock-free, bounded routing regardless of workflow complexity.
+Save and restore Petri Net state for long-running workflows:
+
+```typescript
+import { InMemoryPetriCheckpointAdapter } from "@ai.ntellect/core/petri/checkpoint-adapter";
+
+const adapter = new InMemoryPetriCheckpointAdapter();
+orchestrator.setPetriCheckpointAdapter(adapter);
+
+// Auto-save during execution
+orchestrator.savePetriState(sessionId);
+
+// Restore later
+const checkpointId = "petri-cp-12345";
+const { net, session } = await adapter.load(checkpointId);
+```
+
+**Features**:
+- Save/restore Petri Net marking + session context
+- List all checkpoints with timestamps
+- Delete old checkpoints
+- Extensible: implement `IPetriCheckpointAdapter` for Redis/DB backends
 
 ---
 
