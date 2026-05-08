@@ -11,23 +11,26 @@
  * - Utility functions for action schema generation and header building
  */
 
-export * from "./modules/agent/agent";
-export * from "./modules/agent/prompt-builder";
+export * from "./agent/agent";
+export * from "./agent/prompt-builder";
 
-export * from "./graph/controller";
-export * from "./graph/event-manager";
-export * from "./graph/index";
-export * from "./graph/node";
-export * from "./graph/observer";
-export * from "./graph/visualizer";
-export * from "./graph/registry";
-export * from "./graph/planner";
-export * from "./graph/compiler";
+export * from "./execution/controller";
+export * from "./execution/event-manager";
+export * from "./execution/index";
+export * from "./execution/node";
+export * from "./execution/observer";
+export * from "./execution/visualizer";
+export * from "./execution/registry";
+export * from "./execution/planner";
+export * from "./execution/compiler";
 
 export * from "./interfaces";
 export * from "./modules/agenda";
 export * from "./modules/embedding";
 export * from "./modules/memory";
+
+// Persistence barrel — unified storage layer
+export * from "./persistence";
 
 export * from "./types";
 
@@ -35,6 +38,17 @@ export * from "./utils/generate-action-schema";
 export * from "./utils/header-builder";
 
 export { startCLI, runCLI, type CLIConfig } from "./modules/cli";
+
+// PetriNet core — deterministic routing engine (thesis backbone)
+export { PetriNet } from "./routing/index";
+export { CortexFlowOrchestrator } from "./routing/orchestrator";
+export type { Session, FallbackLLM } from "./routing/orchestrator";
+export { IntentClassifier, HybridIntentClassifier } from "./routing/intent-classifier";
+export type { IntentResult, IntentClassifierFn } from "./routing/intent-classifier";
+export type { Token, Place, Transition, Guard, TransitionAction, TransitionResult, PetriNetState } from "./routing/types";
+export { IPetriCheckpointAdapter, InMemoryPetriCheckpointAdapter } from "./routing/checkpoint-adapter";
+export { RedisPetriCheckpointAdapter } from "./routing/redis-checkpoint-adapter";
+export { PostgresPetriCheckpointAdapter } from "./routing/postgres-checkpoint-adapter";
 
 // Pipeline - High-level abstraction for agent orchestration
 export { AgentPipeline, priceZone } from "./pipeline/agent-pipeline";

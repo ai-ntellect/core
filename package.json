@@ -23,8 +23,8 @@
     "test:all": "mocha -r ./node_modules/ts-node/register 'test/**/*.test.ts'",
     "test:coverage": "nyc --reporter=text --reporter=html pnpm test",
     "test:watch": "mocha --require ./node_modules/ts-node/register 'test/**/*.test.ts' --watch --watch-files ./**/*.ts,test/**/*.ts",
-    "test:watch:graph": "mocha --require ./node_modules/ts-node/register 'test/graph/**/*.test.ts' --watch --watch-files ./graph/**/*.ts test/**/*.ts",
-    "test:petri": "mocha --require ./node_modules/ts-node/register 'test/petri/**/*.test.ts'",
+    "test:watch:execution": "mocha --require ./node_modules/ts-node/register 'test/execution/**/*.test.ts' --watch --watch-files ./execution/**/*.ts test/**/*.ts",
+    "test:petri": "mocha --require ./node_modules/ts-node/register 'test/routing/**/*.test.ts'",
     "dev:cli": "ts-node cli-dev.ts",
     "benchmark": "ts-node benchmark/run-benchmark.ts"
   },

@@ -27,7 +27,7 @@
  */
 
 import * as readline from 'readline';
-import { PetriNet, TransitionResult } from './petri/index';
+import { PetriNet, TransitionResult } from './routing/index';
 import * as fs from 'fs';
 import * as path from 'path';
 

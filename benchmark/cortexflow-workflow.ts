@@ -6,12 +6,12 @@
  *   #2  Batch urgency check    (one call for all N mails)
  *   #3  Batch response draft   (one call for all urgent mails; skipped if none)
  */
-import { TransitionAction } from '../petri/index';
-import { CortexFlowOrchestrator } from '../petri/orchestrator';
-import { ToolRegistry } from '../graph/registry';
-import { GraphFlow } from '../graph/index';
+import { TransitionAction } from '../routing/index';
+import { CortexFlowOrchestrator } from '../routing/orchestrator';
+import { ToolRegistry } from '../execution/registry';
+import { GraphFlow } from '../execution/index';
 import { z } from 'zod';
-import { HybridIntentClassifier } from '../petri/intent-classifier';
+import { HybridIntentClassifier } from '../routing/intent-classifier';
 import { google } from 'googleapis';
 import * as fs from 'fs';
 import * as path from 'path';

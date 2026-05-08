@@ -24,7 +24,7 @@ npx ts-node scripts/generate-petri-docs.ts <petri-net.json> [output-dir]
 You can integrate documentation generation into your CI/CD pipeline or your own admin dashboard:
 
 ```typescript
-import { PetriDocumentationGenerator } from "@ai.ntellect/core/petri/documentation-generator";
+import { PetriDocumentationGenerator } from "@ai.ntellect/core/routing/documentation-generator";
 
 const generator = new PetriDocumentationGenerator();
 await generator.generateForPetri(net, {

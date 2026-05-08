@@ -7,11 +7,11 @@ import {
   CheckpointAwaitApprovalError,
   CheckpointInterruptError,
 } from "../../index";
-import { InMemoryCheckpointAdapter } from "../../graph/adapters/in-memory-checkpoint";
+import { InMemoryCheckpointAdapter } from "../../execution/adapters/in-memory-checkpoint";
 import { Memory } from "../../modules/memory";
 import { InMemoryAdapter } from "../memory/adapters/in-memory";
 import { LLMConfig, LLMProvider } from "../../types/agent";
-import { createAllAgentTools } from "../agent/tools";
+import { createAllAgentTools } from "../../agent/tools";
 import { Checkpoint } from "../../types";
 
 function loadEnv(): void {

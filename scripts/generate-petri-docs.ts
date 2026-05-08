@@ -5,8 +5,8 @@
  * Usage: npx ts-node scripts/generate-petri-docs.ts [petri-net.json] [output-dir]
  */
 
-import { PetriNet } from '../petri/index';
-import { PetriDocumentationGenerator } from '../petri/documentation-generator';
+import { PetriNet } from '../routing/index';
+import { PetriDocumentationGenerator } from '../routing/documentation-generator';
 import * as fs from 'fs';
 import * as path from 'path';
 

@@ -1,9 +1,9 @@
-import { CortexFlowOrchestrator, Session } from "../petri/orchestrator";
-import { TransitionAction } from "../petri";
-import { ToolRegistry } from "../graph/registry";
-import { GraphFlow } from "../graph";
+import { CortexFlowOrchestrator, Session } from "../routing/orchestrator";
+import { TransitionAction } from "../routing";
+import { ToolRegistry } from "../execution/registry";
+import { GraphFlow } from "../execution";
 import { z, ZodSchema } from "zod";
-import { IPetriCheckpointAdapter } from "../petri/checkpoint-adapter";
+import { IPetriCheckpointAdapter } from "../routing/checkpoint-adapter";
 import { EventEmitter } from "events";
 import logger from "../utils/logger";
 

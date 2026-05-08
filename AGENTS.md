@@ -1,71 +1,50 @@
 # AGENTS.md
 
-## Project Overview
-- **Package**: `@ai.ntellect/core` v0.12.0
-- **Core Thesis**: Deterministic control over LLM agents. LLM as **Classifier** (Intent) $\rightarrow$ Petri Net as **Controller** (Routing) $\rightarrow$ GraphFlow as **Executor** (Logic).
-- **Package Manager**: pnpm v10.33.0
-- **CI Order**: `install --frozen-lockfile` $\rightarrow$ `test:all` $\rightarrow$ `build`
+## Project
+- `@ai.ntellect/core` v0.12.0 — pnpm v10.33.0
+- **Thesis**: LLM as **Classifier** → **Routing** (Petri Net) → **Execution** (GraphFlow)
+- `pnpm install` runs `prepare` script (`tsc`), so build is automatic on install
 
 ## Commands
 ```sh
-pnpm install                    # Installs & builds (via prepare script)
-pnpm run build                  # tsc → dist/
-pnpm test                       # Mocha tests (5000ms timeout)
-pnpm run test:all               # Runs all tests in test/**/*.test.ts
-pnpm test --grep "suite name"    # Run specific suite
+pnpm run build                # tsc → dist/
+pnpm test                     # Mocha via ts-node (5s timeout, .mocharc.json)
+pnpm run test:all             # test/**/*.test.ts
+pnpm test --grep "suite"      # focused suite
+pnpm run test:watch           # watch mode
+pnpm run test:watch:execution # watch only execution tests
+```
+**Real LLM**: `pnpm test --grep "CortexFlow Real LLM"` (needs Ollama `llama3:latest` at `:11434`)
+
+## Architecture (Bounded Contexts)
+```
+index.ts          → public API barrel
+execution/        → GraphFlow (typed nodes, events, checkpoints, planner, compiler)
+routing/          → PetriNet, CortexFlowOrchestrator, IntentClassifier
+agent/            → Agent, GenericExecutor, handlers, tools
+persistence/      → barrel re-exporting Memory + checkpoint adapters
+pipeline/         → AgentPipeline (trigger → stages → gate)
+modules/          → remaining plugins: agenda, cli, embedding, memory, nlp
+interfaces/       → contract interfaces
+types/            → Zod schemas (use z.unknown(), NOT z.any())
+app/              → Next.js frontend (independent, not part of core build)
 ```
 
-## Architecture
-- `graph/`: **GraphFlow** — Typed graphs, nodes, events. Entry point for execution.
-- `petri/`: **CortexFlow** — Intent classification & Petri Net orchestration.
-- `pipeline/`: **AgentPipeline** — Declarative pipelines with triggers and human gates.
-- `modules/`: Pluggable extensions:
-  - `agent/`: LLM agent with GraphFlow tools.
-  - `memory/`: Persistent state (InMemory, Redis, Meilisearch).
-  - `agenda/`: Cron scheduling.
-  - `nlp/`: @nlpjs/basic wrappers.
-- `interfaces/` & `types/`: Contract interfaces and Zod schemas.
-- `app/`: Next.js frontend (independent of core build).
+### Path Alias
+`@/*` → `./*` (tsconfig paths). Safe to use in core source.
 
-**Key Aliases**: `@/*` $\rightarrow$ root.
-**TS Include**: Includes all core logic; excludes `test/`, `examples/`, `petri/` (some), `app/`.
+### TS Config Notes
+- `routing/web-server.ts` is explicitly excluded from build (missing express/socket.io types)
+- `test/` and `examples/` are excluded from tsc (ts-node handles them at runtime)
 
 ## CLI Tools
-### Agent REPL
-`pnpm cli -p <provider> -m <model>` (Providers: `openai`, `ollama`, `groq`, `openrouter`, `google`)
-- **Key Commands**: `/status`, `/history`, `/list`, `/resume [cpId]`, `/approve`, `/reject`, `/modify k=v`.
-- **Auth**: Auto-loads `.env` for API keys.
+- **Agent REPL**: `pnpm cli -p <provider> -m <model>` (openai, ollama, groq, openrouter, google)
+- **Debugger**: `npx ts-node cli-dev.ts [workflow.json]`
 
-### Petri Debugger
-`npx ts-node cli-dev.ts [workflow.json]`
-- **Commands**: `load`, `show`, `enabled`, `step`, `auto`, `inject`, `history`, `dot`, `reset`.
+## Constraints
+- Use native `fetch` (Node 18+). **No axios.**
+- Use Zod v4+ syntax. Prefer `z.unknown()` over `z.any()`.
+- `.env` auto-loaded by CLI; test suite does NOT preload dotenv
 
-### Documentation Generator
-`npx ts-node scripts/generate-petri-docs.ts <petri-net.json> [output-dir]`
-- Generates Mermaid diagrams and Markdown/HTML docs for Petri Nets.
-
-## Key Patterns & Implementation
-### 1. Deterministic Routing
-Avoid LLM-driven routing loops. Use:
-`User` $\rightarrow$ `IntentClassifier` $\rightarrow$ `PetriNet` $\rightarrow$ `GraphFlow`.
-
-### 2. Plan $\rightarrow$ Compile $\rightarrow$ Execute
-LLM generates a Zod-validated JSON plan $\rightarrow$ Compiled to a `GraphFlow` $\rightarrow$ Executed.
-
-### 3. AgentPipeline (v0.12.0+)
-Declarative pipelines with `Trigger` $\rightarrow$ `Stage[]` $\rightarrow$ `Gate` (human/auto).
-
-### 4. Development Constraints
-- **Network**: Use native `fetch` (Node 18+). **Do not use axios**.
-- **Validation**: Use Zod v4+ syntax. Prefer `z.unknown()` over `z.any()`.
-
-## Testing & Verification
-- **Framework**: Mocha + Chai + Sinon.
-- **Real LLM Tests**: `pnpm test --grep "CortexFlow Real LLM"` (Requires Ollama `llama3:latest` at `localhost:11434`).
-- **Onchain Tests**: `test/graph/plan-real-onchain.test.ts` (Requires Sepolia env).
-- **Pipeline Tests**: `test/pipeline/agent-pipeline.test.ts`.
-
-## Environment & Setup
-- **Local LLM**: Ollama available at `localhost:11434`.
-- **Blockchain**: Sepolia testnet keys in `.env`.
-- **Google API**: `client_secret.json` (root) and `gmail_token.json` (generated via `scripts/get-gmail-token.ts`).
+## Pre-existing Test Quirks
+- Real LLM Ollama tests (`test/routing/real-llm.test.ts`) are flaky — Ollama occasionally returns `UNKNOWN` instead of the expected intent. Not caused by code changes.

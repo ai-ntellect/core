@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GraphFlow } from "../graph/index";
+import { GraphFlow } from "../execution/index";
 
 export const generateActionSchema = (graphs: GraphFlow<any>[]) => {
   return graphs

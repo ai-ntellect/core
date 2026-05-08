@@ -3,7 +3,45 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
-No new features yet — check back soon.
+
+### 🚀 Added
+
+* **Petri Core Public API**
+  `PetriNet`, `CortexFlowOrchestrator`, `IntentClassifier`, `HybridIntentClassifier`, and checkpoint adapters (Redis, PostgreSQL) are now exported from the root `index.ts`.
+  → Makes the deterministic routing thesis accessible to consumers of the package.
+
+* **Extracted Cognitive Handlers**
+  `DynamicGoalHandler` and `DynamicNextHandler` extracted from the monolithic `GenericExecutor` into focused, independently testable classes in `agent/handlers/`.
+  → Enables unit-testing goal computation and next-state routing without instantiating the full executor.
+
+* **Extracted Agent Workflow Builder**
+  `buildAgentWorkflow()` extracted from `Agent.setupWorkflow()` into `agent/agent-workflow.ts`.
+  → Makes the cognitive node graph (defineGoal → think → execute → reply) testable and reusable without the `Agent` class.
+
+* **Persistence Barrel**
+  `persistence/index.ts` re-exports `Memory`, `InMemoryCheckpointAdapter`, and Petri checkpoint adapters as a unified storage layer.
+  → Simplifies imports when using both memory and checkpoint adapters together.
+
+### 🔧 Changed
+
+* **Agent Refactored to Pure Orchestrator**
+  `Agent` class now delegates to `GenericExecutor` (handlers) and `buildAgentWorkflow()` instead of defining inline closure-heavy nodes.
+  → Each responsibility (goal, next-state, action execution) is handled by a focused module.
+
+* **Dead Code Elimination**
+  Removed `routing/agent-pipeline.ts` (duplicate of `pipeline/agent-pipeline.ts` — confirmed zero imports).
+  → Eliminates the architectural ambiguity of having two competing `AgentPipeline` abstractions.
+
+* **Orphaned Patterns Removed**
+  Removed `execution/worker-pool.ts`, `execution/workers/cpu-worker.ts`, `execution/subgraph.ts`, and `agent/generic-assistant.ts` — all confirmed dead code with zero imports across the codebase.
+  → Reduces maintenance surface and clarifies what the core engine actually needs.
+
+* **Bounded Contexts Restructure**
+  Renamed directories to match domain boundaries:
+  - `graph/` → `execution/` (GraphFlow engine)
+  - `petri/` → `routing/` (PetriNet, CortexFlow)
+  - `modules/agent/` → `agent/` (promoted to root-level bounded context)
+  All imports updated across the codebase, test directories renamed accordingly. Public API (`index.ts` exports) and package consumers are unaffected.
 
 ---
 

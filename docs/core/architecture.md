@@ -55,6 +55,27 @@ For complex systems, a single graph isn't enough. The `GraphController` allows y
 
 ---
 
+---
+
+## 📁 Source Code Structure (Bounded Contexts)
+
+The framework source is organized into **Bounded Contexts** that mirror the three-layer model:
+
+```
+execution/     → Layer 3: GraphFlow engine (typed nodes, events, planner, compiler)
+routing/       → Layer 2: PetriNet, CortexFlowOrchestrator, IntentClassifier
+agent/         → Cognitive loop: Agent, GenericExecutor, handlers, tools
+persistence/   → Barrel: Memory + checkpoint adapters
+pipeline/      → AgentPipeline (trigger → stages → gate)
+modules/       → Plugins: agenda, cli, embedding, memory, nlp
+interfaces/    → Contract interfaces
+types/         → Zod schemas
+```
+
+This structure ensures that each concern (routing, execution, agent loop) lives in its own directory with clear boundaries and no circular dependencies.
+
+---
+
 ## 🚀 Summary of the Architectural Edge
 
 | Feature | Traditional AI Frameworks | @ai.ntellect/core |

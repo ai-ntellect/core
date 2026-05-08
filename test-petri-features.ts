@@ -1,8 +1,8 @@
-import { CortexFlowOrchestrator } from './petri/orchestrator';
-import { IntentClassifier, HybridIntentClassifier } from './petri/intent-classifier';
-import { ToolRegistry } from './graph/registry';
-import { GraphFlow } from './graph/index';
-import { PetriNet } from './petri/index';
+import { CortexFlowOrchestrator } from './routing/orchestrator';
+import { IntentClassifier, HybridIntentClassifier } from './routing/intent-classifier';
+import { ToolRegistry } from './execution/registry';
+import { GraphFlow } from './execution/index';
+import { PetriNet } from './routing/index';
 import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';

@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import sinon from "sinon";
 import { AgentPipeline, Stage, PricePollingTrigger } from "../../pipeline/agent-pipeline";
-import { InMemoryPetriCheckpointAdapter } from "../../petri/checkpoint-adapter";
+import { InMemoryPetriCheckpointAdapter } from "../../routing/checkpoint-adapter";
 
 describe("AgentPipeline", () => {
   let pipeline: AgentPipeline;

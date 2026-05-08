@@ -382,5 +382,5 @@ export type {
   StateReducer,
   WorkerConfig,
   ParallelNodeConfig,
-} from "../graph/types.parallel";
+} from "../execution/types.parallel";
 

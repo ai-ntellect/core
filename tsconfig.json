@@ -22,10 +22,13 @@
   "include": [
     "index.ts",
     "modules/**/*",
-    "graph/**/*",
+    "execution/**/*",
+    "routing/**/*",
+    "agent/**/*",
+    "persistence/**/*",
     "types/**/*",
     "interfaces/**/*",
     "utils/**/*"
   ],
-  "exclude": ["node_modules", "dist", "test", "examples"]
+  "exclude": ["node_modules", "dist", "test", "examples", "routing/web-server.ts"]
 }
